@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StreamSim Control Center</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel controls">
+        <h1>StreamSim Control Center</h1>
+        <div class="grid">
+          <label>Viewer Count <input id="viewerCount" type="number" min="1" value="100" /></label>
+          <label>Engagement Multiplier <input id="engagementMultiplier" type="number" step="0.1" value="1" /></label>
+          <label>Persona
+            <select id="persona">
+              <option value="supportive">Supportive</option>
+              <option value="trolls">Trolls</option>
+              <option value="meme-lords">Meme-lords</option>
+              <option value="neutral">Neutral</option>
+            </select>
+          </label>
+          <label>Bias
+            <select id="bias">
+              <option value="split">Split</option>
+              <option value="agree">Agree</option>
+              <option value="disagree">Disagree</option>
+            </select>
+          </label>
+          <label><input id="slowMode" type="checkbox" /> Slow Mode</label>
+          <label><input id="emoteOnly" type="checkbox" /> Emote-Only</label>
+          <label><input id="ttsEnabled" type="checkbox" checked /> TTS Enabled</label>
+        </div>
+        <div class="buttons">
+          <button id="save">Save Config</button>
+          <button id="start">Start Simulation</button>
+          <button id="stop">Stop</button>
+        </div>
+        <pre id="meta"></pre>
+      </section>
+
+      <section class="panel overlay" id="overlay">
+        <div class="watermark">Powered by StreamSim</div>
+        <h2>Overlay Preview</h2>
+        <div id="chat"></div>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
