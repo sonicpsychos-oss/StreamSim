@@ -284,3 +284,168 @@ The Tauri app will serve as an orchestrator for the local environment:
 
 ### 3.2 Error Handling & Fallback
 If the Local Setup fails (e.g., due to Windows Firewall or lack of disk space), the app will proactively suggest: *"We couldn't initialize your GPU. Switch to Cloud Mode (Groq) for 100% free, high-speed chat?"*
+
+---
+
+## 9. Detailed Data Contracts (Implementation-Oriented)
+
+### 9.1 Runtime Configuration Schema
+
+```json
+{
+  "engine": {
+    "mode": "local|cloud",
+    "local": { "provider": "ollama", "baseUrl": "http://localhost:11434", "model": "llama3:8b-instruct-q4_0" },
+    "cloud": { "provider": "groq|openai", "model": "<model-id>", "apiKeyRef": "keychain://streamsim/default" }
+  },
+  "persona": "supportive|trolls|meme_lords|neutral",
+  "bias": { "type": "agree|disagree|split", "agreeRatio": 0.7 },
+  "audience": { "viewerCount": 10000, "emoteOnly": false, "slowMode": false, "slowModeMaxMps": 0.5 },
+  "events": { "ttsEnabled": true, "donationFrequency": 0.15, "ttsVoice": "alloy" },
+  "safety": { "dropPolicy": true, "dictionaryVersion": "v1" },
+  "capture": { "visionEnabled": true, "visionIntervalSec": 30, "sttProvider": "whispercpp|deepgram" }
+}
+```
+
+### 9.2 Prompt Payload Contract
+
+```json
+{
+  "static_context": {
+    "persona": "trolls",
+    "bias": "split",
+    "viewer_count": 10000
+  },
+  "long_term_vibe": "Streamer has been on a losing streak in Valorant and sounds frustrated.",
+  "current_context": {
+    "transcript_last_90s": "...",
+    "tone": { "rms": 0.62, "wpm": 171, "energy": "hype" },
+    "vision_tags": ["wearing headset", "rgb background", "drinking soda"]
+  },
+  "output_schema": {
+    "type": "json_array_of_strings",
+    "count_hint": 30,
+    "rules": ["return only JSON", "no markdown", "no extra keys"]
+  }
+}
+```
+
+### 9.3 Inference Output Contract
+
+```json
+[
+  "W CLUTCH incoming",
+  "why did you peek that 😭",
+  "chat vote: rotate or hold?"
+]
+```
+
+### 9.4 Internal Queue Item Model
+
+```ts
+interface QueueMessage {
+  id: string;
+  text: string;
+  emotes: string[];
+  createdAtMs: number;
+  deliverAtMs: number;
+  source: "llm" | "system" | "donation";
+  faction?: "agree" | "disagree" | "neutral";
+}
+```
+
+---
+
+## 10. Non-Functional Requirements (NFRs)
+
+- **Latency Target:** End-to-end reaction window 2-3s under typical load.
+- **Jank-Free Rendering:** Overlay remains smooth at high throughput using virtualization.
+- **Resource Budget:** Keep desktop footprint low enough to coexist with OBS + game + optional local LLM.
+- **Reliability:** App should recover from transient model/network failures without crash.
+- **Observability:** Emit structured logs for each pipeline stage (capture, prompt, inference, filter, spool, render).
+- **Privacy-by-Default:** No raw vision frames persisted; microphone/video data processed in-memory unless user explicitly opts in for diagnostics.
+
+---
+
+## 11. Error Handling & Recovery Strategy
+
+### 11.1 Inference Failures
+- Local endpoint unavailable -> retry with backoff, then suggest cloud fallback.
+- Cloud timeout/rate-limit -> retry with jitter, surface non-blocking warning toast.
+- Malformed JSON output -> run strict parser-repair once; if still invalid, discard batch and request regeneration.
+
+### 11.2 Audio Path Failures
+- Device disconnect -> auto-rebind default input device.
+- `is_tts_playing` stale true beyond playback timeout -> watchdog resets state.
+
+### 11.3 Safety Filter Failures
+- If dictionary load fails, enter conservative mode: render only emotes/system messages until filter restored.
+
+### 11.4 Sidecar Failures
+- Ollama service start failure -> present guided fallback to cloud mode.
+- Model pull interrupted -> resume support where available; otherwise restart with progress UI and cancel option.
+
+---
+
+## 12. Security Controls
+
+- Secrets are never stored in plaintext config files; use OS keychain integration.
+- Localhost-only default for sidecar endpoints unless user explicitly changes host.
+- EULA acceptance and version are logged locally for compliance auditing.
+- Optional diagnostic exports must redact API identifiers and personal speech content by default.
+
+---
+
+## 13. Phased Delivery Plan & Exit Criteria
+
+### Milestone 1 (Core Simulation Loop)
+**Scope:** Capture -> STT -> Prompt -> Inference -> Safety Filter -> Render.
+**Exit Criteria:**
+- Generates and renders contextual chat from voice input.
+- Filter drops bannable terms before render.
+- Overlay capture works in OBS.
+
+### Milestone 2 (Realism & Control)
+**Scope:** Tone-based scaling, stochastic spooling, donation/TTS events, bias factions, slow mode, emote-only.
+**Exit Criteria:**
+- Chat pacing dynamically adapts to energy state.
+- No feedback loop during TTS playback.
+- User controls are reflected in runtime behavior immediately.
+
+### Milestone 3 (Onboarding, Hardening, Compliance)
+**Scope:** BTB tiering, one-click orchestrator, cloud/local robustness, immutable watermark/EULA polish.
+**Exit Criteria:**
+- First-run setup chooses sane defaults by hardware tier.
+- Fallback path handles local setup failures gracefully.
+- Compliance signals are always present in overlay output.
+
+---
+
+## 14. Open Questions / Decisions Log
+
+- Which default cloud model should be selected for Tier C users (cost vs latency tradeoff)?
+- Should emote-only mode permit ASCII art or strictly emote tokens?
+- What is the first release banlist source of truth (`bad-words`, curated list, or hybrid)?
+- Should vision tagging be opt-in at first launch in privacy-sensitive regions?
+
+---
+
+## 15. Acceptance Test Matrix (Traceable)
+
+1. **Hybrid Routing**
+   - Given local mode with reachable Ollama, requests route to `localhost:11434`.
+   - Given local unavailable, user can switch to cloud mode without restart.
+2. **Safety Filter**
+   - Given banned slur in generated batch, message is dropped pre-render.
+   - Given non-bannable insult, message passes filter.
+3. **Audio Mutual Exclusion**
+   - While TTS playing, STT ingest remains paused and audio buffers are discarded.
+   - On TTS end event, STT resumes.
+4. **Spooler Behavior**
+   - Inter-arrival timings show jitter rather than fixed cadence.
+   - Slow mode enforces max throughput regardless of viewer count.
+5. **Overlay Compliance**
+   - Watermark remains visible at configured 20% opacity in all themes/resolutions.
+6. **Privacy Controls**
+   - Vision frames are not persisted to disk by default.
+   - Key material remains in secure keychain storage.
