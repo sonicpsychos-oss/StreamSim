@@ -617,16 +617,8 @@ verifyMicBtn?.addEventListener("click", async () => {
 });
 
 verifyCameraBtn?.addEventListener("click", async () => {
-  const verification = await runAction({
-    button: verifyCameraBtn,
-    pendingText: "Requesting camera permission...",
-    successText: "Camera verification complete.",
-    onRun: () => verifyCameraOnly()
-  });
-  if (!verification) return;
-  latestDeviceVerification = verification;
-  renderDeviceChecks(verification);
-  updateMonitorAvailability(verification);
+  setStatus("Camera verification is intentionally disabled in this build.", "warn");
+  setLiveMonitorStatus("Camera verification is disabled, so live monitoring remains inactive.", "warn");
 });
 
 openOverlayWindowBtn.addEventListener("click", () => {
@@ -766,7 +758,10 @@ async function boot() {
     liveMonitorEnabled.checked = false;
     liveMonitorEnabled.disabled = true;
   }
-  setLiveMonitorStatus("Run Verify Mic/Camera to enable the live monitor.", "warn");
+  setLiveMonitorStatus("Camera verification is disabled; live monitor stays inactive.", "warn");
+  if (verifyCameraBtn) {
+    verifyCameraBtn.disabled = true;
+  }
 }
 
 void boot();
