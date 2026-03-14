@@ -1,0 +1,20 @@
+[
+  {
+    "profile": "low",
+    "p95LatencyMs": 3024,
+    "avgCpuPressure": 0.8238,
+    "avgGpuPressure": 0.7867
+  },
+  {
+    "profile": "mid",
+    "p95LatencyMs": 1555,
+    "avgCpuPressure": 0.6386,
+    "avgGpuPressure": 0.5647
+  },
+  {
+    "profile": "high",
+    "p95LatencyMs": 1139,
+    "avgCpuPressure": 0.4504,
+    "avgGpuPressure": 0.4263
+  }
+]

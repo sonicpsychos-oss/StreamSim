@@ -20,7 +20,8 @@ export const defaultConfig: SimulationConfig = {
   },
   safety: {
     dropOnParseFailure: true,
-    regenerateOnMalformedJson: true
+    regenerateOnMalformedJson: true,
+    dropPolicy: "drop"
   },
   compliance: {
     eulaAccepted: false,
@@ -94,7 +95,8 @@ export function sanitizeConfig(input: unknown): SimulationConfig {
     },
     safety: {
       dropOnParseFailure: asBoolean(safety.dropOnParseFailure, defaultConfig.safety.dropOnParseFailure),
-      regenerateOnMalformedJson: asBoolean(safety.regenerateOnMalformedJson, defaultConfig.safety.regenerateOnMalformedJson)
+      regenerateOnMalformedJson: asBoolean(safety.regenerateOnMalformedJson, defaultConfig.safety.regenerateOnMalformedJson),
+      dropPolicy: safety.dropPolicy === "censor" || safety.dropPolicy === "drop" ? safety.dropPolicy : defaultConfig.safety.dropPolicy
     },
     compliance: {
       eulaAccepted: asBoolean(compliance.eulaAccepted, defaultConfig.compliance.eulaAccepted),

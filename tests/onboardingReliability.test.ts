@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/runtimeConfig.js";
-import { applySafetyFilter } from "../src/core/safetyFilter.js";
+import { applySafetyPolicy } from "../src/core/safetyFilter.js";
 import { collectHardwareProfile, recommendTier } from "../src/services/bootDiagnostics.js";
 import { runReadinessChecks } from "../src/services/readinessChecks.js";
 
@@ -31,14 +31,14 @@ describe("safety conservative fallback", () => {
     const original = process.env.STREAMSIM_BANLIST_FORCE_FAIL;
     process.env.STREAMSIM_BANLIST_FORCE_FAIL = "1";
 
-    const filtered = applySafetyFilter([
+    const filtered = applySafetyPolicy([
       { id: "1", username: "user", text: "hello", emotes: [], createdAt: new Date().toISOString() },
       { id: "2", username: "system", text: "system notice", emotes: [], createdAt: new Date().toISOString() },
       { id: "3", username: "user", text: "", emotes: ["Kappa"], createdAt: new Date().toISOString() }
-    ]);
+    ], defaultConfig);
 
     process.env.STREAMSIM_BANLIST_FORCE_FAIL = original;
-    expect(filtered).toHaveLength(2);
-    expect(filtered.map((m) => m.id).sort()).toEqual(["2", "3"]);
+    expect(filtered.safeMessages).toHaveLength(2);
+    expect(filtered.safeMessages.map((m) => m.id).sort()).toEqual(["2", "3"]);
   });
 });
