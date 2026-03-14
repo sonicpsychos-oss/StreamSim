@@ -62,6 +62,29 @@ describe("real audio capture + stt pause/resume", () => {
     context = sharedDeviceCapturePipeline.getContext(defaultConfig);
     expect(context.transcript).toContain("resume works");
   });
+
+  it("hardens STT pause/resume under timing edge + fault-injection frames", async () => {
+    sharedDeviceCapturePipeline.reset();
+    const delayedBackend = {
+      async transcribe(frame: Buffer): Promise<string> {
+        await new Promise((resolve) => setTimeout(resolve, 8));
+        if (frame.toString("utf8").includes("fault")) throw new Error("simulated-device-fault");
+        return frame.toString("utf8");
+      }
+    };
+    const stt = new DeviceSttEngine("mock", delayedBackend);
+
+    await stt.ingestAudioFrame(Buffer.from("baseline"));
+    stt.pause();
+    await Promise.allSettled([stt.ingestAudioFrame(Buffer.from("fault frame")), stt.ingestAudioFrame(Buffer.from("should stay muted"))]);
+    stt.resume();
+    await stt.ingestAudioFrame(Buffer.from("resumed final"));
+
+    const context = sharedDeviceCapturePipeline.getContext(defaultConfig);
+    expect(context.transcript).toContain("baseline");
+    expect(context.transcript).not.toContain("should stay muted");
+    expect(context.transcript).toContain("resumed final");
+  });
 });
 
 describe("overlay/privacy/compliance", () => {

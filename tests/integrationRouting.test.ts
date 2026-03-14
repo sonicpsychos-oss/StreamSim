@@ -83,6 +83,74 @@ describe("hybrid routing and failover", () => {
     await local.close();
     await cloud.close();
   });
+
+  it("routes LM Studio payload to /v1/chat/completions", async () => {
+    const server = await withTestServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/v1/chat/completions") {
+        let body = "";
+        req.on("data", (chunk: Buffer) => (body += chunk.toString("utf8")));
+        req.on("end", () => {
+          const payload = JSON.parse(body);
+          expect(payload.messages[0].role).toBe("system");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
+        });
+        return;
+      }
+      if (req.method === "GET" && req.url === "/api/tags") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ models: [] }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const provider = new HybridInferenceProvider("lmstudio");
+    const config = { ...defaultConfig, provider: { ...defaultConfig.provider, localEndpoint: server.url } };
+    const output = await provider.generate(
+      { persona: "supportive", bias: "agree", emoteOnly: false, viewerCount: 10, requestedMessageCount: 1, context: { transcript: "hi", tone: { volumeRms: 0.4, paceWpm: 120 }, visionTags: [], timestamp: new Date().toISOString() } },
+      config
+    );
+    expect(output).toContain("messages");
+    await server.close();
+  });
+
+  it("routes openai/groq cloud requests with runtime mode switching", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
+    const server = await withTestServer(async (req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: [] }));
+        return;
+      }
+      expect(req.headers.authorization).toBe("Bearer abc123");
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk.toString("utf8")));
+      req.on("end", () => {
+        const parsed = JSON.parse(body);
+        expect(parsed.messages[1].role).toBe("user");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
+      });
+    });
+
+    const openAiProvider = new HybridInferenceProvider("openai");
+    const groqProvider = new HybridInferenceProvider("groq");
+    const config = { ...defaultConfig, provider: { ...defaultConfig.provider, cloudEndpoint: server.url + "/chat/completions", cloudModel: "x" } };
+    const payload = {
+      persona: "supportive" as const,
+      bias: "agree" as const,
+      emoteOnly: false,
+      viewerCount: 10,
+      requestedMessageCount: 1,
+      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+    };
+
+    await expect(openAiProvider.generate(payload, config)).resolves.toContain("messages");
+    await expect(groqProvider.generate(payload, config)).resolves.toContain("messages");
+    await server.close();
+  });
 });
 
 describe("device capture pipeline + security + observability schema", () => {

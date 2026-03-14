@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConfig, sanitizeConfig } from "./runtimeConfig.js";
+import { defaultConfig } from "./runtimeConfig.js";
 import { SimulationConfig } from "../core/types.js";
+import { createPersistedEnvelope, migrateConfigPayload } from "./configMigrations.js";
 
 export class ConfigStore {
   constructor(private readonly filePath = path.resolve(process.cwd(), "data/runtime-config.json")) {}
@@ -9,7 +10,7 @@ export class ConfigStore {
   public load(): SimulationConfig {
     try {
       const raw = fs.readFileSync(this.filePath, "utf-8");
-      return sanitizeConfig(JSON.parse(raw));
+      return migrateConfigPayload(JSON.parse(raw)).config;
     } catch {
       this.save(defaultConfig);
       return defaultConfig;
@@ -18,6 +19,6 @@ export class ConfigStore {
 
   public save(config: SimulationConfig): void {
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-    fs.writeFileSync(this.filePath, JSON.stringify(config, null, 2));
+    fs.writeFileSync(this.filePath, JSON.stringify(createPersistedEnvelope(config), null, 2));
   }
 }
