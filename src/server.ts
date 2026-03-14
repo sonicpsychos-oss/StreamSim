@@ -12,6 +12,7 @@ import { SecretStore } from "./security/secretStore.js";
 import { collectHardwareProfile, recommendTier } from "./services/bootDiagnostics.js";
 import { ComplianceLogger } from "./services/complianceLogger.js";
 import { runReadinessChecks } from "./services/readinessChecks.js";
+import { reconcileComplianceUpdate } from "./services/complianceGate.js";
 import { SimulationOrchestrator } from "./services/simulationOrchestrator.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -65,14 +66,33 @@ app.get("/api/events", (req, res) => {
 });
 
 app.post("/api/config", (req, res) => {
-  const previousAccepted = config.compliance.eulaAccepted;
-  config = mergeConfig(config, req.body);
+  const previousCompliance = { ...config.compliance };
+  const mergedConfig = mergeConfig(config, req.body);
+  const complianceUpdate = reconcileComplianceUpdate(previousCompliance, mergedConfig.compliance);
+  config = {
+    ...mergedConfig,
+    compliance: complianceUpdate.compliance
+  };
   configStore.save(config);
 
-  if (!previousAccepted && config.compliance.eulaAccepted) {
-    complianceLogger.logEulaAcceptance(config.compliance.eulaVersion);
-    onboardingComplete = true;
+  if (complianceUpdate.versionChanged) {
+    complianceLogger.logEvent("eula_version_changed", {
+      from: previousCompliance.eulaVersion,
+      to: complianceUpdate.compliance.eulaVersion
+    });
   }
+
+  if (complianceUpdate.acceptanceInvalidated) {
+    complianceLogger.logEvent("eula_reaccept_required", {
+      version: complianceUpdate.compliance.eulaVersion
+    });
+  }
+
+  if (complianceUpdate.acceptanceRecorded) {
+    complianceLogger.logEulaAcceptance(config.compliance.eulaVersion);
+  }
+
+  onboardingComplete = config.compliance.eulaAccepted;
 
   void refreshBootAndReadiness();
   res.json({ ok: true, config, onboardingComplete });
