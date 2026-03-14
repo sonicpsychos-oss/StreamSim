@@ -19,7 +19,7 @@ Legend:
 - [x] Transparent OBS-ready overlay window
 - [x] Persistent simulation watermark at ~20% opacity
 - [x] Low-friction control center (provider endpoint controls + keychain key save + status refresh completed)
-- [~] EULA gate before start (start blocked until accepted)
+- [x] EULA gate before start (start blocked until accepted + version-change re-accept enforcement)
 
 ### Safety + Compliance
 - [x] Local synchronous pre-render safety filter
@@ -143,8 +143,8 @@ Legend:
   - Status: Real signal weighting now drives donation/TTS realism and pacing behavior.
 
 ### Milestone 3 — Onboarding, Hardening, Compliance
-- [~] Tiering + one-click orchestrator + robust fallback + polished compliance gate
-  - Status: Core implementation complete; production acceptance evidence (onboarding UX checks, compliance-loop failure states, release checklist automation) now tracked explicitly below.
+- [x] Tiering + one-click orchestrator + robust fallback + polished compliance gate
+  - Status: Completed with enforced EULA re-accept flow on version changes plus production acceptance evidence tracked below.
 
 
 ## 9) Production Acceptance Evidence (Milestone 3 closure criteria)
