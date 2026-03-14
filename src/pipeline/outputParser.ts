@@ -19,8 +19,12 @@ function coerceMessage(raw: unknown): ChatMessage | null {
   };
 }
 
+export function repairInferenceOutput(raw: string): string {
+  return raw.trim().replace(/^```json\s*/i, "").replace(/^###json\s*/i, "").replace(/\s*```$/i, "").replace(/\s*###$/i, "");
+}
+
 export function parseInferenceOutput(raw: string): ChatMessage[] {
-  const repaired = raw.trim().replace(/^###json\s*/i, "").replace(/\s*###$/i, "");
+  const repaired = repairInferenceOutput(raw);
   const data = JSON.parse(repaired) as Record<string, unknown>;
   if (!Array.isArray(data.messages)) throw new Error("Invalid output: messages array missing");
 

@@ -1,18 +1,37 @@
 export type PersonaMode = "supportive" | "trolls" | "meme-lords" | "neutral";
 export type BiasMode = "agree" | "disagree" | "split";
-export type InferenceMode = "mock-local" | "mock-cloud";
+export type InferenceMode = "mock-local" | "mock-cloud" | "ollama" | "lmstudio" | "openai" | "groq";
 
 export interface CaptureConfig {
   visionEnabled: boolean;
   visionIntervalSec: number;
+  useRealCapture: boolean;
+  sttEndpoint: string;
+  visionEndpoint: string;
 }
 
 export interface SafetyConfig {
   dropOnParseFailure: boolean;
+  regenerateOnMalformedJson: boolean;
 }
 
 export interface ComplianceConfig {
   eulaAccepted: boolean;
+  eulaVersion: string;
+}
+
+export interface ProviderConfig {
+  localEndpoint: string;
+  localModel: string;
+  cloudEndpoint: string;
+  cloudModel: string;
+  requestTimeoutMs: number;
+  maxRetries: number;
+}
+
+export interface SecurityConfig {
+  sidecarLocalhostOnly: boolean;
+  allowDiagnostics: boolean;
 }
 
 export interface SimulationConfig {
@@ -28,6 +47,8 @@ export interface SimulationConfig {
   capture: CaptureConfig;
   safety: SafetyConfig;
   compliance: ComplianceConfig;
+  provider: ProviderConfig;
+  security: SecurityConfig;
 }
 
 export interface ToneSnapshot {
@@ -63,4 +84,10 @@ export interface ChatMessage {
 
 export interface InferenceProvider {
   generate(payload: PromptPayload, config: SimulationConfig): Promise<string>;
+  healthCheck(config: SimulationConfig): Promise<{ ok: boolean; details: string }>;
+  validateConfig(config: SimulationConfig): { ok: boolean; errors: string[] };
+}
+
+export interface CaptureProvider {
+  getContext(config: SimulationConfig): Promise<StreamContext>;
 }

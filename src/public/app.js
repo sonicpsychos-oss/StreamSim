@@ -1,5 +1,6 @@
 const chatEl = document.getElementById("chat");
 const metaEl = document.getElementById("meta");
+const wizardBackdrop = document.getElementById("wizardBackdrop");
 
 const controls = {
   viewerCount: document.getElementById("viewerCount"),
@@ -8,11 +9,20 @@ const controls = {
   persona: document.getElementById("persona"),
   bias: document.getElementById("bias"),
   inferenceMode: document.getElementById("inferenceMode"),
+  localEndpoint: document.getElementById("localEndpoint"),
+  localModel: document.getElementById("localModel"),
+  cloudEndpoint: document.getElementById("cloudEndpoint"),
+  cloudModel: document.getElementById("cloudModel"),
+  maxRetries: document.getElementById("maxRetries"),
   slowMode: document.getElementById("slowMode"),
   emoteOnly: document.getElementById("emoteOnly"),
   ttsEnabled: document.getElementById("ttsEnabled"),
   visionEnabled: document.getElementById("visionEnabled"),
+  useRealCapture: document.getElementById("useRealCapture"),
   visionIntervalSec: document.getElementById("visionIntervalSec"),
+  sttEndpoint: document.getElementById("sttEndpoint"),
+  visionEndpoint: document.getElementById("visionEndpoint"),
+  allowDiagnostics: document.getElementById("allowDiagnostics"),
   eulaAccepted: document.getElementById("eulaAccepted")
 };
 
@@ -29,10 +39,23 @@ function getPayload() {
     ttsEnabled: controls.ttsEnabled.checked,
     capture: {
       visionEnabled: controls.visionEnabled.checked,
-      visionIntervalSec: Number(controls.visionIntervalSec.value)
+      useRealCapture: controls.useRealCapture.checked,
+      visionIntervalSec: Number(controls.visionIntervalSec.value),
+      sttEndpoint: controls.sttEndpoint.value,
+      visionEndpoint: controls.visionEndpoint.value
+    },
+    provider: {
+      localEndpoint: controls.localEndpoint.value,
+      localModel: controls.localModel.value,
+      cloudEndpoint: controls.cloudEndpoint.value,
+      cloudModel: controls.cloudModel.value,
+      maxRetries: Number(controls.maxRetries.value)
     },
     compliance: {
       eulaAccepted: controls.eulaAccepted.checked
+    },
+    security: {
+      allowDiagnostics: controls.allowDiagnostics.checked
     }
   };
 }
@@ -44,11 +67,20 @@ function hydrateControls(config) {
   controls.persona.value = config.persona;
   controls.bias.value = config.bias;
   controls.inferenceMode.value = config.inferenceMode;
+  controls.localEndpoint.value = config.provider.localEndpoint;
+  controls.localModel.value = config.provider.localModel;
+  controls.cloudEndpoint.value = config.provider.cloudEndpoint;
+  controls.cloudModel.value = config.provider.cloudModel;
+  controls.maxRetries.value = config.provider.maxRetries;
   controls.slowMode.checked = config.slowMode;
   controls.emoteOnly.checked = config.emoteOnly;
   controls.ttsEnabled.checked = config.ttsEnabled;
   controls.visionEnabled.checked = config.capture.visionEnabled;
+  controls.useRealCapture.checked = config.capture.useRealCapture;
   controls.visionIntervalSec.value = config.capture.visionIntervalSec;
+  controls.sttEndpoint.value = config.capture.sttEndpoint;
+  controls.visionEndpoint.value = config.capture.visionEndpoint;
+  controls.allowDiagnostics.checked = config.security.allowDiagnostics;
   controls.eulaAccepted.checked = config.compliance.eulaAccepted;
 }
 
@@ -81,6 +113,15 @@ document.getElementById("start").addEventListener("click", async () => {
 });
 
 document.getElementById("stop").addEventListener("click", async () => post("/api/stop"));
+document.getElementById("rebindAudio").addEventListener("click", async () => post("/api/audio/rebind"));
+document.getElementById("completeWizard").addEventListener("click", async () => {
+  try {
+    await post("/api/onboarding/complete");
+    wizardBackdrop.classList.add("hidden");
+  } catch (error) {
+    metaEl.textContent = `Onboarding blocked: ${error.message}`;
+  }
+});
 
 const events = new EventSource("/api/events");
 events.addEventListener("messages", (event) => {
@@ -97,13 +138,16 @@ events.addEventListener("messages", (event) => {
 
 events.addEventListener("meta", (event) => {
   const meta = JSON.parse(event.data);
-  metaEl.textContent = JSON.stringify(meta, null, 2);
+  const warningLines = [meta.warning, ...(meta.warnings ?? [])].filter(Boolean);
+  const banner = warningLines.length ? `⚠️ ${warningLines.join(" | ")}\n` : "";
+  metaEl.textContent = `${banner}${JSON.stringify(meta, null, 2)}`;
 });
 
 async function boot() {
   const response = await fetch("/api/status");
   const payload = await response.json();
   hydrateControls(payload.config);
+  if (!payload.onboardingComplete) wizardBackdrop.classList.remove("hidden");
 }
 
 void boot();
