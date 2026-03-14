@@ -35,6 +35,17 @@ button.primary { background: var(--accent-muted); border-color: #58c77d; }
 .chat-msg { background: var(--panel-alt); border: 1px solid #30384b; padding: 8px 10px; border-radius: 10px; line-height: 1.4; }
 .user { color: #7dd3fc; font-weight: 700; margin-right: 8px; }
 .donation { color: #facc15; margin-left: 8px; }
+
+.source-tag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #cbd5e1;
+}
 pre { margin-top: 12px; background: #0c0e14; border: 1px solid #293145; border-radius: 8px; padding: 10px; font-size: 0.78rem; min-height: 130px; }
 
 .onboarding-panel {

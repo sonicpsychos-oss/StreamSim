@@ -18,7 +18,15 @@ function coerceMessage(raw: unknown): ChatMessage | null {
     emotes: candidate.emotes,
     createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : new Date().toISOString(),
     donationCents: typeof candidate.donationCents === "number" ? candidate.donationCents : undefined,
-    ttsText: typeof candidate.ttsText === "string" ? candidate.ttsText : undefined
+    ttsText: typeof candidate.ttsText === "string" ? candidate.ttsText : undefined,
+    source:
+      candidate.source === "real-inference" ||
+      candidate.source === "mock-inference" ||
+      candidate.source === "mock-audience" ||
+      candidate.source === "fallback-mock" ||
+      candidate.source === "unknown"
+        ? candidate.source
+        : undefined
   };
 }
 

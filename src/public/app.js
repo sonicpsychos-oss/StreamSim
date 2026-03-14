@@ -17,6 +17,12 @@ let liveMonitorStream = null;
 let liveMonitorAudioContext = null;
 let liveMonitorMeterInterval = null;
 let latestStatusPayload = null;
+let latestDeviceVerification = {
+  micPermission: false,
+  cameraPermission: false,
+  hasMicDevice: false,
+  hasCameraDevice: false
+};
 
 const controls = {
   viewerCount: document.getElementById("viewerCount"),
@@ -382,38 +388,74 @@ function renderDeviceChecks(result) {
   });
 }
 
-async function verifyLocalDevices() {
+function updateMonitorAvailability(verification) {
+  const monitorReady = Boolean(verification?.micPermission && verification?.cameraPermission && verification?.hasMicDevice && verification?.hasCameraDevice);
+  if (liveMonitorEnabled) {
+    liveMonitorEnabled.disabled = !monitorReady;
+  }
+
+  if (!monitorReady) {
+    if (liveMonitorEnabled?.checked) liveMonitorEnabled.checked = false;
+    stopLiveMonitor();
+    setLiveMonitorStatus("Live monitor requires both mic and camera grants plus detected devices.", "warn");
+    return;
+  }
+
+  setLiveMonitorStatus("Live monitor ready. Toggle enable to start live camera + voice meter.", "ok");
+}
+
+async function getDeviceInventory() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  return {
+    hasMicDevice: devices.some((device) => device.kind === "audioinput"),
+    hasCameraDevice: devices.some((device) => device.kind === "videoinput")
+  };
+}
+
+async function verifyMicrophoneOnly() {
   if (!navigator.mediaDevices?.enumerateDevices) {
     throw new Error("Browser does not support media device enumeration.");
   }
 
   let micPermission = false;
-  let cameraPermission = false;
-
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
     micPermission = true;
-    cameraPermission = true;
-    stream.getTracks().forEach((track) => track.stop());
-  } catch {
-    try {
-      const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micPermission = true;
-      audioOnly.getTracks().forEach((track) => track.stop());
-    } catch {}
+    audioOnly.getTracks().forEach((track) => track.stop());
+  } catch {}
 
-    try {
-      const videoOnly = await navigator.mediaDevices.getUserMedia({ video: true });
-      cameraPermission = true;
-      videoOnly.getTracks().forEach((track) => track.stop());
-    } catch {}
+  const inventory = await getDeviceInventory();
+  return {
+    ...latestDeviceVerification,
+    micPermission,
+    ...inventory
+  };
+}
+
+async function verifyCameraOnly() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    throw new Error("Browser does not support media device enumeration.");
   }
 
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const hasMicDevice = devices.some((device) => device.kind === "audioinput");
-  const hasCameraDevice = devices.some((device) => device.kind === "videoinput");
+  let cameraPermission = false;
+  try {
+    const videoOnly = await navigator.mediaDevices.getUserMedia({ video: true });
+    cameraPermission = true;
+    videoOnly.getTracks().forEach((track) => track.stop());
+  } catch {}
 
-  return { micPermission, cameraPermission, hasMicDevice, hasCameraDevice };
+  const inventory = await getDeviceInventory();
+  return {
+    ...latestDeviceVerification,
+    cameraPermission,
+    ...inventory
+  };
+}
+
+async function verifyLocalDevices() {
+  const afterMic = await verifyMicrophoneOnly();
+  latestDeviceVerification = afterMic;
+  return verifyCameraOnly();
 }
 
 async function post(url, body = undefined) {
@@ -440,7 +482,8 @@ const sidecarResumeBtn = document.getElementById("sidecarResume");
 const runReadinessBtn = document.getElementById("runReadiness");
 const saveCloudKeyBtn = document.getElementById("saveCloudKey");
 const refreshStatusBtn = document.getElementById("refreshStatus");
-const verifyDevicesBtn = document.getElementById("verifyDevices");
+const verifyMicBtn = document.getElementById("verifyMic");
+const verifyCameraBtn = document.getElementById("verifyCamera");
 const openOverlayWindowBtn = document.getElementById("openOverlayWindow");
 const applyOverrideBtn = document.getElementById("applyOverride");
 const completeWizardBtn = document.getElementById("completeWizard");
@@ -560,14 +603,30 @@ refreshStatusBtn.addEventListener("click", async () => {
   summarizeSttHealth(payload);
 });
 
-verifyDevicesBtn.addEventListener("click", async () => {
+verifyMicBtn?.addEventListener("click", async () => {
   const verification = await runAction({
-    button: verifyDevicesBtn,
-    pendingText: "Verifying camera and microphone...",
-    successText: "Device verification complete.",
-    onRun: () => verifyLocalDevices()
+    button: verifyMicBtn,
+    pendingText: "Requesting microphone permission...",
+    successText: "Microphone verification complete.",
+    onRun: () => verifyMicrophoneOnly()
   });
-  if (verification) renderDeviceChecks(verification);
+  if (!verification) return;
+  latestDeviceVerification = verification;
+  renderDeviceChecks(verification);
+  updateMonitorAvailability(verification);
+});
+
+verifyCameraBtn?.addEventListener("click", async () => {
+  const verification = await runAction({
+    button: verifyCameraBtn,
+    pendingText: "Requesting camera permission...",
+    successText: "Camera verification complete.",
+    onRun: () => verifyCameraOnly()
+  });
+  if (!verification) return;
+  latestDeviceVerification = verification;
+  renderDeviceChecks(verification);
+  updateMonitorAvailability(verification);
 });
 
 openOverlayWindowBtn.addEventListener("click", () => {
@@ -661,6 +720,11 @@ events.addEventListener("messages", (event) => {
 
     item.append(user, messageText);
 
+    const source = document.createElement("span");
+    source.className = "source-tag";
+    source.textContent = msg.source ?? "unknown";
+    item.append(source);
+
     if (msg.donationCents) {
       const donation = document.createElement("span");
       donation.className = "donation";
@@ -697,6 +761,12 @@ async function boot() {
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
   summarizeSttHealth(payload);
+  latestDeviceVerification = { micPermission: false, cameraPermission: false, hasMicDevice: false, hasCameraDevice: false };
+  if (liveMonitorEnabled) {
+    liveMonitorEnabled.checked = false;
+    liveMonitorEnabled.disabled = true;
+  }
+  setLiveMonitorStatus("Run Verify Mic/Camera to enable the live monitor.", "warn");
 }
 
 void boot();

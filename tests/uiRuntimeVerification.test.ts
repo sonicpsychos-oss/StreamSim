@@ -12,14 +12,21 @@ describe("runtime verification + monitoring UI wiring", () => {
   it("keeps runtime verification functions and event wiring in app.js", () => {
     const appJs = readRepoFile("src/public/app.js");
 
-    expect(appJs).toContain("function verifyLocalDevices()");
+    expect(appJs).toContain("function verifyMicrophoneOnly()");
+    expect(appJs).toContain("function verifyCameraOnly()");
     expect(appJs).toContain("function summarizeRuntime(payload)");
-    expect(appJs).toContain('const verifyDevicesBtn = document.getElementById("verifyDevices")');
-    expect(appJs).toContain("verifyDevicesBtn.addEventListener(\"click\"");
+    expect(appJs).toContain('const verifyMicBtn = document.getElementById("verifyMic")');
+    expect(appJs).toContain('const verifyCameraBtn = document.getElementById("verifyCamera")');
+    expect(appJs).toContain("verifyMicBtn?.addEventListener(\"click\"");
+    expect(appJs).toContain("verifyCameraBtn?.addEventListener(\"click\"");
     expect(appJs).toContain('const liveMonitorEnabled = document.getElementById("liveMonitorEnabled")');
     expect(appJs).toContain("liveMonitorEnabled?.addEventListener(\"change\"");
     expect(appJs).toContain('const liveVideo = document.getElementById("liveVideo")');
     expect(appJs).toContain('const voiceMeter = document.getElementById("voiceMeter")');
+    expect(appJs).toContain("getUserMedia({ audio: true })");
+    expect(appJs).toContain("getUserMedia({ video: true })");
+    expect(appJs).toContain("function updateMonitorAvailability(verification)");
+    expect(appJs).toContain("source.className = \"source-tag\"");
   });
 
   it("keeps runtime verification and live monitor markup IDs in index.html", () => {
@@ -27,7 +34,8 @@ describe("runtime verification + monitoring UI wiring", () => {
 
     expect(indexHtml).toContain("<h3>Runtime Verification</h3>");
     expect(indexHtml).toContain('id="runtimeSummary"');
-    expect(indexHtml).toContain('id="verifyDevices"');
+    expect(indexHtml).toContain('id="verifyMic"');
+    expect(indexHtml).toContain('id="verifyCamera"');
     expect(indexHtml).toContain('id="liveMonitorEnabled"');
     expect(indexHtml).toContain('id="liveMonitorStatus"');
     expect(indexHtml).toContain('id="liveVideo"');
@@ -45,6 +53,7 @@ describe("runtime verification + monitoring UI wiring", () => {
     expect(stylesCss).toContain(".live-monitor-grid");
     expect(stylesCss).toContain("#liveVideo");
     expect(stylesCss).toContain("#voiceMeter");
+    expect(stylesCss).toContain(".source-tag");
   });
 
   it("keeps runtime defaults aligned for onboarding + hardware verification", () => {
