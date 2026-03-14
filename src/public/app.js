@@ -3,6 +3,8 @@ const metaEl = document.getElementById("meta");
 const readinessList = document.getElementById("readinessList");
 const diagnosticsSummary = document.getElementById("diagnosticsSummary");
 const statusBanner = document.getElementById("statusBanner");
+const runtimeSummary = document.getElementById("runtimeSummary");
+const deviceChecks = document.getElementById("deviceChecks");
 
 const controls = {
   viewerCount: document.getElementById("viewerCount"),
@@ -166,6 +168,74 @@ function renderDiagnostics(payload) {
   diagnosticsSummary.textContent = `Tier: ${tierText}\nNetwork probe: ${network}\nBanlist: ${payload.banlist?.version ?? "n/a"} (${payload.banlist?.checksum ?? "n/a"})`;
 }
 
+function summarizeRuntime(payload) {
+  const mode = payload.config.inferenceMode;
+  const runningMode = mode === "openai" || mode === "groq" || mode === "mock-cloud" ? "API/cloud" : "Local";
+  const usingMock = mode === "mock-local" || mode === "mock-cloud";
+  const cloudKeyReady = Boolean(payload.secrets?.hasCloudKey);
+  const cloudKeyState = cloudKeyReady ? "present" : "missing";
+  const captureMode = payload.config.capture.useRealCapture ? "real capture endpoints" : "simulated capture";
+  const sttMode = payload.config.capture.useRealCapture ? "expects microphone input from configured STT endpoint" : "mock/no verified mic pipeline";
+
+  runtimeSummary.textContent = [
+    `Inference mode: ${mode} (${runningMode})`,
+    `API key: ${cloudKeyState}`,
+    `AI responses: ${usingMock ? "disabled (mock generator active)" : "enabled"}`,
+    `Capture mode: ${captureMode}`,
+    `STT path: ${sttMode}`
+  ].join("\n");
+}
+
+function renderDeviceChecks(result) {
+  deviceChecks.innerHTML = "";
+  const rows = [
+    { label: "Microphone permission", ok: result.micPermission, detail: result.micPermission ? "granted" : "not granted" },
+    { label: "Camera permission", ok: result.cameraPermission, detail: result.cameraPermission ? "granted" : "not granted" },
+    { label: "Microphone device", ok: result.hasMicDevice, detail: result.hasMicDevice ? "detected" : "not detected" },
+    { label: "Camera device", ok: result.hasCameraDevice, detail: result.hasCameraDevice ? "detected" : "not detected" }
+  ];
+
+  rows.forEach((row) => {
+    const li = document.createElement("li");
+    li.textContent = `${row.ok ? "✅" : "❌"} ${row.label}: ${row.detail}`;
+    deviceChecks.appendChild(li);
+  });
+}
+
+async function verifyLocalDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    throw new Error("Browser does not support media device enumeration.");
+  }
+
+  let micPermission = false;
+  let cameraPermission = false;
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    micPermission = true;
+    cameraPermission = true;
+    stream.getTracks().forEach((track) => track.stop());
+  } catch {
+    try {
+      const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micPermission = true;
+      audioOnly.getTracks().forEach((track) => track.stop());
+    } catch {}
+
+    try {
+      const videoOnly = await navigator.mediaDevices.getUserMedia({ video: true });
+      cameraPermission = true;
+      videoOnly.getTracks().forEach((track) => track.stop());
+    } catch {}
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const hasMicDevice = devices.some((device) => device.kind === "audioinput");
+  const hasCameraDevice = devices.some((device) => device.kind === "videoinput");
+
+  return { micPermission, cameraPermission, hasMicDevice, hasCameraDevice };
+}
+
 async function post(url, body = undefined) {
   const response = await fetch(url, {
     method: "POST",
@@ -190,6 +260,8 @@ const sidecarResumeBtn = document.getElementById("sidecarResume");
 const runReadinessBtn = document.getElementById("runReadiness");
 const saveCloudKeyBtn = document.getElementById("saveCloudKey");
 const refreshStatusBtn = document.getElementById("refreshStatus");
+const verifyDevicesBtn = document.getElementById("verifyDevices");
+const openOverlayWindowBtn = document.getElementById("openOverlayWindow");
 const applyOverrideBtn = document.getElementById("applyOverride");
 const completeWizardBtn = document.getElementById("completeWizard");
 const wizardEulaAccepted = document.getElementById("wizardEulaAccepted");
@@ -290,6 +362,24 @@ refreshStatusBtn.addEventListener("click", async () => {
   renderDiagnostics(payload);
   hydrateControls(payload.config);
   renderOnboardingState(payload);
+  summarizeRuntime(payload);
+});
+
+verifyDevicesBtn.addEventListener("click", async () => {
+  const verification = await runAction({
+    button: verifyDevicesBtn,
+    pendingText: "Verifying camera and microphone...",
+    successText: "Device verification complete.",
+    onRun: () => verifyLocalDevices()
+  });
+  if (verification) renderDeviceChecks(verification);
+});
+
+openOverlayWindowBtn.addEventListener("click", () => {
+  const popup = window.open("/overlay.html", "streamsim-overlay", "popup=yes,width=900,height=700");
+  if (!popup) {
+    setStatus("Popup blocked. Allow popups to open transparent chat window.", "warn");
+  }
 });
 
 applyOverrideBtn.addEventListener("click", async () => {
@@ -322,6 +412,7 @@ completeWizardBtn.addEventListener("click", async () => {
   hydrateControls(status.config);
   renderDiagnostics(status);
   renderOnboardingState(status);
+  summarizeRuntime(status);
 });
 
 
@@ -380,6 +471,7 @@ async function boot() {
   renderReadiness(payload.readiness);
   renderDiagnostics(payload);
   renderOnboardingState(payload);
+  summarizeRuntime(payload);
 }
 
 void boot();

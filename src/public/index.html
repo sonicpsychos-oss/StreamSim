@@ -17,7 +17,7 @@
             <span id="onboardingPill" class="pill pending">Pending</span>
           </div>
           <ol class="onboarding-steps">
-            <li>Choose a provider mode and stream profile.</li>
+            <li>Choose a provider mode and stream profile (defaults to full AI pipeline).</li>
             <li>Run readiness + performance checks.</li>
             <li>Accept EULA to unlock simulation start.</li>
           </ol>
@@ -119,8 +119,18 @@
           <button id="start" type="button" class="primary">Start Simulation</button>
           <button id="stop" type="button">Stop</button>
           <button id="refreshStatus" type="button">Refresh Status</button>
+          <button id="verifyDevices" type="button">Verify Mic/Camera</button>
+          <button id="openOverlayWindow" type="button">Open Transparent Chat Window</button>
         </div>
         <p id="statusBanner" class="status-banner" aria-live="polite">Ready.</p>
+        <section class="control-group">
+          <h3>Runtime Verification</h3>
+          <pre id="runtimeSummary">Runtime status pending...</pre>
+          <ul id="deviceChecks">
+            <li>Mic/Camera checks not run yet.</li>
+          </ul>
+        </section>
+
         <pre id="diagnosticsSummary"></pre>
         <ul id="readinessList"></ul>
         <pre id="meta"></pre>

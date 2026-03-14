@@ -128,3 +128,28 @@ pre { margin-top: 12px; background: #0c0e14; border: 1px solid #293145; border-r
     grid-template-columns: 1fr;
   }
 }
+
+
+#runtimeSummary {
+  min-height: 90px;
+  margin-top: 8px;
+}
+
+#deviceChecks {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.overlay-window {
+  background: transparent;
+}
+
+.overlay-root {
+  min-height: 100vh;
+  padding: 12px;
+}
+
+.overlay-root .overlay {
+  min-height: calc(100vh - 24px);
+  border-color: rgba(125, 211, 252, 0.6);
+}
