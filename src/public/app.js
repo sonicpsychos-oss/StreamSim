@@ -424,6 +424,29 @@ wizardEulaAccepted?.addEventListener("change", () => {
   syncEulaCheckboxes(wizardEulaAccepted);
 });
 
+liveMonitorEnabled?.addEventListener("change", async () => {
+  if (!liveMonitorEnabled.checked) {
+    stopLiveMonitor();
+    return;
+  }
+
+  const monitorStarted = await runAction({
+    button: liveMonitorEnabled,
+    pendingText: "Requesting camera/microphone access for live monitor...",
+    successText: "Live monitor enabled.",
+    onRun: () => startLiveMonitor()
+  });
+
+  if (!monitorStarted) {
+    liveMonitorEnabled.checked = false;
+    stopLiveMonitor();
+  }
+});
+
+window.addEventListener("beforeunload", () => {
+  stopLiveMonitor();
+});
+
 const events = new EventSource("/api/events");
 events.addEventListener("messages", (event) => {
   const messages = JSON.parse(event.data);
