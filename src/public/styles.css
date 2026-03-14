@@ -153,3 +153,57 @@ pre { margin-top: 12px; background: #0c0e14; border: 1px solid #293145; border-r
   min-height: calc(100vh - 24px);
   border-color: rgba(125, 211, 252, 0.6);
 }
+
+
+#aiHealthSummary {
+  min-height: 82px;
+  margin-top: 8px;
+}
+
+.live-monitor-toggle {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+}
+
+.monitor-status {
+  margin: 8px 0;
+  font-size: 0.85rem;
+  color: #fde68a;
+}
+.monitor-status.ok { color: #86efac; }
+.monitor-status.error { color: #fda4af; }
+
+.live-monitor-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+#liveVideo {
+  width: 100%;
+  max-height: 180px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #020617;
+  object-fit: cover;
+}
+
+#voiceMeter {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #020617;
+}
+
+#ttsHealthSummary {
+  min-height: 82px;
+  margin-top: 8px;
+}
+
+#sttHealthSummary {
+  min-height: 82px;
+  margin-top: 8px;
+}

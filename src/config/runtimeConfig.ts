@@ -9,13 +9,14 @@ export const defaultConfig: SimulationConfig = {
   bias: "split",
   donationFrequency: 0.08,
   ttsEnabled: true,
+  ttsMode: "local",
   inferenceMode: "openai",
   capture: {
     visionEnabled: true,
     visionIntervalSec: 25,
     useRealCapture: true,
     sttEndpoint: "http://127.0.0.1:7778/stt",
-    sttProvider: "mock",
+    sttProvider: "local-whisper",
     visionEndpoint: "http://127.0.0.1:7778/vision-tags"
   },
   safety: {
@@ -76,6 +77,7 @@ export function sanitizeConfig(input: unknown): SimulationConfig {
     bias: bias === "agree" || bias === "disagree" || bias === "split" ? bias : defaultConfig.bias,
     donationFrequency: Math.max(0, Math.min(1, asNumber(candidate.donationFrequency, defaultConfig.donationFrequency))),
     ttsEnabled: asBoolean(candidate.ttsEnabled, defaultConfig.ttsEnabled),
+    ttsMode: candidate.ttsMode === "off" || candidate.ttsMode === "local" || candidate.ttsMode === "cloud" ? candidate.ttsMode : defaultConfig.ttsMode,
     inferenceMode:
       inferenceMode === "mock-local" ||
       inferenceMode === "mock-cloud" ||
@@ -90,7 +92,13 @@ export function sanitizeConfig(input: unknown): SimulationConfig {
       visionIntervalSec: Math.max(5, Math.min(120, Math.floor(asNumber(capture.visionIntervalSec, defaultConfig.capture.visionIntervalSec)))),
       useRealCapture: asBoolean(capture.useRealCapture, defaultConfig.capture.useRealCapture),
       sttEndpoint: asString(capture.sttEndpoint, defaultConfig.capture.sttEndpoint),
-      sttProvider: capture.sttProvider === "whispercpp" || capture.sttProvider === "deepgram" || capture.sttProvider === "mock" ? capture.sttProvider : defaultConfig.capture.sttProvider,
+      sttProvider:
+        capture.sttProvider === "local-whisper" ||
+        capture.sttProvider === "whispercpp" ||
+        capture.sttProvider === "deepgram" ||
+        capture.sttProvider === "mock"
+          ? capture.sttProvider
+          : defaultConfig.capture.sttProvider,
       visionEndpoint: asString(capture.visionEndpoint, defaultConfig.capture.visionEndpoint)
     },
     safety: {

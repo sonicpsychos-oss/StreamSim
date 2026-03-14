@@ -13,7 +13,7 @@ describe("migration strategy registry", () => {
 
     const migrated = migrateConfigPayload(fixtureV1);
     expect(migrated.version).toBe(CURRENT_CONFIG_SCHEMA_VERSION);
-    expect(migrated.config.capture.sttProvider).toBe("mock");
+    expect(migrated.config.capture.sttProvider).toBe("local-whisper");
     expect(migrated.config.viewerCount).toBe(42);
   });
 

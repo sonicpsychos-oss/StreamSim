@@ -2,7 +2,7 @@ import { SimulationConfig } from "../core/types.js";
 import { SidecarManager } from "./sidecarManager.js";
 
 export interface ReadinessCheck {
-  id: "device" | "network" | "sidecar";
+  id: "device" | "network" | "sidecar" | "credentials";
   ok: boolean;
   severity: "blocking" | "warning";
   message: string;
@@ -35,11 +35,51 @@ function checkDevice(config: SimulationConfig): ReadinessCheck {
     errors.push("TTS enabled with zero retries may produce dropouts.");
   }
 
+  if (config.capture.useRealCapture && config.capture.sttProvider === "deepgram" && !process.env.STREAMSIM_DEEPGRAM_API_KEY) {
+    errors.push("Deepgram STT selected but STREAMSIM_DEEPGRAM_API_KEY is missing.");
+  }
+
+  if (config.capture.useRealCapture && (config.capture.sttProvider === "whispercpp" || config.capture.sttProvider === "local-whisper") && !config.capture.sttEndpoint.startsWith("http")) {
+    errors.push("Whisper STT endpoint must be a valid URL.");
+  }
+
+  if (config.capture.useRealCapture && config.capture.sttProvider === "local-whisper") {
+    try {
+      const parsed = new URL(config.capture.sttEndpoint);
+      if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
+        errors.push("Local Whisper STT must point to localhost/127.0.0.1 endpoint.");
+      }
+    } catch {
+      errors.push("Local Whisper STT endpoint must be a valid URL.");
+    }
+  }
+
   return {
     id: "device",
     ok: errors.length === 0,
     severity: "blocking",
     message: errors.length === 0 ? "Device/capture configuration is valid." : errors.join(" ")
+  };
+}
+
+function checkCredentials(config: SimulationConfig, hasCloudKey: boolean): ReadinessCheck {
+  const cloudInference = config.inferenceMode === "openai" || config.inferenceMode === "groq" || config.inferenceMode === "mock-cloud";
+  const cloudTts = config.ttsEnabled && config.ttsMode === "cloud";
+
+  if ((cloudInference || cloudTts) && !hasCloudKey) {
+    return {
+      id: "credentials",
+      ok: false,
+      severity: "blocking",
+      message: "Cloud mode selected without a stored API key. Save a cloud key or switch to local mode."
+    };
+  }
+
+  return {
+    id: "credentials",
+    ok: true,
+    severity: "warning",
+    message: cloudInference || cloudTts ? "Cloud credentials ready." : "Local-only mode selected; cloud key not required."
   };
 }
 
@@ -57,8 +97,8 @@ async function checkSidecar(config: SimulationConfig, sidecar: SidecarManager): 
   };
 }
 
-export async function runReadinessChecks(config: SimulationConfig, sidecar = new SidecarManager()): Promise<{ checks: ReadinessCheck[]; ready: boolean }> {
-  const checks = [checkDevice(config), await checkNetwork(config), await checkSidecar(config, sidecar)];
+export async function runReadinessChecks(config: SimulationConfig, sidecar = new SidecarManager(), hasCloudKey = false): Promise<{ checks: ReadinessCheck[]; ready: boolean }> {
+  const checks = [checkDevice(config), checkCredentials(config, hasCloudKey), await checkNetwork(config), await checkSidecar(config, sidecar)];
   const ready = checks.filter((check) => check.severity === "blocking").every((check) => check.ok);
   return { checks, ready };
 }

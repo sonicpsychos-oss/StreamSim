@@ -1,7 +1,7 @@
 import { SimulationConfig } from "../core/types.js";
 import { defaultConfig, sanitizeConfig } from "./runtimeConfig.js";
 
-export const CURRENT_CONFIG_SCHEMA_VERSION = 3;
+export const CURRENT_CONFIG_SCHEMA_VERSION = 4;
 
 interface PersistedEnvelope {
   schemaVersion?: unknown;
@@ -17,7 +17,7 @@ function migrateV1toV2(input: Record<string, unknown>): Record<string, unknown> 
     capture: {
       ...capture,
       sttProvider:
-        capture.sttProvider === "mock" || capture.sttProvider === "whispercpp" || capture.sttProvider === "deepgram"
+        capture.sttProvider === "mock" || capture.sttProvider === "local-whisper" || capture.sttProvider === "whispercpp" || capture.sttProvider === "deepgram"
           ? capture.sttProvider
           : defaultConfig.capture.sttProvider
     }
@@ -36,9 +36,18 @@ function migrateV2toV3(input: Record<string, unknown>): Record<string, unknown> 
   };
 }
 
+
+function migrateV3toV4(input: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...input,
+    ttsMode: input.ttsMode === "off" || input.ttsMode === "local" || input.ttsMode === "cloud" ? input.ttsMode : defaultConfig.ttsMode
+  };
+}
+
 const migrationRegistry: Record<number, MigrationFn> = {
   1: migrateV1toV2,
-  2: migrateV2toV3
+  2: migrateV2toV3,
+  3: migrateV3toV4
 };
 
 function normalizeVersion(version: unknown): number {

@@ -1,7 +1,7 @@
 import { Readable } from "node:stream";
 import { sharedDeviceCapturePipeline } from "./deviceCapturePipeline.js";
 
-export type SttProviderKind = "mock" | "whispercpp" | "deepgram";
+export type SttProviderKind = "mock" | "local-whisper" | "whispercpp" | "deepgram";
 
 interface SttBackend {
   transcribe(frame: Buffer): Promise<string>;
@@ -60,10 +60,17 @@ export interface SttEngine {
 
 export class DeviceSttEngine implements SttEngine {
   private paused = false;
-  private readonly backend: SttBackend;
+  private provider: SttProviderKind;
+  private backend: SttBackend;
 
-  constructor(private readonly provider: SttProviderKind = "mock", customBackend?: SttBackend) {
+  constructor(provider: SttProviderKind = "mock", customBackend?: SttBackend) {
+    this.provider = provider;
     this.backend = customBackend ?? this.createBackend(provider);
+  }
+
+  public configure(provider: SttProviderKind, endpoint?: string): void {
+    this.provider = provider;
+    this.backend = this.createBackend(provider, endpoint);
   }
 
   public pause(): void {
@@ -97,10 +104,12 @@ export class DeviceSttEngine implements SttEngine {
     });
   }
 
-  private createBackend(provider: SttProviderKind): SttBackend {
+  private createBackend(provider: SttProviderKind, endpoint?: string): SttBackend {
     switch (provider) {
+      case "local-whisper":
+        return new WhisperCppBackend(endpoint ?? process.env.STREAMSIM_LOCAL_STT_ENDPOINT ?? "http://127.0.0.1:7778/stt");
       case "whispercpp":
-        return new WhisperCppBackend(process.env.STREAMSIM_WHISPER_ENDPOINT ?? "http://127.0.0.1:7778/stt");
+        return new WhisperCppBackend(endpoint ?? process.env.STREAMSIM_WHISPER_ENDPOINT ?? "http://127.0.0.1:7778/stt");
       case "deepgram":
         return new DeepgramBackend(
           process.env.STREAMSIM_DEEPGRAM_ENDPOINT ?? "https://api.deepgram.com/v1/listen?model=nova-2&punctuate=true",
