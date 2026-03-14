@@ -12,8 +12,8 @@ Legend:
 ### AI + Generation
 - [x] Hybrid AI generation routing (Cloud OpenAI/Groq + Local Ollama/LM Studio)
 - [x] Runtime engine toggle with mode-aware endpoint matrix + validation
-- [~] Persona-driven audience generation
-- [~] Bias/debate split behavior (agree/disagree/split with configurable ratio)
+- [~] Persona-driven audience generation (production signal extraction + calibration scaffolded; provider-conditioned tuning pending)
+- [~] Bias/debate split behavior (agree/disagree/split with configurable ratio; persona-conditioned bias model scaffolded)
 
 ### Overlay + UX Surface
 - [~] Transparent OBS-ready overlay window
@@ -52,7 +52,7 @@ Legend:
 ### Phase 2: Capture and Context
 - [x] Live mic frame capture and buffering
 - [x] STT transcript accumulation (last N seconds)
-- [~] Tone signal available for pacing (currently mocked)
+- [x] Tone signal available for pacing (calibrated tone parity across mock/device/endpoint capture paths)
 - [x] Vision capture every configured interval (device pipeline-backed scheduler)
 - [x] Context assembler for transcript + tone + vision tags (mock capture sources)
 
@@ -74,7 +74,7 @@ Legend:
 
 ## 4) Non-Functional Requirements (NFRs)
 
-- [x] End-to-end latency target: 2–3s under expected load (observability percentile gates + realistic workload trace gate)
+- [~] End-to-end latency target: 2–3s under expected load (trace gate now supports profile baseline deltas; reproducible low/mid/high trace capture still in progress)
 - [x] Jank-free rendering gates with percentile-based CI fail thresholds
 - [x] Resource budget profiling under OBS + game + local LLM (workload runner emits pressure + latency envelopes)
 - [x] Reliability and auto-recovery from transient failures (chaos-style endpoint flap simulation + retries in test harness)
@@ -143,9 +143,17 @@ Legend:
   - Status: Real signal weighting now drives donation/TTS realism and pacing behavior.
 
 ### Milestone 3 — Onboarding, Hardening, Compliance
-- [x] Tiering + one-click orchestrator + robust fallback + polished compliance gate
+- [~] Tiering + one-click orchestrator + robust fallback + polished compliance gate
+  - Status: Core implementation complete; production acceptance evidence (onboarding UX checks, compliance-loop failure states, release checklist automation) now tracked explicitly below.
 
-## 9) Implemented Artifacts (evidence)
+
+## 9) Production Acceptance Evidence (Milestone 3 closure criteria)
+
+- [x] Onboarding UX checks (wizard + readiness + fallback pathways exercised in automation)
+- [x] Compliance-loop failure states validated (EULA gate/version lifecycle + immutable watermark contract)
+- [x] Release checklist automation (`ci:release-checklist`)
+
+## 10) Implemented Artifacts (evidence)
 
 - Core types and queue message shape: `src/core/types.ts`
 - Safety filter + drop behavior: `src/core/safetyFilter.ts`

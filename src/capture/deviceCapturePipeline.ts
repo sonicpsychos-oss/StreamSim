@@ -1,4 +1,5 @@
 import { SimulationConfig, StreamContext, ToneSnapshot } from "../core/types.js";
+import { calibrateToneSnapshot } from "../llm/realismSignals.js";
 
 interface MicFrame {
   transcriptChunk: string;
@@ -93,16 +94,16 @@ export class DeviceCapturePipeline {
 
   private computeTone(): ToneSnapshot {
     if (!this.micFrames.length) {
-      return { volumeRms: 0.2, paceWpm: 110 };
+      return calibrateToneSnapshot({ volumeRms: 0.2, paceWpm: 110 });
     }
 
     const volumeRms = this.micFrames.reduce((sum, frame) => sum + frame.rms, 0) / this.micFrames.length;
     const paceWpm = this.micFrames.reduce((sum, frame) => sum + frame.wordsPerMinute, 0) / this.micFrames.length;
 
-    return {
+    return calibrateToneSnapshot({
       volumeRms: Number(volumeRms.toFixed(3)),
       paceWpm: Number(paceWpm.toFixed(1))
-    };
+    });
   }
 }
 

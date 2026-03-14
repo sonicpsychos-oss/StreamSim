@@ -25,6 +25,28 @@ async function withRetry<T>(attempts: number, fn: () => Promise<T>, onRetryProgr
   throw lastError;
 }
 
+async function parseProviderError(response: Response): Promise<string> {
+  const retryAfter = response.headers.get("retry-after");
+  const remaining = response.headers.get("x-ratelimit-remaining-requests") ?? response.headers.get("x-ratelimit-remaining");
+
+  let detail = "";
+  try {
+    const data = (await response.json()) as { error?: { message?: string; type?: string }; message?: string };
+    detail = data.error?.message ?? data.message ?? "";
+  } catch {
+    detail = "";
+  }
+
+  const extras = [
+    retryAfter ? `retry_after=${retryAfter}` : "",
+    remaining ? `remaining=${remaining}` : ""
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return [detail, extras].filter(Boolean).join(" | ");
+}
+
 export class HybridInferenceProvider implements InferenceProvider {
   private readonly mockProvider = new MockInferenceProvider();
   private readonly secretStore = new SecretStore();
@@ -131,25 +153,32 @@ export class HybridInferenceProvider implements InferenceProvider {
       throw new Error("Missing cloud API key in keychain for cloud provider.");
     }
 
-    const response = await fetch(config.provider.cloudEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...this.cloudHeaders(apiKey)
-      },
-      signal: AbortSignal.timeout(config.provider.requestTimeoutMs),
-      body: JSON.stringify({
-        model: config.provider.cloudModel,
-        temperature: 0.8,
-        messages: [
-          { role: "system", content: "You output strict JSON object with key messages only." },
-          { role: "user", content: JSON.stringify(payload) }
-        ]
-      })
-    });
+    let response: Response;
+    try {
+      response = await fetch(config.provider.cloudEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...this.cloudHeaders(apiKey)
+        },
+        signal: AbortSignal.timeout(config.provider.requestTimeoutMs),
+        body: JSON.stringify({
+          model: config.provider.cloudModel,
+          temperature: 0.8,
+          messages: [
+            { role: "system", content: "You output strict JSON object with key messages only." },
+            { role: "user", content: JSON.stringify(payload) }
+          ]
+        })
+      });
+    } catch (error) {
+      const message = (error as Error).message || "request failed";
+      throw new Error(`Cloud provider timeout/network failure: ${message}`);
+    }
 
     if (!response.ok) {
-      throw new Error(`Cloud provider failed (${response.status})`);
+      const detail = await parseProviderError(response);
+      throw new Error(`Cloud provider failed (${response.status})${detail ? `: ${detail}` : ""}`);
     }
 
     const data = (await response.json()) as {

@@ -8,6 +8,8 @@ interface PersistedEnvelope {
   config?: unknown;
 }
 
+type MigrationFn = (input: Record<string, unknown>) => Record<string, unknown>;
+
 function migrateV1toV2(input: Record<string, unknown>): Record<string, unknown> {
   const capture = (input.capture ?? {}) as Record<string, unknown>;
   return {
@@ -22,20 +24,35 @@ function migrateV1toV2(input: Record<string, unknown>): Record<string, unknown> 
   };
 }
 
+const migrationRegistry: Record<number, MigrationFn> = {
+  1: migrateV1toV2
+};
+
+function normalizeVersion(version: unknown): number {
+  const numeric = Number(version);
+  if (!Number.isFinite(numeric)) return 1;
+  if (numeric < 1) return 1;
+  return Math.floor(numeric);
+}
+
 export function migrateConfigPayload(raw: unknown): { version: number; config: SimulationConfig } {
   const envelope = (typeof raw === "object" && raw !== null ? raw : {}) as PersistedEnvelope;
   const bare = (typeof envelope.config === "object" && envelope.config !== null ? envelope.config : raw) as Record<string, unknown>;
-  let version = Number.isFinite(Number(envelope.schemaVersion)) ? Number(envelope.schemaVersion) : 1;
+  let version = normalizeVersion(envelope.schemaVersion);
   let current = { ...bare };
 
+  if (version > CURRENT_CONFIG_SCHEMA_VERSION) {
+    return { version: CURRENT_CONFIG_SCHEMA_VERSION, config: sanitizeConfig(current) };
+  }
+
   while (version < CURRENT_CONFIG_SCHEMA_VERSION) {
-    if (version === 1) {
-      current = migrateV1toV2(current);
-    }
+    const migration = migrationRegistry[version];
+    if (!migration) break;
+    current = migration(current);
     version += 1;
   }
 
-  return { version, config: sanitizeConfig(current) };
+  return { version: CURRENT_CONFIG_SCHEMA_VERSION, config: sanitizeConfig(current) };
 }
 
 export function createPersistedEnvelope(config: SimulationConfig): { schemaVersion: number; updatedAt: string; config: SimulationConfig } {

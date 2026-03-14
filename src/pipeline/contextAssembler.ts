@@ -1,4 +1,5 @@
 import { StreamContext, ToneSnapshot, SimulationConfig } from "../core/types.js";
+import { calibrateToneSnapshot } from "../llm/realismSignals.js";
 
 const transcriptSeed = [
   "chat what should we do next?",
@@ -14,9 +15,22 @@ function randomItem<T>(items: T[]): T {
 }
 
 export function sampleTone(): ToneSnapshot {
+  const seeded = {
+    volumeRms: 0.25 + Math.random() * 0.5,
+    paceWpm: 95 + Math.random() * 90
+  };
+
+  return calibrateToneSnapshot(seeded);
+}
+
+function toneFromTranscript(transcript: string): ToneSnapshot {
+  const punctuation = (transcript.match(/[!?]/g) ?? []).length;
+  const energyKeywords = (transcript.match(/\b(clip|hype|wow|lets|trust|boss)\b/gi) ?? []).length;
+  const exclamationBoost = Math.min(0.25, punctuation * 0.06);
+  const keywordBoost = Math.min(0.25, energyKeywords * 0.05);
   return {
-    volumeRms: Number((Math.random() * 0.8).toFixed(2)),
-    paceWpm: Math.floor(80 + Math.random() * 120)
+    volumeRms: Number((0.28 + exclamationBoost + keywordBoost).toFixed(3)),
+    paceWpm: Number((105 + punctuation * 7 + energyKeywords * 6).toFixed(1))
   };
 }
 
@@ -33,9 +47,10 @@ export class ContextAssembler {
       this.lastVisionAt = now;
     }
 
+    const transcript = randomItem(transcriptSeed);
     return {
-      transcript: randomItem(transcriptSeed),
-      tone: sampleTone(),
+      transcript,
+      tone: calibrateToneSnapshot(toneFromTranscript(transcript)),
       visionTags: this.lastVisionTags,
       timestamp: new Date().toISOString()
     };

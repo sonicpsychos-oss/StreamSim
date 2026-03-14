@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "test": "vitest run",
     "ci:slo": "tsx scripts/check-slo.ts",
-    "ci:trace-gate": "tsx scripts/check-slo.ts --trace=data/traces/realistic-latency-trace.json"
+    "ci:trace-gate": "tsx scripts/check-slo.ts --trace=data/traces/realistic-latency-trace.json",
+    "ci:release-checklist": "tsx scripts/check-release-checklist.ts"
   },
   "dependencies": {
     "express": "^4.19.2"
