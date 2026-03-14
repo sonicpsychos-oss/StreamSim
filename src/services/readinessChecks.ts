@@ -2,7 +2,7 @@ import { SimulationConfig } from "../core/types.js";
 import { SidecarManager } from "./sidecarManager.js";
 
 export interface ReadinessCheck {
-  id: "device" | "network" | "sidecar";
+  id: "device" | "network" | "sidecar" | "credentials";
   ok: boolean;
   severity: "blocking" | "warning";
   message: string;
@@ -43,6 +43,27 @@ function checkDevice(config: SimulationConfig): ReadinessCheck {
   };
 }
 
+function checkCredentials(config: SimulationConfig, hasCloudKey: boolean): ReadinessCheck {
+  const cloudInference = config.inferenceMode === "openai" || config.inferenceMode === "groq" || config.inferenceMode === "mock-cloud";
+  const cloudTts = config.ttsEnabled && config.ttsMode === "cloud";
+
+  if ((cloudInference || cloudTts) && !hasCloudKey) {
+    return {
+      id: "credentials",
+      ok: false,
+      severity: "blocking",
+      message: "Cloud mode selected without a stored API key. Save a cloud key or switch to local mode."
+    };
+  }
+
+  return {
+    id: "credentials",
+    ok: true,
+    severity: "warning",
+    message: cloudInference || cloudTts ? "Cloud credentials ready." : "Local-only mode selected; cloud key not required."
+  };
+}
+
 async function checkSidecar(config: SimulationConfig, sidecar: SidecarManager): Promise<ReadinessCheck> {
   if (config.inferenceMode !== "ollama" && config.inferenceMode !== "lmstudio") {
     return { id: "sidecar", ok: true, severity: "warning", message: "Cloud mode selected; sidecar optional." };
@@ -57,8 +78,8 @@ async function checkSidecar(config: SimulationConfig, sidecar: SidecarManager): 
   };
 }
 
-export async function runReadinessChecks(config: SimulationConfig, sidecar = new SidecarManager()): Promise<{ checks: ReadinessCheck[]; ready: boolean }> {
-  const checks = [checkDevice(config), await checkNetwork(config), await checkSidecar(config, sidecar)];
+export async function runReadinessChecks(config: SimulationConfig, sidecar = new SidecarManager(), hasCloudKey = false): Promise<{ checks: ReadinessCheck[]; ready: boolean }> {
+  const checks = [checkDevice(config), checkCredentials(config, hasCloudKey), await checkNetwork(config), await checkSidecar(config, sidecar)];
   const ready = checks.filter((check) => check.severity === "blocking").every((check) => check.ok);
   return { checks, ready };
 }

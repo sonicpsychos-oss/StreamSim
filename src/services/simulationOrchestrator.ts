@@ -9,6 +9,7 @@ import { createCaptureProvider } from "../capture/captureProviders.js";
 import { ObservabilityLogger } from "./observability.js";
 import { SidecarManager } from "./sidecarManager.js";
 import { SpoolingEngine } from "./spoolingEngine.js";
+import { MockInferenceProvider } from "../llm/mockInferenceProvider.js";
 
 export class SimulationOrchestrator {
   private readonly spooler = new SpoolingEngine();
@@ -18,6 +19,20 @@ export class SimulationOrchestrator {
   private running = false;
   private readonly obs = new ObservabilityLogger();
   private readonly sidecar = new SidecarManager();
+  private readonly mockProvider = new MockInferenceProvider();
+  private aiStatus: {
+    state: "idle" | "running" | "degraded" | "error";
+    providerHealth: "unknown" | "ok" | "degraded";
+    fallbackMode: string | null;
+    detail: string;
+    updatedAt: string;
+  } = {
+    state: "idle",
+    providerHealth: "unknown",
+    fallbackMode: null,
+    detail: "Awaiting first simulation tick.",
+    updatedAt: new Date().toISOString()
+  };
 
   constructor(
     private readonly getConfig: () => SimulationConfig,
@@ -30,11 +45,13 @@ export class SimulationOrchestrator {
   public start(): void {
     if (this.running) return;
     this.running = true;
+    this.setAiStatus({ state: "running", detail: "Simulation loop started.", fallbackMode: null });
     void this.loop();
   }
 
   public stop(): void {
     this.running = false;
+    this.setAiStatus({ state: "idle", detail: "Simulation stopped." });
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -57,6 +74,19 @@ export class SimulationOrchestrator {
 
   public getAudioState(): { isTtsPlaying: boolean; micListening: boolean; sttPaused: boolean; ttsAgeMs: number } {
     return { ...this.audioState.getState(), sttPaused: sharedSttEngine.state().paused };
+  }
+
+  public getAiStatus(): { state: string; providerHealth: string; fallbackMode: string | null; detail: string; updatedAt: string } {
+    return { ...this.aiStatus };
+  }
+
+  private setAiStatus(patch: Partial<{ state: "idle" | "running" | "degraded" | "error"; providerHealth: "unknown" | "ok" | "degraded"; fallbackMode: string | null; detail: string }>): void {
+    this.aiStatus = {
+      ...this.aiStatus,
+      ...patch,
+      updatedAt: new Date().toISOString()
+    };
+    this.emitMeta({ ai: this.getAiStatus() });
   }
 
   public recoverAudioDevices(): void {
@@ -95,11 +125,15 @@ export class SimulationOrchestrator {
     const validation = provider.validateConfig(config);
     if (!validation.ok) {
       this.emitMeta({ warnings: validation.errors, blocked: false });
+      this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: validation.errors.join(" | ") });
     }
 
     const health = await provider.healthCheck(config);
     if (!health.ok) {
       this.emitMeta({ warnings: [`Provider unhealthy: ${health.details}`], blocked: false });
+      this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: `Provider unhealthy: ${health.details}` });
+    } else {
+      this.setAiStatus({ providerHealth: "ok", detail: health.details });
     }
 
     const captureStarted = Date.now();
@@ -114,6 +148,7 @@ export class SimulationOrchestrator {
       let messages: ChatMessage[] = [];
 
       const inferenceStarted = Date.now();
+      this.setAiStatus({ state: "running", fallbackMode: null, detail: `Generating via ${config.inferenceMode}.` });
       try {
         const rawOutput = await provider.generate(payload, config, (attempt, reason) => {
           const recovery = this.cloudRecoveryMeta(attempt, config.provider.maxRetries, reason);
@@ -138,9 +173,21 @@ export class SimulationOrchestrator {
           }
         }
       } catch (error) {
-        this.obs.log("reliability_recovery", { ok: false, reason: (error as Error).message });
-        if (config.safety.dropOnParseFailure) {
-          this.emitMeta({ warning: (error as Error).message, dropped: true, blocked: false, cloudRecovery: "degraded" });
+        const reason = (error as Error).message;
+        this.obs.log("reliability_recovery", { ok: false, reason });
+        this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: reason });
+
+        try {
+          const fallbackOutput = await this.mockProvider.generate(payload, { ...config, inferenceMode: "mock-local" });
+          messages = parseInferenceOutput(fallbackOutput);
+          this.setAiStatus({ state: "degraded", providerHealth: "degraded", fallbackMode: "mock-local", detail: `Primary inference failed; mock fallback active: ${reason}` });
+          this.emitMeta({ warnings: [reason, "Fallback engaged: mock-local"], dropped: false, blocked: false, cloudRecovery: "degraded" });
+        } catch (fallbackError) {
+          const fallbackReason = (fallbackError as Error).message;
+          this.setAiStatus({ state: "error", providerHealth: "degraded", fallbackMode: null, detail: `Fallback failed: ${fallbackReason}` });
+          if (config.safety.dropOnParseFailure) {
+            this.emitMeta({ warning: `${reason} | fallback failed: ${fallbackReason}`, dropped: true, blocked: false, cloudRecovery: "degraded" });
+          }
         }
       }
       const inferenceLatencyMs = Date.now() - inferenceStarted;
@@ -149,7 +196,7 @@ export class SimulationOrchestrator {
       const safeMessages = safety.safeMessages;
 
       safeMessages.forEach((msg) => {
-        if (msg.ttsText) {
+        if (config.ttsEnabled && config.ttsMode !== "off" && msg.ttsText) {
           this.audioState.startTts();
           sharedSttEngine.pause();
           setTimeout(() => {
@@ -198,7 +245,8 @@ export class SimulationOrchestrator {
         slo: {
           targetMs: 3000,
           withinTarget: latencyMs <= 3000
-        }
+        },
+        ai: this.getAiStatus()
       });
     }
 

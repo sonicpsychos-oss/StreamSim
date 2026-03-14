@@ -1,6 +1,7 @@
 export type PersonaMode = "supportive" | "trolls" | "meme-lords" | "neutral";
 export type BiasMode = "agree" | "disagree" | "split";
 export type InferenceMode = "mock-local" | "mock-cloud" | "ollama" | "lmstudio" | "openai" | "groq";
+export type TtsMode = "off" | "local" | "cloud";
 
 export interface CaptureConfig {
   visionEnabled: boolean;
@@ -59,6 +60,7 @@ export interface SimulationConfig {
   bias: BiasMode;
   donationFrequency: number;
   ttsEnabled: boolean;
+  ttsMode: TtsMode;
   inferenceMode: InferenceMode;
   capture: CaptureConfig;
   safety: SafetyConfig;
