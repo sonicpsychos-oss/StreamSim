@@ -3,6 +3,7 @@ const metaEl = document.getElementById("meta");
 const wizardBackdrop = document.getElementById("wizardBackdrop");
 const readinessList = document.getElementById("readinessList");
 const diagnosticsSummary = document.getElementById("diagnosticsSummary");
+const statusBanner = document.getElementById("statusBanner");
 
 const controls = {
   viewerCount: document.getElementById("viewerCount"),
@@ -32,6 +33,34 @@ const controls = {
   overrideReason: document.getElementById("overrideReason"),
   eulaAccepted: document.getElementById("eulaAccepted")
 };
+
+function setStatus(message, tone = "success") {
+  statusBanner.textContent = message;
+  statusBanner.classList.remove("success", "warn", "error");
+  statusBanner.classList.add(tone);
+}
+
+function setPending(button, isPending) {
+  if (!button) return;
+  button.disabled = isPending;
+}
+
+async function runAction({ button, pendingText, successText, onRun }) {
+  try {
+    setPending(button, true);
+    if (pendingText) setStatus(pendingText, "warn");
+    const result = await onRun();
+    if (successText) setStatus(successText, "success");
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setStatus(message, "error");
+    metaEl.textContent = message;
+    return undefined;
+  } finally {
+    setPending(button, false);
+  }
+}
 
 function getPayload() {
   return {
@@ -137,62 +166,137 @@ async function post(url, body = undefined) {
   return response.json().catch(() => ({}));
 }
 
-document.getElementById("save").addEventListener("click", async () => {
-  const result = await post("/api/config", getPayload());
-  hydrateControls(result.config);
+const saveBtn = document.getElementById("save");
+const startBtn = document.getElementById("start");
+const stopBtn = document.getElementById("stop");
+const rebindBtn = document.getElementById("rebindAudio");
+const sidecarCancelBtn = document.getElementById("sidecarCancel");
+const sidecarResumeBtn = document.getElementById("sidecarResume");
+const runReadinessBtn = document.getElementById("runReadiness");
+const saveCloudKeyBtn = document.getElementById("saveCloudKey");
+const refreshStatusBtn = document.getElementById("refreshStatus");
+const applyOverrideBtn = document.getElementById("applyOverride");
+const completeWizardBtn = document.getElementById("completeWizard");
+
+saveBtn.addEventListener("click", async () => {
+  const result = await runAction({
+    button: saveBtn,
+    pendingText: "Saving config...",
+    successText: "Config saved.",
+    onRun: () => post("/api/config", getPayload())
+  });
+  if (result?.config) hydrateControls(result.config);
 });
 
-document.getElementById("start").addEventListener("click", async () => {
-  try {
-    await post("/api/start");
-  } catch (error) {
-    metaEl.textContent = `Start blocked: ${error.message}`;
-  }
+startBtn.addEventListener("click", async () => {
+  await runAction({
+    button: startBtn,
+    pendingText: "Starting simulation...",
+    successText: "Simulation started.",
+    onRun: () => post("/api/start")
+  });
 });
 
-document.getElementById("stop").addEventListener("click", async () => post("/api/stop"));
-document.getElementById("rebindAudio").addEventListener("click", async () => post("/api/audio/rebind"));
-document.getElementById("sidecarCancel").addEventListener("click", async () => post("/api/sidecar/cancel"));
-document.getElementById("sidecarResume").addEventListener("click", async () => post("/api/sidecar/resume"));
-document.getElementById("runReadiness").addEventListener("click", async () => {
-  const response = await fetch("/api/onboarding/readiness");
-  const payload = await response.json();
-  renderReadiness(payload.readiness);
+stopBtn.addEventListener("click", async () => {
+  await runAction({
+    button: stopBtn,
+    pendingText: "Stopping simulation...",
+    successText: "Simulation stopped.",
+    onRun: () => post("/api/stop")
+  });
 });
-document.getElementById("saveCloudKey").addEventListener("click", async () => {
-  try {
-    await post("/api/secrets/cloud-key", { key: controls.cloudApiKey.value });
-    metaEl.textContent = "Cloud API key saved to keychain.";
-    controls.cloudApiKey.value = "";
-  } catch (error) {
-    metaEl.textContent = `Cloud key save failed: ${error.message}`;
-  }
+
+rebindBtn.addEventListener("click", async () => {
+  await runAction({
+    button: rebindBtn,
+    pendingText: "Rebinding audio...",
+    successText: "Audio rebind requested.",
+    onRun: () => post("/api/audio/rebind")
+  });
 });
-document.getElementById("refreshStatus").addEventListener("click", async () => {
-  const response = await fetch("/api/status");
-  const payload = await response.json();
+
+sidecarCancelBtn.addEventListener("click", async () => {
+  await runAction({
+    button: sidecarCancelBtn,
+    pendingText: "Cancelling sidecar pull...",
+    successText: "Sidecar pull cancellation requested.",
+    onRun: () => post("/api/sidecar/cancel")
+  });
+});
+
+sidecarResumeBtn.addEventListener("click", async () => {
+  await runAction({
+    button: sidecarResumeBtn,
+    pendingText: "Resuming sidecar pull...",
+    successText: "Sidecar pull resume requested.",
+    onRun: () => post("/api/sidecar/resume")
+  });
+});
+
+runReadinessBtn.addEventListener("click", async () => {
+  const payload = await runAction({
+    button: runReadinessBtn,
+    pendingText: "Running readiness checks...",
+    successText: "Readiness refreshed.",
+    onRun: async () => {
+      const response = await fetch("/api/onboarding/readiness");
+      if (!response.ok) throw new Error(`Readiness request failed (${response.status})`);
+      return response.json();
+    }
+  });
+  if (payload?.readiness) renderReadiness(payload.readiness);
+});
+
+saveCloudKeyBtn.addEventListener("click", async () => {
+  await runAction({
+    button: saveCloudKeyBtn,
+    pendingText: "Saving cloud API key...",
+    successText: "Cloud API key saved to keychain.",
+    onRun: () => post("/api/secrets/cloud-key", { key: controls.cloudApiKey.value })
+  });
+  controls.cloudApiKey.value = "";
+});
+
+refreshStatusBtn.addEventListener("click", async () => {
+  const payload = await runAction({
+    button: refreshStatusBtn,
+    pendingText: "Refreshing status...",
+    successText: "Status refreshed.",
+    onRun: async () => {
+      const response = await fetch("/api/status");
+      if (!response.ok) throw new Error(`Status request failed (${response.status})`);
+      return response.json();
+    }
+  });
+  if (!payload) return;
   renderReadiness(payload.readiness);
   renderDiagnostics(payload);
   hydrateControls(payload.config);
 });
-document.getElementById("applyOverride").addEventListener("click", async () => {
-  try {
-    await post("/api/security/override-localhost", {
-      allow: controls.allowNonLocalSidecarOverride.checked,
-      reason: controls.overrideReason.value
-    });
-  } catch (error) {
-    metaEl.textContent = `Override failed: ${error.message}`;
-  }
+
+applyOverrideBtn.addEventListener("click", async () => {
+  await runAction({
+    button: applyOverrideBtn,
+    pendingText: "Applying override...",
+    successText: "Override updated.",
+    onRun: () =>
+      post("/api/security/override-localhost", {
+        allow: controls.allowNonLocalSidecarOverride.checked,
+        reason: controls.overrideReason.value
+      })
+  });
 });
-document.getElementById("completeWizard").addEventListener("click", async () => {
-  try {
-    const payload = await post("/api/onboarding/complete");
-    renderReadiness(payload.readiness);
-    wizardBackdrop.classList.add("hidden");
-  } catch (error) {
-    metaEl.textContent = `Onboarding blocked: ${error.message}`;
-  }
+
+completeWizardBtn.addEventListener("click", async () => {
+  const payload = await runAction({
+    button: completeWizardBtn,
+    pendingText: "Completing onboarding...",
+    successText: "Onboarding complete.",
+    onRun: () => post("/api/onboarding/complete")
+  });
+  if (!payload?.readiness) return;
+  renderReadiness(payload.readiness);
+  wizardBackdrop.classList.add("hidden");
 });
 
 const events = new EventSource("/api/events");
@@ -201,8 +305,23 @@ events.addEventListener("messages", (event) => {
   messages.forEach((msg) => {
     const item = document.createElement("div");
     item.className = "chat-msg";
-    const donation = msg.donationCents ? `<span class="donation">$${msg.donationCents / 100}</span>` : "";
-    item.innerHTML = `<span class="user">${msg.username}</span>${msg.text || msg.emotes.join(" ")}${donation}`;
+
+    const user = document.createElement("span");
+    user.className = "user";
+    user.textContent = msg.username;
+
+    const messageText = document.createElement("span");
+    messageText.textContent = msg.text || msg.emotes.join(" ");
+
+    item.append(user, messageText);
+
+    if (msg.donationCents) {
+      const donation = document.createElement("span");
+      donation.className = "donation";
+      donation.textContent = `$${(msg.donationCents / 100).toFixed(2)}`;
+      item.append(donation);
+    }
+
     chatEl.prepend(item);
     while (chatEl.children.length > 22) chatEl.lastChild.remove();
   });
