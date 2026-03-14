@@ -5,6 +5,17 @@ const diagnosticsSummary = document.getElementById("diagnosticsSummary");
 const statusBanner = document.getElementById("statusBanner");
 const runtimeSummary = document.getElementById("runtimeSummary");
 const deviceChecks = document.getElementById("deviceChecks");
+const aiHealthSummary = document.getElementById("aiHealthSummary");
+const ttsHealthSummary = document.getElementById("ttsHealthSummary");
+const liveMonitorEnabled = document.getElementById("liveMonitorEnabled");
+const liveMonitorStatus = document.getElementById("liveMonitorStatus");
+const liveVideo = document.getElementById("liveVideo");
+const voiceMeter = document.getElementById("voiceMeter");
+
+let liveMonitorStream = null;
+let liveMonitorAudioContext = null;
+let liveMonitorMeterInterval = null;
+let latestStatusPayload = null;
 
 const controls = {
   viewerCount: document.getElementById("viewerCount"),
@@ -24,6 +35,7 @@ const controls = {
   slowMode: document.getElementById("slowMode"),
   emoteOnly: document.getElementById("emoteOnly"),
   ttsEnabled: document.getElementById("ttsEnabled"),
+  ttsMode: document.getElementById("ttsMode"),
   visionEnabled: document.getElementById("visionEnabled"),
   useRealCapture: document.getElementById("useRealCapture"),
   visionIntervalSec: document.getElementById("visionIntervalSec"),
@@ -39,6 +51,88 @@ function setStatus(message, tone = "success") {
   statusBanner.textContent = message;
   statusBanner.classList.remove("success", "warn", "error");
   statusBanner.classList.add(tone);
+}
+
+function setLiveMonitorStatus(message, tone = "warn") {
+  if (!liveMonitorStatus) return;
+  liveMonitorStatus.textContent = message;
+  liveMonitorStatus.classList.remove("ok", "warn", "error");
+  liveMonitorStatus.classList.add(tone);
+}
+
+function drawVoiceMeter(level) {
+  if (!voiceMeter) return;
+  const ctx = voiceMeter.getContext("2d");
+  if (!ctx) return;
+  const width = voiceMeter.width;
+  const height = voiceMeter.height;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(0, 0, width, height);
+  const meterWidth = Math.max(2, Math.floor(level * width));
+  const gradient = ctx.createLinearGradient(0, 0, width, 0);
+  gradient.addColorStop(0, "#22c55e");
+  gradient.addColorStop(0.7, "#eab308");
+  gradient.addColorStop(1, "#ef4444");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, meterWidth, height);
+  ctx.strokeStyle = "#334155";
+  ctx.strokeRect(0, 0, width, height);
+}
+
+function stopLiveMonitor() {
+  if (liveMonitorMeterInterval) {
+    clearInterval(liveMonitorMeterInterval);
+    liveMonitorMeterInterval = null;
+  }
+  if (liveMonitorAudioContext) {
+    void liveMonitorAudioContext.close();
+    liveMonitorAudioContext = null;
+  }
+  if (liveMonitorStream) {
+    liveMonitorStream.getTracks().forEach((track) => track.stop());
+    liveMonitorStream = null;
+  }
+  if (liveVideo) liveVideo.srcObject = null;
+  drawVoiceMeter(0);
+  setLiveMonitorStatus("Live monitor disabled.", "warn");
+}
+
+async function startLiveMonitor() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Browser does not support getUserMedia for live monitor.");
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+  liveMonitorStream = stream;
+  if (liveVideo) liveVideo.srcObject = stream;
+
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) {
+    setLiveMonitorStatus("Camera is live (voice meter unavailable in this browser).", "warn");
+    return true;
+  }
+
+  liveMonitorAudioContext = new AudioContextCtor();
+  const source = liveMonitorAudioContext.createMediaStreamSource(stream);
+  const analyser = liveMonitorAudioContext.createAnalyser();
+  analyser.fftSize = 256;
+  source.connect(analyser);
+  const samples = new Uint8Array(analyser.frequencyBinCount);
+
+  liveMonitorMeterInterval = setInterval(() => {
+    analyser.getByteTimeDomainData(samples);
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 1) {
+      const centered = (samples[i] - 128) / 128;
+      sum += centered * centered;
+    }
+    const rms = Math.sqrt(sum / samples.length);
+    drawVoiceMeter(Math.min(1, rms * 3.2));
+  }, 90);
+
+  setLiveMonitorStatus("Camera and microphone active for live monitor.", "ok");
+  return true;
 }
 
 function setPending(button, isPending) {
@@ -74,6 +168,7 @@ function getPayload() {
     slowMode: controls.slowMode.checked,
     emoteOnly: controls.emoteOnly.checked,
     ttsEnabled: controls.ttsEnabled.checked,
+    ttsMode: controls.ttsMode.value,
     capture: {
       visionEnabled: controls.visionEnabled.checked,
       useRealCapture: controls.useRealCapture.checked,
@@ -119,6 +214,7 @@ function hydrateControls(config) {
   controls.slowMode.checked = config.slowMode;
   controls.emoteOnly.checked = config.emoteOnly;
   controls.ttsEnabled.checked = config.ttsEnabled;
+  controls.ttsMode.value = config.ttsMode ?? "local";
   controls.visionEnabled.checked = config.capture.visionEnabled;
   controls.useRealCapture.checked = config.capture.useRealCapture;
   controls.visionIntervalSec.value = config.capture.visionIntervalSec;
@@ -174,15 +270,54 @@ function summarizeRuntime(payload) {
   const usingMock = mode === "mock-local" || mode === "mock-cloud";
   const cloudKeyReady = Boolean(payload.secrets?.hasCloudKey);
   const cloudKeyState = cloudKeyReady ? "present" : "missing";
+  const localMode = mode === "ollama" || mode === "lmstudio" || mode === "mock-local";
   const captureMode = payload.config.capture.useRealCapture ? "real capture endpoints" : "simulated capture";
   const sttMode = payload.config.capture.useRealCapture ? "expects microphone input from configured STT endpoint" : "mock/no verified mic pipeline";
+  const ttsMode = payload.config.ttsMode ?? "local";
 
   runtimeSummary.textContent = [
     `Inference mode: ${mode} (${runningMode})`,
-    `API key: ${cloudKeyState}`,
+    `API key: ${localMode ? "not required in local mode" : cloudKeyState}`,
     `AI responses: ${usingMock ? "disabled (mock generator active)" : "enabled"}`,
     `Capture mode: ${captureMode}`,
-    `STT path: ${sttMode}`
+    `STT path: ${sttMode}`,
+    `TTS path: ${payload.config.ttsEnabled ? ttsMode : "off"}`
+  ].join("\n");
+}
+
+function summarizeAiHealth(payload) {
+  if (!aiHealthSummary) return;
+  const ai = payload.ai ?? {};
+  const health = ai.providerHealth ?? "unknown";
+  const state = ai.state ?? "idle";
+  const fallback = ai.fallbackMode ? ` | fallback: ${ai.fallbackMode}` : "";
+  aiHealthSummary.textContent = [
+    `AI state: ${state}`,
+    `Provider health: ${health}`,
+    `Last update: ${ai.updatedAt ?? "n/a"}${fallback}`,
+    `Last detail: ${ai.detail ?? "n/a"}`
+  ].join("\n");
+}
+
+function summarizeTtsHealth(payload) {
+  if (!ttsHealthSummary) return;
+  const mode = payload.config?.ttsMode ?? "local";
+  const enabled = Boolean(payload.config?.ttsEnabled) && mode !== "off";
+  const hasCloudKey = Boolean(payload.secrets?.hasCloudKey);
+  const ready = !enabled || mode === "local" || hasCloudKey;
+  const reason = !enabled
+    ? "disabled"
+    : mode === "local"
+      ? "local path selected; no API key needed"
+      : hasCloudKey
+        ? "cloud key present"
+        : "cloud key missing";
+
+  ttsHealthSummary.textContent = [
+    `TTS enabled: ${enabled ? "yes" : "no"}`,
+    `TTS mode: ${mode}`,
+    `TTS ready: ${ready ? "yes" : "no"}`,
+    `Detail: ${reason}`
   ].join("\n");
 }
 
@@ -282,7 +417,18 @@ startBtn.addEventListener("click", async () => {
     button: startBtn,
     pendingText: "Starting simulation...",
     successText: "Simulation started.",
-    onRun: () => post("/api/start")
+    onRun: async () => {
+      const mode = controls.inferenceMode.value;
+      const cloudMode = mode === "openai" || mode === "groq" || mode === "mock-cloud";
+      const hasCloudKey = Boolean(latestStatusPayload?.secrets?.hasCloudKey);
+      if (cloudMode && !hasCloudKey) {
+        throw new Error("Cloud inference selected but no API key is stored. Save a Cloud API key before starting.");
+      }
+      if (controls.ttsEnabled.checked && controls.ttsMode.value === "cloud" && !hasCloudKey) {
+        throw new Error("Cloud TTS selected but no API key is stored. Save a Cloud API key or switch TTS path to local.");
+      }
+      return post("/api/start");
+    }
   });
 });
 
@@ -358,11 +504,14 @@ refreshStatusBtn.addEventListener("click", async () => {
     }
   });
   if (!payload) return;
+  latestStatusPayload = payload;
   renderReadiness(payload.readiness);
   renderDiagnostics(payload);
   hydrateControls(payload.config);
   renderOnboardingState(payload);
   summarizeRuntime(payload);
+  summarizeAiHealth(payload);
+  summarizeTtsHealth(payload);
 });
 
 verifyDevicesBtn.addEventListener("click", async () => {
@@ -413,6 +562,8 @@ completeWizardBtn.addEventListener("click", async () => {
   renderDiagnostics(status);
   renderOnboardingState(status);
   summarizeRuntime(status);
+  summarizeAiHealth(status);
+  summarizeTtsHealth(status);
 });
 
 
@@ -490,11 +641,14 @@ events.addEventListener("meta", (event) => {
 async function boot() {
   const response = await fetch("/api/status");
   const payload = await response.json();
+  latestStatusPayload = payload;
   hydrateControls(payload.config);
   renderReadiness(payload.readiness);
   renderDiagnostics(payload);
   renderOnboardingState(payload);
   summarizeRuntime(payload);
+  summarizeAiHealth(payload);
+  summarizeTtsHealth(payload);
 }
 
 void boot();

@@ -53,7 +53,7 @@ function realisticDonation(config: SimulationConfig, tone: ToneSnapshot, conditi
   const ttsPrefix = tone.volumeRms > 0.5 ? "YO" : "hey";
   return {
     donationCents,
-    ttsText: config.ttsEnabled ? `${ttsPrefix} streamer this is fire. ${context?.transcript.slice(0, 60) ?? "great run"}` : undefined
+    ttsText: config.ttsEnabled && config.ttsMode !== "off" ? `${ttsPrefix} streamer this is fire. ${context?.transcript.slice(0, 60) ?? "great run"}` : undefined
   };
 }
 

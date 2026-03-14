@@ -46,7 +46,7 @@ const orchestrator = new SimulationOrchestrator(
 async function refreshBootAndReadiness(): Promise<void> {
   bootProfile = await collectHardwareProfile(config);
   tierRecommendation = recommendTier(bootProfile);
-  readinessState = await runReadinessChecks(config);
+  readinessState = await runReadinessChecks(config, undefined, secretStore.diagnostics().hasCloudKey);
 }
 
 void refreshBootAndReadiness();
@@ -121,6 +121,19 @@ app.post("/api/start", (_req, res) => {
     return;
   }
 
+  const cloudInference = config.inferenceMode === "openai" || config.inferenceMode === "groq" || config.inferenceMode === "mock-cloud";
+  const cloudTts = config.ttsEnabled && config.ttsMode === "cloud";
+  const hasCloudKey = secretStore.diagnostics().hasCloudKey;
+
+  if ((cloudInference || cloudTts) && !hasCloudKey) {
+    res.status(400).json({
+      ok: false,
+      error: "Cloud mode selected without API key. Save Cloud API key or switch inference/TTS to local.",
+      missing: { cloudInference, cloudTts }
+    });
+    return;
+  }
+
   if (readinessState && !readinessState.ready) {
     res.status(400).json({ ok: false, error: "Readiness checks are blocking start. Resolve readiness issues first.", readiness: readinessState });
     return;
@@ -156,7 +169,7 @@ app.post("/api/onboarding/complete", async (_req, res) => {
     return;
   }
 
-  const readiness = await runReadinessChecks(config);
+  const readiness = await runReadinessChecks(config, undefined, secretStore.diagnostics().hasCloudKey);
   readinessState = readiness;
   if (!readiness.ready) {
     res.status(400).json({ ok: false, error: "Readiness checks failed.", readiness });
@@ -168,7 +181,7 @@ app.post("/api/onboarding/complete", async (_req, res) => {
 });
 
 app.get("/api/onboarding/readiness", async (_req, res) => {
-  readinessState = await runReadinessChecks(config);
+  readinessState = await runReadinessChecks(config, undefined, secretStore.diagnostics().hasCloudKey);
   res.json({ ok: true, readiness: readinessState });
 });
 
@@ -213,6 +226,7 @@ app.get("/api/status", (_req, res) => {
   res.json({
     config,
     audioState: orchestrator.getAudioState(),
+    ai: orchestrator.getAiStatus(),
     onboardingComplete,
     bootDiagnostics: {
       profile: bootProfile,

@@ -22,7 +22,7 @@ describe("boot diagnostics + tiering", () => {
 describe("readiness checks", () => {
   it("returns readiness shape with device/network/sidecar checks", async () => {
     const result = await runReadinessChecks(defaultConfig, new ReadySidecar() as never);
-    expect(result.checks.map((c) => c.id).sort()).toEqual(["device", "network", "sidecar"]);
+    expect(result.checks.map((c) => c.id).sort()).toEqual(["credentials", "device", "network", "sidecar"]);
   });
 });
 

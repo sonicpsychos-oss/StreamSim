@@ -74,6 +74,13 @@
             <label>Request timeout ms <input id="requestTimeoutMs" type="number" min="1000" max="30000" value="7000" /></label>
             <label>Max retries <input id="maxRetries" type="number" min="0" max="5" value="2" /></label>
             <label><input id="ttsEnabled" type="checkbox" checked /> TTS Enabled</label>
+            <label>TTS Path
+              <select id="ttsMode">
+                <option value="local">Local TTS</option>
+                <option value="cloud">Cloud TTS</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
             <label><input id="visionEnabled" type="checkbox" checked /> Vision Capture Enabled</label>
             <label><input id="useRealCapture" type="checkbox" /> Use real capture endpoints</label>
             <label>Vision Interval (seconds) <input id="visionIntervalSec" type="number" min="5" max="120" value="25" /></label>
@@ -126,6 +133,14 @@
         <section class="control-group">
           <h3>Runtime Verification</h3>
           <pre id="runtimeSummary">Runtime status pending...</pre>
+          <pre id="aiHealthSummary">AI health pending...</pre>
+          <pre id="ttsHealthSummary">TTS health pending...</pre>
+          <label class="live-monitor-toggle"><input id="liveMonitorEnabled" type="checkbox" /> Enable live camera + voice monitor</label>
+          <p id="liveMonitorStatus" class="monitor-status">Live monitor disabled.</p>
+          <div class="live-monitor-grid">
+            <video id="liveVideo" autoplay playsinline muted></video>
+            <canvas id="voiceMeter" width="280" height="80" aria-label="Voice meter"></canvas>
+          </div>
           <ul id="deviceChecks">
             <li>Mic/Camera checks not run yet.</li>
           </ul>
