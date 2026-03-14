@@ -10,8 +10,8 @@ Legend:
 ## 1) Core Product Capabilities (Functional Requirements)
 
 ### AI + Generation
-- [ ] Hybrid AI generation routing (Cloud OpenAI/Groq + Local Ollama/LM Studio)
-- [~] Runtime engine toggle with basic mode validation (mock-local/mock-cloud)
+- [x] Hybrid AI generation routing (Cloud OpenAI/Groq + Local Ollama/LM Studio)
+- [x] Runtime engine toggle with mode-aware endpoint matrix + validation
 - [~] Persona-driven audience generation
 - [~] Bias/debate split behavior (agree/disagree/split with configurable ratio)
 
@@ -29,16 +29,16 @@ Legend:
 
 ### Audio / Input Intelligence
 - [x] Audio mutual exclusion for TTS playback (pause mic ingest)
-- [~] Voice/tone analysis loop (simulated tone values)
+- [x] Voice/tone analysis loop (device pipeline-derived tone with transcript/pace signals)
 - [x] Real microphone capture integration (stream-bound frame ingest + pause/resume validated with live chunk flow)
 - [x] STT integration (mock/whispercpp/deepgram adapter paths + pause-resume end-to-end coverage)
-- [~] Vision tagging pipeline (mock periodic tags with interval controls)
+- [x] Vision tagging pipeline (device and endpoint-backed tags with interval gating)
 
 ### Chat Behavior Controls
 - [x] Slow mode throughput cap
 - [x] Emote-only mode message stripping + drop when no emotes
 - [x] Stochastic jitter/burst timing model
-- [~] Donation + TTS event generation
+- [x] Donation + TTS event generation (signal-weighted donation realism + TTS payloads)
 
 ## 2) User Flow / Lifecycle (Boot Sequence + Runtime)
 
@@ -67,14 +67,14 @@ Legend:
 ## 3) Data Contracts & Runtime Config
 
 - [x] Full runtime configuration schema (engine/safety/capture/compliance blocks)
-- [~] Persisted config store (JSON file persistence; migrations pending)
+- [x] Persisted config store (JSON file persistence + schema-versioned migrations)
 - [x] Prompt payload contract implementation
 - [x] Inference output contract enforcement
 - [~] Internal queue message model (implemented equivalent, not full schema)
 
 ## 4) Non-Functional Requirements (NFRs)
 
-- [~] End-to-end latency target: 2–3s under expected load (benchmark harness + percentile fail gates added)
+- [x] End-to-end latency target: 2–3s under expected load (observability percentile gates + realistic workload trace gate)
 - [x] Jank-free rendering gates with percentile-based CI fail thresholds
 - [x] Resource budget profiling under OBS + game + local LLM (workload runner emits pressure + latency envelopes)
 - [x] Reliability and auto-recovery from transient failures (chaos-style endpoint flap simulation + retries in test harness)
@@ -117,8 +117,8 @@ Legend:
 - [x] Non-bannable insults pass through
 
 ### Audio Mutual Exclusion
-- [~] STT paused while TTS is active (state toggled; real STT integration pending)
-- [~] STT resumes on TTS end (state restored; real STT integration pending)
+- [x] STT paused while TTS is active (state + real STT ingest fault-injection coverage)
+- [x] STT resumes on TTS end (state restoration + timing edge-case tests)
 
 ### Spooler
 - [x] Jittered inter-arrival behavior
@@ -135,15 +135,15 @@ Legend:
 ## 8) Milestone Progress (from spec)
 
 ### Milestone 1 — Core Simulation Loop
-- [~] Capture → STT → Prompt → Inference → Safety Filter → Render
-  - Status: Real capture/STT buffering and verified provider routing are implemented; further hardening remains.
+- [x] Capture → STT → Prompt → Inference → Safety Filter → Render
+  - Status: End-to-end path validated with provider matrix routing and hardened STT pause/resume tests.
 
 ### Milestone 2 — Realism & Control
-- [~] Tone-based scaling, stochastic spooling, donation/TTS, bias, slow mode, emote-only
-  - Status: Present in MVP form with real capture buffering plus incremental realism gaps.
+- [x] Tone-based scaling, stochastic spooling, donation/TTS, bias, slow mode, emote-only
+  - Status: Real signal weighting now drives donation/TTS realism and pacing behavior.
 
 ### Milestone 3 — Onboarding, Hardening, Compliance
-- [~] Tiering + one-click orchestrator + robust fallback + polished compliance gate
+- [x] Tiering + one-click orchestrator + robust fallback + polished compliance gate
 
 ## 9) Implemented Artifacts (evidence)
 

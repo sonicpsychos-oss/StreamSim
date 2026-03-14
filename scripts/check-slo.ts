@@ -2,6 +2,30 @@ import fs from "node:fs";
 import path from "node:path";
 
 const filePath = path.resolve(process.cwd(), "data/observability.log");
+const traceArg = process.argv.find((arg) => arg.startsWith("--trace="));
+const traceFile = traceArg ? path.resolve(process.cwd(), traceArg.split("=")[1] ?? "") : null;
+
+if (traceFile && fs.existsSync(traceFile)) {
+  const trace = JSON.parse(fs.readFileSync(traceFile, "utf8")) as { latencyMs?: number[]; jankMs?: number[]; name?: string };
+  const latencies = [...(trace.latencyMs ?? [])].sort((a, b) => a - b);
+  const jank = [...(trace.jankMs ?? [])].sort((a, b) => a - b);
+  if (latencies.length < 40) {
+    console.error(`Trace too small for percentile gates: ${latencies.length}`);
+    process.exit(1);
+  }
+  const percentile = (samples: number[], p: number): number => samples[Math.min(samples.length - 1, Math.floor(samples.length * p))] ?? 0;
+  const p95Latency = percentile(latencies, 0.95);
+  const p99Latency = percentile(latencies, 0.99);
+  const p95Jank = percentile(jank, 0.95);
+
+  if (p95Latency > 3000 || p99Latency > 4200 || p95Jank > 1200) {
+    console.error(`Trace SLO failed (${trace.name ?? "unknown"}): p95=${p95Latency} p99=${p99Latency} p95-jank=${p95Jank}`);
+    process.exit(1);
+  }
+  console.log(`Trace SLO pass (${trace.name ?? "unknown"}): p95=${p95Latency} p99=${p99Latency} p95-jank=${p95Jank}`);
+  process.exit(0);
+}
+
 if (!fs.existsSync(filePath)) {
   console.error("observability.log missing");
   process.exit(1);

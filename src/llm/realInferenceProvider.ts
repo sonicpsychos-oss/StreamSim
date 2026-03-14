@@ -3,6 +3,7 @@ import { SecretStore } from "../security/secretStore.js";
 import { MockInferenceProvider } from "./mockInferenceProvider.js";
 
 const LOCAL_MODES: InferenceMode[] = ["ollama", "lmstudio", "mock-local"];
+const CLOUD_MODES: InferenceMode[] = ["openai", "groq", "mock-cloud"];
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -43,7 +44,7 @@ export class HybridInferenceProvider implements InferenceProvider {
         errors.push("Localhost-only sidecar policy blocks non-local local endpoint. Enable explicit override to continue.");
       }
     }
-    if (this.mode === "openai" || this.mode === "groq" || this.mode === "mock-cloud") {
+    if (CLOUD_MODES.includes(this.mode)) {
       if (!config.provider.cloudEndpoint.startsWith("http")) errors.push("Cloud endpoint must be an HTTP URL.");
       if (!config.provider.cloudModel) errors.push("Cloud model is required.");
     }
@@ -57,7 +58,7 @@ export class HybridInferenceProvider implements InferenceProvider {
     }
 
     try {
-      const endpoint = LOCAL_MODES.includes(this.mode) ? `${config.provider.localEndpoint}/api/tags` : config.provider.cloudEndpoint;
+      const endpoint = LOCAL_MODES.includes(this.mode) ? `${config.provider.localEndpoint}/api/tags` : this.healthEndpointForCloud(config);
       const response = await fetch(endpoint, { method: "GET", signal: AbortSignal.timeout(config.provider.requestTimeoutMs) });
       if (!response.ok) return { ok: false, details: `HTTP ${response.status}` };
       return { ok: true, details: `Reachable: ${endpoint}` };
@@ -134,7 +135,7 @@ export class HybridInferenceProvider implements InferenceProvider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`
+        ...this.cloudHeaders(apiKey)
       },
       signal: AbortSignal.timeout(config.provider.requestTimeoutMs),
       body: JSON.stringify({
@@ -157,5 +158,22 @@ export class HybridInferenceProvider implements InferenceProvider {
     };
 
     return data.choices?.[0]?.message?.content ?? data.output_text ?? "";
+  }
+
+  private healthEndpointForCloud(config: SimulationConfig): string {
+    if (this.mode === "openai") return config.provider.cloudEndpoint.replace(/\/chat\/completions$/, "/models");
+    if (this.mode === "groq") return config.provider.cloudEndpoint.replace(/\/chat\/completions$/, "/models");
+    return config.provider.cloudEndpoint;
+  }
+
+  private cloudHeaders(apiKey: string): Record<string, string> {
+    const headers: Record<string, string> = { Authorization: `Bearer ${apiKey}` };
+    if (this.mode === "openai") {
+      headers["OpenAI-Beta"] = "assistants=v2";
+    }
+    if (this.mode === "groq") {
+      headers["X-StreamSim-Provider"] = "groq";
+    }
+    return headers;
   }
 }
