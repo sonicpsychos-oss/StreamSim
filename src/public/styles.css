@@ -24,3 +24,5 @@ button:hover { border-color: var(--accent); }
 .user { color: #7dd3fc; font-weight: 700; margin-right: 8px; }
 .donation { color: #facc15; margin-left: 8px; }
 pre { margin-top: 12px; background: #0c0e14; border: 1px solid #293145; border-radius: 8px; padding: 10px; font-size: 0.78rem; min-height: 130px; }
+
+.eula { padding: 8px; border: 1px solid #3f475f; border-radius: 8px; background: #10131b; }
