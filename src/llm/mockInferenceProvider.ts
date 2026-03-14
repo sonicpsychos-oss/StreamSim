@@ -2,6 +2,14 @@ import { InferenceProvider, PromptPayload, SimulationConfig } from "../core/type
 import { generateAudienceBatch } from "./mockAudienceGenerator.js";
 
 export class MockInferenceProvider implements InferenceProvider {
+  public validateConfig(): { ok: boolean; errors: string[] } {
+    return { ok: true, errors: [] };
+  }
+
+  public async healthCheck(): Promise<{ ok: boolean; details: string }> {
+    return { ok: true, details: "mock ok" };
+  }
+
   public async generate(payload: PromptPayload, config: SimulationConfig): Promise<string> {
     const messages = generateAudienceBatch(config, payload.context.tone).slice(0, payload.requestedMessageCount);
 

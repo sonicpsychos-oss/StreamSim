@@ -1,9 +1,12 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ComplianceLogger } from "./services/complianceLogger.js";
 import { ConfigStore } from "./config/configStore.js";
 import { mergeConfig } from "./config/runtimeConfig.js";
 import { SimulationConfig } from "./core/types.js";
+import { redactSecrets } from "./security/diagnostics.js";
+import { SecretStore } from "./security/secretStore.js";
 import { SimulationOrchestrator } from "./services/simulationOrchestrator.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,7 +17,10 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 const configStore = new ConfigStore();
+const complianceLogger = new ComplianceLogger();
+const secretStore = new SecretStore();
 let config: SimulationConfig = configStore.load();
+let onboardingComplete = config.compliance.eulaAccepted;
 
 const sseClients = new Set<express.Response>();
 const emit = (event: string, payload: unknown) => {
@@ -43,14 +49,21 @@ app.get("/api/events", (req, res) => {
 });
 
 app.post("/api/config", (req, res) => {
+  const previousAccepted = config.compliance.eulaAccepted;
   config = mergeConfig(config, req.body);
   configStore.save(config);
-  res.json({ ok: true, config });
+
+  if (!previousAccepted && config.compliance.eulaAccepted) {
+    complianceLogger.logEulaAcceptance(config.compliance.eulaVersion);
+    onboardingComplete = true;
+  }
+
+  res.json({ ok: true, config, onboardingComplete });
 });
 
 app.post("/api/start", (_req, res) => {
-  if (!config.compliance.eulaAccepted) {
-    res.status(400).json({ ok: false, error: "EULA must be accepted before starting simulation." });
+  if (!config.compliance.eulaAccepted || !onboardingComplete) {
+    res.status(400).json({ ok: false, error: "Onboarding + EULA acceptance is required before starting simulation." });
     return;
   }
 
@@ -63,12 +76,35 @@ app.post("/api/stop", (_req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/audio/rebind", (_req, res) => {
+  orchestrator.recoverAudioDevices();
+  res.json({ ok: true });
+});
+
+app.post("/api/onboarding/complete", (_req, res) => {
+  if (!config.compliance.eulaAccepted) {
+    res.status(400).json({ ok: false, error: "EULA acceptance is required." });
+    return;
+  }
+  onboardingComplete = true;
+  res.json({ ok: true, onboardingComplete });
+});
+
 app.get("/api/status", (_req, res) => {
-  res.json({ config, audioState: orchestrator.getAudioState() });
+  res.json({ config, audioState: orchestrator.getAudioState(), onboardingComplete, secrets: secretStore.diagnostics() });
+});
+
+app.get("/api/diagnostics", (_req, res) => {
+  if (!config.security.allowDiagnostics) {
+    res.status(403).json({ ok: false, error: "Diagnostics disabled by config." });
+    return;
+  }
+
+  res.json({ ok: true, diagnostics: redactSecrets({ config, env: process.env }) });
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, onboardingComplete });
 });
 
 const port = Number(process.env.PORT ?? 4173);

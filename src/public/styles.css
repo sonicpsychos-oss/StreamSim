@@ -11,10 +11,10 @@
 body { margin: 0; background: radial-gradient(circle at top, #161925, var(--bg)); color: var(--text); }
 .layout { display: grid; grid-template-columns: 420px 1fr; gap: 16px; padding: 16px; min-height: 100vh; }
 .panel { border: 1px solid #2d3345; border-radius: 14px; background: var(--panel); padding: 16px; }
-.grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.grid { display: grid; grid-template-columns: 1fr; gap: 12px; max-height: 70vh; overflow: auto; padding-right: 6px; }
 label { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; }
 input, select, button { border-radius: 8px; border: 1px solid #3f475f; background: #12141c; color: var(--text); padding: 8px 10px; }
-.buttons { display: flex; gap: 8px; margin-top: 14px; }
+.buttons { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 button { cursor: pointer; }
 button:hover { border-color: var(--accent); }
 .overlay { position: relative; background: transparent; border-style: dashed; }
@@ -26,3 +26,6 @@ button:hover { border-color: var(--accent); }
 pre { margin-top: 12px; background: #0c0e14; border: 1px solid #293145; border-radius: 8px; padding: 10px; font-size: 0.78rem; min-height: 130px; }
 
 .eula { padding: 8px; border: 1px solid #3f475f; border-radius: 8px; background: #10131b; }
+.wizard-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; z-index: 10; }
+.wizard { width: min(540px, 90vw); background: #151923; border: 1px solid #3b4359; border-radius: 14px; padding: 18px; }
+.hidden { display: none; }

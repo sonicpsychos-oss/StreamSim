@@ -33,19 +33,33 @@
             <select id="inferenceMode">
               <option value="mock-local">Mock Local</option>
               <option value="mock-cloud">Mock Cloud</option>
+              <option value="ollama">Ollama</option>
+              <option value="lmstudio">LM Studio</option>
+              <option value="openai">OpenAI</option>
+              <option value="groq">Groq</option>
             </select>
           </label>
+          <label>Local endpoint <input id="localEndpoint" type="text" value="http://127.0.0.1:11434" /></label>
+          <label>Local model <input id="localModel" type="text" value="llama3.1:8b-instruct-q4_K_M" /></label>
+          <label>Cloud endpoint <input id="cloudEndpoint" type="text" value="https://api.openai.com/v1/chat/completions" /></label>
+          <label>Cloud model <input id="cloudModel" type="text" value="gpt-4o-mini" /></label>
+          <label>Max retries <input id="maxRetries" type="number" min="0" max="5" value="2" /></label>
           <label><input id="slowMode" type="checkbox" /> Slow Mode</label>
           <label><input id="emoteOnly" type="checkbox" /> Emote-Only</label>
           <label><input id="ttsEnabled" type="checkbox" checked /> TTS Enabled</label>
           <label><input id="visionEnabled" type="checkbox" checked /> Vision Capture Enabled</label>
+          <label><input id="useRealCapture" type="checkbox" /> Use real capture endpoints</label>
           <label>Vision Interval (seconds) <input id="visionIntervalSec" type="number" min="5" max="120" value="25" /></label>
+          <label>STT endpoint <input id="sttEndpoint" type="text" value="http://127.0.0.1:7778/stt" /></label>
+          <label>Vision endpoint <input id="visionEndpoint" type="text" value="http://127.0.0.1:7778/vision-tags" /></label>
+          <label><input id="allowDiagnostics" type="checkbox" /> Allow diagnostics export</label>
           <label class="eula"><input id="eulaAccepted" type="checkbox" /> I accept the simulation EULA/compliance terms</label>
         </div>
         <div class="buttons">
           <button id="save">Save Config</button>
           <button id="start">Start Simulation</button>
           <button id="stop">Stop</button>
+          <button id="rebindAudio">Rebind Audio</button>
         </div>
         <pre id="meta"></pre>
       </section>
@@ -56,6 +70,20 @@
         <div id="chat"></div>
       </section>
     </main>
+
+    <section id="wizardBackdrop" class="wizard-backdrop hidden">
+      <div class="wizard">
+        <h2>First-run setup required</h2>
+        <p>Complete this one-time setup to unlock simulation start.</p>
+        <ol>
+          <li>Review provider/capture defaults.</li>
+          <li>Accept EULA checkbox in control panel.</li>
+          <li>Click the button below to finish onboarding.</li>
+        </ol>
+        <button id="completeWizard">Complete onboarding</button>
+      </div>
+    </section>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { SpoolingEngine } from "../src/services/spoolingEngine.js";
 import { applySafetyFilter } from "../src/core/safetyFilter.js";
+import { defaultConfig } from "../src/config/runtimeConfig.js";
+import { SpoolingEngine } from "../src/services/spoolingEngine.js";
 
 const engine = new SpoolingEngine();
 
 const baseConfig = {
+  ...defaultConfig,
   viewerCount: 100,
   engagementMultiplier: 1,
   slowMode: false,
