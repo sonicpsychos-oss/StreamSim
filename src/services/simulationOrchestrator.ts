@@ -1,13 +1,19 @@
 import { AudioStateManager } from "../core/audioStateManager.js";
 import { applySafetyFilter } from "../core/safetyFilter.js";
-import { ChatMessage, SimulationConfig, ToneSnapshot } from "../core/types.js";
-import { generateAudienceBatch } from "../llm/mockAudienceGenerator.js";
+import { ChatMessage, SimulationConfig } from "../core/types.js";
+import { MockInferenceProvider } from "../llm/mockInferenceProvider.js";
+import { ContextAssembler } from "../pipeline/contextAssembler.js";
+import { parseInferenceOutput } from "../pipeline/outputParser.js";
+import { buildPromptPayload } from "../pipeline/promptBuilder.js";
 import { SpoolingEngine } from "./spoolingEngine.js";
 
 export class SimulationOrchestrator {
   private readonly spooler = new SpoolingEngine();
   private readonly audioState = new AudioStateManager();
+  private readonly provider = new MockInferenceProvider();
+  private readonly contextAssembler = new ContextAssembler();
   private timer: NodeJS.Timeout | null = null;
+  private running = false;
 
   constructor(
     private readonly getConfig: () => SimulationConfig,
@@ -16,11 +22,13 @@ export class SimulationOrchestrator {
   ) {}
 
   public start(): void {
-    if (this.timer) return;
-    this.loop();
+    if (this.running) return;
+    this.running = true;
+    void this.loop();
   }
 
   public stop(): void {
+    this.running = false;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -31,18 +39,30 @@ export class SimulationOrchestrator {
     return this.audioState.getState();
   }
 
-  private loop(): void {
+  private async loop(): Promise<void> {
+    if (!this.running) return;
+
     const config = this.getConfig();
-    const tone = this.sampleTone();
-    const timing = this.spooler.nextDelayMs(config, tone);
+    const context = this.contextAssembler.build(config);
+    const timing = this.spooler.nextDelayMs(config, context.tone);
+
+    if (!config.compliance.eulaAccepted) {
+      this.emitMeta({ warning: "EULA must be accepted before simulation starts." });
+      this.running = false;
+      return;
+    }
 
     if (this.audioState.canListenToMic()) {
-      let messages = generateAudienceBatch(config, tone);
+      const payload = buildPromptPayload(config, context);
+      let messages: ChatMessage[] = [];
 
-      if (config.emoteOnly) {
-        messages = messages
-          .map((m) => ({ ...m, text: "" }))
-          .filter((m) => m.emotes.length > 0);
+      try {
+        const rawOutput = await this.provider.generate(payload, config);
+        messages = parseInferenceOutput(rawOutput);
+      } catch (error) {
+        if (config.safety.dropOnParseFailure) {
+          this.emitMeta({ parseError: (error as Error).message, dropped: true });
+        }
       }
 
       const safeMessages = applySafetyFilter(messages);
@@ -55,16 +75,17 @@ export class SimulationOrchestrator {
       });
 
       this.emitMessages(safeMessages);
-      this.emitMeta({ tone, timing, audioState: this.audioState.getState() });
+      this.emitMeta({
+        context,
+        timing,
+        audioState: this.audioState.getState(),
+        inferenceMode: config.inferenceMode,
+        requestedMessageCount: payload.requestedMessageCount
+      });
     }
 
-    this.timer = setTimeout(() => this.loop(), timing.actualDelayMs);
-  }
-
-  private sampleTone(): ToneSnapshot {
-    return {
-      volumeRms: Number((Math.random() * 0.8).toFixed(2)),
-      paceWpm: Math.floor(80 + Math.random() * 120)
-    };
+    this.timer = setTimeout(() => {
+      void this.loop();
+    }, timing.actualDelayMs);
   }
 }

@@ -1,6 +1,8 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ConfigStore } from "./config/configStore.js";
+import { mergeConfig } from "./config/runtimeConfig.js";
 import { SimulationConfig } from "./core/types.js";
 import { SimulationOrchestrator } from "./services/simulationOrchestrator.js";
 
@@ -11,16 +13,8 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-let config: SimulationConfig = {
-  viewerCount: 100,
-  engagementMultiplier: 1,
-  slowMode: false,
-  emoteOnly: false,
-  persona: "supportive",
-  bias: "split",
-  donationFrequency: 0.08,
-  ttsEnabled: true
-};
+const configStore = new ConfigStore();
+let config: SimulationConfig = configStore.load();
 
 const sseClients = new Set<express.Response>();
 const emit = (event: string, payload: unknown) => {
@@ -49,11 +43,17 @@ app.get("/api/events", (req, res) => {
 });
 
 app.post("/api/config", (req, res) => {
-  config = { ...config, ...req.body };
+  config = mergeConfig(config, req.body);
+  configStore.save(config);
   res.json({ ok: true, config });
 });
 
 app.post("/api/start", (_req, res) => {
+  if (!config.compliance.eulaAccepted) {
+    res.status(400).json({ ok: false, error: "EULA must be accepted before starting simulation." });
+    return;
+  }
+
   orchestrator.start();
   res.json({ ok: true });
 });

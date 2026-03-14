@@ -11,7 +11,7 @@ Legend:
 
 ### AI + Generation
 - [ ] Hybrid AI generation routing (Cloud OpenAI/Groq + Local Ollama/LM Studio)
-- [ ] Runtime engine toggle with endpoint/model validation
+- [~] Runtime engine toggle with basic mode validation (mock-local/mock-cloud)
 - [~] Persona-driven audience generation
 - [~] Bias/debate split behavior (agree/disagree/split with configurable ratio)
 
@@ -19,7 +19,7 @@ Legend:
 - [~] Transparent OBS-ready overlay window
 - [x] Persistent simulation watermark at ~20% opacity
 - [~] Low-friction control center (core controls present; endpoint controls incomplete)
-- [ ] Aggressive EULA/TOS onboarding gate (non-skippable flow)
+- [~] EULA gate before start (start blocked until accepted)
 
 ### Safety + Compliance
 - [x] Local synchronous pre-render safety filter
@@ -32,7 +32,7 @@ Legend:
 - [~] Voice/tone analysis loop (simulated tone values)
 - [ ] Real microphone capture integration
 - [ ] STT integration (Whisper.cpp/Deepgram or equivalent)
-- [ ] Vision tagging pipeline (periodic webcam frames + tags)
+- [~] Vision tagging pipeline (mock periodic tags with interval controls)
 
 ### Chat Behavior Controls
 - [x] Slow mode throughput cap
@@ -47,29 +47,29 @@ Legend:
 - [ ] Logic tiering recommendations (high-tier local / low-tier cloud)
 - [ ] One-click local sidecar orchestrator (install/start/pull model)
 - [ ] First-run setup wizard and readiness checks
-- [ ] EULA gate before simulation starts
+- [x] EULA gate before simulation starts
 
 ### Phase 2: Capture and Context
 - [ ] Live mic frame capture and buffering
 - [ ] STT transcript accumulation (last N seconds)
 - [~] Tone signal available for pacing (currently mocked)
-- [ ] Vision capture every configured interval
-- [ ] Context assembler for transcript + tone + vision tags
+- [~] Vision capture every configured interval (mock scheduler implemented)
+- [x] Context assembler for transcript + tone + vision tags (mock capture sources)
 
 ### Phase 3: Generation Pipeline
-- [~] Prompt payload builder (MVP mock generator currently bypasses contract)
-- [ ] Provider adapters for local/cloud inference
-- [ ] Strict output parsing + schema validation + repair attempt
+- [x] Prompt payload builder
+- [~] Provider adapters for local/cloud inference (mock providers wired through adapter interface)
+- [x] Strict output parsing + schema validation + repair attempt
 - [x] Safety filter pre-render stage
 - [x] Virtualized queue feed into renderer
 - [x] TTS event toggles audio state manager
 
 ## 3) Data Contracts & Runtime Config
 
-- [ ] Full runtime configuration schema (engine/local/cloud/safety/capture blocks)
-- [ ] Persisted config store with migration/versioning
-- [ ] Prompt payload contract implementation
-- [ ] Inference output contract enforcement
+- [x] Full runtime configuration schema (engine/safety/capture/compliance blocks)
+- [~] Persisted config store (JSON file persistence; migrations pending)
+- [x] Prompt payload contract implementation
+- [x] Inference output contract enforcement
 - [~] Internal queue message model (implemented equivalent, not full schema)
 
 ## 4) Non-Functional Requirements (NFRs)
@@ -156,3 +156,7 @@ Legend:
 - API + SSE transport: `src/server.ts`
 - Control center + overlay preview: `src/public/index.html`, `src/public/styles.css`, `src/public/app.js`
 - Initial unit coverage for spooler/safety: `tests/spoolingEngine.test.ts`
+- Config + output parser coverage: `tests/pipeline.test.ts`
+- Runtime config persistence: `src/config/configStore.ts`
+- Context/prompt/output pipeline: `src/pipeline/contextAssembler.ts`, `src/pipeline/promptBuilder.ts`, `src/pipeline/outputParser.ts`
+- Inference adapter scaffold: `src/llm/mockInferenceProvider.ts`
