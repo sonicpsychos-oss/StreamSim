@@ -9,11 +9,11 @@ export const defaultConfig: SimulationConfig = {
   bias: "split",
   donationFrequency: 0.08,
   ttsEnabled: true,
-  inferenceMode: "mock-local",
+  inferenceMode: "openai",
   capture: {
     visionEnabled: true,
     visionIntervalSec: 25,
-    useRealCapture: false,
+    useRealCapture: true,
     sttEndpoint: "http://127.0.0.1:7778/stt",
     sttProvider: "mock",
     visionEndpoint: "http://127.0.0.1:7778/vision-tags"
