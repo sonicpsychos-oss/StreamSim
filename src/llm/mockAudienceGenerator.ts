@@ -74,7 +74,8 @@ export function generateAudienceBatch(config: SimulationConfig, tone: ToneSnapsh
       username: `viewer_${Math.floor(Math.random() * 9999)}`,
       text: withBias(text, config.bias === "split" && features.personaBiasScore < 0.45 ? "disagree" : config.bias, conditioning, personaCalibration.contrarianism),
       emotes: Math.random() > 0.45 ? [pick(emotePool)] : [],
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      source: "mock-audience"
     };
 
     Object.assign(message, realisticDonation(config, tone, conditioning, safeContext));

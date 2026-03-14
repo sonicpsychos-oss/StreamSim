@@ -382,6 +382,22 @@ function renderDeviceChecks(result) {
   });
 }
 
+function updateMonitorAvailability(verification) {
+  const monitorReady = Boolean(verification?.micPermission && verification?.cameraPermission && verification?.hasMicDevice && verification?.hasCameraDevice);
+  if (liveMonitorEnabled) {
+    liveMonitorEnabled.disabled = !monitorReady;
+  }
+
+  if (!monitorReady) {
+    if (liveMonitorEnabled?.checked) liveMonitorEnabled.checked = false;
+    stopLiveMonitor();
+    setLiveMonitorStatus("Live monitor requires both mic and camera grants plus detected devices.", "warn");
+    return;
+  }
+
+  setLiveMonitorStatus("Live monitor ready. Toggle enable to start live camera + voice meter.", "ok");
+}
+
 async function verifyLocalDevices() {
   if (!navigator.mediaDevices?.enumerateDevices) {
     throw new Error("Browser does not support media device enumeration.");
@@ -567,7 +583,9 @@ verifyDevicesBtn.addEventListener("click", async () => {
     successText: "Device verification complete.",
     onRun: () => verifyLocalDevices()
   });
-  if (verification) renderDeviceChecks(verification);
+  if (!verification) return;
+  renderDeviceChecks(verification);
+  updateMonitorAvailability(verification);
 });
 
 openOverlayWindowBtn.addEventListener("click", () => {
@@ -661,6 +679,11 @@ events.addEventListener("messages", (event) => {
 
     item.append(user, messageText);
 
+    const source = document.createElement("span");
+    source.className = "source-tag";
+    source.textContent = msg.source ?? "unknown";
+    item.append(source);
+
     if (msg.donationCents) {
       const donation = document.createElement("span");
       donation.className = "donation";
@@ -697,6 +720,11 @@ async function boot() {
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
   summarizeSttHealth(payload);
+  if (liveMonitorEnabled) {
+    liveMonitorEnabled.checked = false;
+    liveMonitorEnabled.disabled = true;
+  }
+  setLiveMonitorStatus("Run Verify Mic/Camera to enable the live monitor.", "warn");
 }
 
 void boot();

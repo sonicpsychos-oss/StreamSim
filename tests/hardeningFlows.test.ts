@@ -84,6 +84,11 @@ describe("malformed json fallback + stt pause", () => {
     expect(parsed).toHaveLength(1);
   });
 
+  it("preserves source tags from inference payload", () => {
+    const parsed = parseInferenceOutput('{"messages":[{"username":"u","text":"hi","emotes":[],"source":"fallback-mock"}]}');
+    expect(parsed[0]?.source).toBe("fallback-mock");
+  });
+
   it("pauses mic ingest when stt is paused", () => {
     sharedDeviceCapturePipeline.reset();
     sharedSttEngine.pause();
