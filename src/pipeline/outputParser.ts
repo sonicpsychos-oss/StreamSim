@@ -23,9 +23,26 @@ export function repairInferenceOutput(raw: string): string {
   return raw.trim().replace(/^```json\s*/i, "").replace(/^###json\s*/i, "").replace(/\s*```$/i, "").replace(/\s*###$/i, "");
 }
 
-export function parseInferenceOutput(raw: string): ChatMessage[] {
+function extractLikelyJsonObject(raw: string): string {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    return raw.slice(start, end + 1);
+  }
+  return raw;
+}
+
+function parsePayload(raw: string): Record<string, unknown> {
   const repaired = repairInferenceOutput(raw);
-  const data = JSON.parse(repaired) as Record<string, unknown>;
+  try {
+    return JSON.parse(repaired) as Record<string, unknown>;
+  } catch {
+    return JSON.parse(extractLikelyJsonObject(repaired)) as Record<string, unknown>;
+  }
+}
+
+export function parseInferenceOutput(raw: string): ChatMessage[] {
+  const data = parsePayload(raw);
   if (!Array.isArray(data.messages)) throw new Error("Invalid output: messages array missing");
 
   const parsed = data.messages.map(coerceMessage).filter((message): message is ChatMessage => Boolean(message));

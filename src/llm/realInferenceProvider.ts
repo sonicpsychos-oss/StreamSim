@@ -32,8 +32,12 @@ export class HybridInferenceProvider implements InferenceProvider {
     if (LOCAL_MODES.includes(this.mode)) {
       if (!config.provider.localEndpoint.startsWith("http")) errors.push("Local endpoint must be an HTTP URL.");
       if (!config.provider.localModel) errors.push("Local model is required.");
-      if (config.security.sidecarLocalhostOnly && !/^https?:\/\/(127\.0\.0\.1|localhost)/.test(config.provider.localEndpoint)) {
-        errors.push("Localhost-only sidecar policy blocks non-local local endpoint.");
+      if (
+        config.security.sidecarLocalhostOnly &&
+        !config.security.allowNonLocalSidecarOverride &&
+        !/^https?:\/\/(127\.0\.0\.1|localhost)/.test(config.provider.localEndpoint)
+      ) {
+        errors.push("Localhost-only sidecar policy blocks non-local local endpoint. Enable explicit override to continue.");
       }
     }
     if (this.mode === "openai" || this.mode === "groq" || this.mode === "mock-cloud") {

@@ -23,6 +23,8 @@ const controls = {
   sttEndpoint: document.getElementById("sttEndpoint"),
   visionEndpoint: document.getElementById("visionEndpoint"),
   allowDiagnostics: document.getElementById("allowDiagnostics"),
+  allowNonLocalSidecarOverride: document.getElementById("allowNonLocalSidecarOverride"),
+  overrideReason: document.getElementById("overrideReason"),
   eulaAccepted: document.getElementById("eulaAccepted")
 };
 
@@ -55,7 +57,8 @@ function getPayload() {
       eulaAccepted: controls.eulaAccepted.checked
     },
     security: {
-      allowDiagnostics: controls.allowDiagnostics.checked
+      allowDiagnostics: controls.allowDiagnostics.checked,
+      allowNonLocalSidecarOverride: controls.allowNonLocalSidecarOverride.checked
     }
   };
 }
@@ -81,6 +84,7 @@ function hydrateControls(config) {
   controls.sttEndpoint.value = config.capture.sttEndpoint;
   controls.visionEndpoint.value = config.capture.visionEndpoint;
   controls.allowDiagnostics.checked = config.security.allowDiagnostics;
+  controls.allowNonLocalSidecarOverride.checked = config.security.allowNonLocalSidecarOverride;
   controls.eulaAccepted.checked = config.compliance.eulaAccepted;
 }
 
@@ -114,6 +118,18 @@ document.getElementById("start").addEventListener("click", async () => {
 
 document.getElementById("stop").addEventListener("click", async () => post("/api/stop"));
 document.getElementById("rebindAudio").addEventListener("click", async () => post("/api/audio/rebind"));
+document.getElementById("sidecarCancel").addEventListener("click", async () => post("/api/sidecar/cancel"));
+document.getElementById("sidecarResume").addEventListener("click", async () => post("/api/sidecar/resume"));
+document.getElementById("applyOverride").addEventListener("click", async () => {
+  try {
+    await post("/api/security/override-localhost", {
+      allow: controls.allowNonLocalSidecarOverride.checked,
+      reason: controls.overrideReason.value
+    });
+  } catch (error) {
+    metaEl.textContent = `Override failed: ${error.message}`;
+  }
+});
 document.getElementById("completeWizard").addEventListener("click", async () => {
   try {
     await post("/api/onboarding/complete");

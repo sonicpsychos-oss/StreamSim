@@ -53,6 +53,8 @@
           <label>STT endpoint <input id="sttEndpoint" type="text" value="http://127.0.0.1:7778/stt" /></label>
           <label>Vision endpoint <input id="visionEndpoint" type="text" value="http://127.0.0.1:7778/vision-tags" /></label>
           <label><input id="allowDiagnostics" type="checkbox" /> Allow diagnostics export</label>
+          <label><input id="allowNonLocalSidecarOverride" type="checkbox" /> Allow non-local sidecar override</label>
+          <label>Override reason <input id="overrideReason" type="text" placeholder="Required if override enabled" /></label>
           <label class="eula"><input id="eulaAccepted" type="checkbox" /> I accept the simulation EULA/compliance terms</label>
         </div>
         <div class="buttons">
@@ -60,6 +62,9 @@
           <button id="start">Start Simulation</button>
           <button id="stop">Stop</button>
           <button id="rebindAudio">Rebind Audio</button>
+          <button id="sidecarCancel">Cancel Sidecar Pull</button>
+          <button id="sidecarResume">Resume Sidecar Pull</button>
+          <button id="applyOverride">Apply Override</button>
         </div>
         <pre id="meta"></pre>
       </section>

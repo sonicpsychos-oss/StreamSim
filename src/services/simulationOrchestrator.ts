@@ -1,6 +1,7 @@
 import { AudioStateManager } from "../core/audioStateManager.js";
 import { applySafetyFilter } from "../core/safetyFilter.js";
 import { ChatMessage, SimulationConfig } from "../core/types.js";
+import { sharedSttEngine } from "../capture/sttEngine.js";
 import { createCaptureProvider } from "../capture/captureProviders.js";
 import { createInferenceProvider } from "../llm/providerFactory.js";
 import { parseInferenceOutput } from "../pipeline/outputParser.js";
@@ -22,7 +23,9 @@ export class SimulationOrchestrator {
     private readonly getConfig: () => SimulationConfig,
     private readonly emitMessages: (messages: ChatMessage[]) => void,
     private readonly emitMeta: (meta: Record<string, unknown>) => void
-  ) {}
+  ) {
+    this.sidecar.onProgress((event) => this.emitMeta({ sidecar: event }));
+  }
 
   public start(): void {
     if (this.running) return;
@@ -36,14 +39,29 @@ export class SimulationOrchestrator {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    if (this.ttsWatchdogTimer) {
+      clearTimeout(this.ttsWatchdogTimer);
+      this.ttsWatchdogTimer = null;
+    }
   }
 
-  public getAudioState(): { isTtsPlaying: boolean; micListening: boolean } {
-    return this.audioState.getState();
+  public cancelSidecarPull(): void {
+    const status = this.sidecar.cancelPull();
+    this.emitMeta({ sidecar: status });
+  }
+
+  public async resumeSidecarPull(): Promise<void> {
+    const status = await this.sidecar.resumeLastPull(this.getConfig());
+    this.emitMeta({ sidecar: status });
+  }
+
+  public getAudioState(): { isTtsPlaying: boolean; micListening: boolean; sttPaused: boolean } {
+    return { ...this.audioState.getState(), sttPaused: sharedSttEngine.state().paused };
   }
 
   public recoverAudioDevices(): void {
     this.audioState.stopTts();
+    sharedSttEngine.resume();
     this.emitMeta({ warning: "Audio capture device rebind requested." });
   }
 
@@ -77,13 +95,18 @@ export class SimulationOrchestrator {
       this.emitMeta({ warnings: [`Provider unhealthy: ${health.details}`], blocked: false });
     }
 
+    const captureStarted = Date.now();
     const context = await captureProvider.getContext(config);
+    const captureLatencyMs = Date.now() - captureStarted;
+
     const timing = this.spooler.nextDelayMs(config, context.tone);
 
     if (this.audioState.canListenToMic()) {
+      sharedSttEngine.resume();
       const payload = buildPromptPayload(config, context);
       let messages: ChatMessage[] = [];
 
+      const inferenceStarted = Date.now();
       try {
         const rawOutput = await provider.generate(payload, config);
         try {
@@ -93,22 +116,30 @@ export class SimulationOrchestrator {
           const retryOutput = await provider.generate(payload, config);
           messages = parseInferenceOutput(retryOutput);
           this.emitMeta({ warnings: ["Malformed inference JSON recovered via regenerate fallback."], blocked: false });
+          this.obs.log("malformed_json_recovery", { ok: true });
         }
       } catch (error) {
+        this.obs.log("reliability_recovery", { ok: false, reason: (error as Error).message });
         if (config.safety.dropOnParseFailure) {
           this.emitMeta({ warning: (error as Error).message, dropped: true, blocked: false });
         }
       }
+      const inferenceLatencyMs = Date.now() - inferenceStarted;
 
       const safeMessages = applySafetyFilter(messages);
 
       safeMessages.forEach((msg) => {
         if (msg.ttsText) {
           this.audioState.startTts();
-          setTimeout(() => this.audioState.stopTts(), 1400);
+          sharedSttEngine.pause();
+          setTimeout(() => {
+            this.audioState.stopTts();
+            sharedSttEngine.resume();
+          }, 1400);
           if (this.ttsWatchdogTimer) clearTimeout(this.ttsWatchdogTimer);
           this.ttsWatchdogTimer = setTimeout(() => {
             this.audioState.stopTts();
+            sharedSttEngine.resume();
             this.emitMeta({ warnings: ["TTS watchdog forced stale-state reset."], blocked: false });
           }, 5000);
         }
@@ -121,16 +152,24 @@ export class SimulationOrchestrator {
         requestedMessageCount: payload.requestedMessageCount,
         emittedCount: safeMessages.length,
         latencyMs,
+        captureLatencyMs,
+        inferenceLatencyMs,
         targetDelayMs: timing.actualDelayMs
       });
 
       this.emitMeta({
         context,
         timing,
-        audioState: this.audioState.getState(),
+        audioState: this.getAudioState(),
         inferenceMode: config.inferenceMode,
         requestedMessageCount: payload.requestedMessageCount,
-        latencyMs
+        latencyMs,
+        captureLatencyMs,
+        inferenceLatencyMs,
+        slo: {
+          targetMs: 3000,
+          withinTarget: latencyMs <= 3000
+        }
       });
     }
 

@@ -17,8 +17,15 @@ export class DeviceCapturePipeline {
   private readonly transcriptWindowMs = 30_000;
   private lastVisionSample: VisionSample | null = null;
   private lastVisionEmitAt = 0;
+  private micPaused = false;
+
+  public setMicPaused(paused: boolean): void {
+    this.micPaused = paused;
+  }
 
   public ingestMicFrame(frame: { transcriptChunk?: string; rms?: number; wordsPerMinute?: number }): void {
+    if (this.micPaused) return;
+
     const normalized: MicFrame = {
       transcriptChunk: String(frame.transcriptChunk ?? "").slice(0, 500),
       rms: Number.isFinite(frame.rms) ? Number(frame.rms) : 0.2,
@@ -38,14 +45,21 @@ export class DeviceCapturePipeline {
   public getContext(config: SimulationConfig): StreamContext {
     this.pruneOldMicFrames();
 
-    const transcript = this.micFrames.map((frame) => frame.transcriptChunk).filter(Boolean).join(" ").trim();
+    const transcript = this.micFrames
+      .map((frame) => frame.transcriptChunk)
+      .filter(Boolean)
+      .join(" ")
+      .trim();
     const tone = this.computeTone();
     const now = Date.now();
     let visionTags: string[] = [];
 
-    if (config.capture.visionEnabled && this.lastVisionSample && now - this.lastVisionEmitAt >= config.capture.visionIntervalSec * 1000) {
-      this.lastVisionEmitAt = now;
-      visionTags = this.lastVisionSample.tags;
+    if (config.capture.visionEnabled && this.lastVisionSample) {
+      const intervalMs = Math.max(1000, config.capture.visionIntervalSec * 1000);
+      if (now - this.lastVisionEmitAt >= intervalMs) {
+        visionTags = this.lastVisionSample.tags;
+        this.lastVisionEmitAt = now;
+      }
     }
 
     return {
@@ -56,24 +70,38 @@ export class DeviceCapturePipeline {
     };
   }
 
+  public reset(): void {
+    this.micFrames.length = 0;
+    this.lastVisionSample = null;
+    this.lastVisionEmitAt = 0;
+  }
+
+  public diagnostics(): { micPaused: boolean; bufferedFrames: number; hasVisionSample: boolean } {
+    return {
+      micPaused: this.micPaused,
+      bufferedFrames: this.micFrames.length,
+      hasVisionSample: Boolean(this.lastVisionSample)
+    };
+  }
+
   private pruneOldMicFrames(): void {
     const cutoff = Date.now() - this.transcriptWindowMs;
-    while (this.micFrames.length > 0 && this.micFrames[0].capturedAt < cutoff) {
+    while (this.micFrames.length && this.micFrames[0].capturedAt < cutoff) {
       this.micFrames.shift();
     }
   }
 
   private computeTone(): ToneSnapshot {
-    if (this.micFrames.length === 0) {
+    if (!this.micFrames.length) {
       return { volumeRms: 0.2, paceWpm: 110 };
     }
 
-    const totalRms = this.micFrames.reduce((sum, frame) => sum + frame.rms, 0);
-    const totalWpm = this.micFrames.reduce((sum, frame) => sum + frame.wordsPerMinute, 0);
+    const volumeRms = this.micFrames.reduce((sum, frame) => sum + frame.rms, 0) / this.micFrames.length;
+    const paceWpm = this.micFrames.reduce((sum, frame) => sum + frame.wordsPerMinute, 0) / this.micFrames.length;
 
     return {
-      volumeRms: Number((totalRms / this.micFrames.length).toFixed(3)),
-      paceWpm: Math.round(totalWpm / this.micFrames.length)
+      volumeRms: Number(volumeRms.toFixed(3)),
+      paceWpm: Number(paceWpm.toFixed(1))
     };
   }
 }
