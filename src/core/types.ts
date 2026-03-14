@@ -84,8 +84,10 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+export type RetryProgressHook = (attempt: number, reason: string) => void;
+
 export interface InferenceProvider {
-  generate(payload: PromptPayload, config: SimulationConfig): Promise<string>;
+  generate(payload: PromptPayload, config: SimulationConfig, onRetryProgress?: RetryProgressHook): Promise<string>;
   healthCheck(config: SimulationConfig): Promise<{ ok: boolean; details: string }>;
   validateConfig(config: SimulationConfig): { ok: boolean; errors: string[] };
 }

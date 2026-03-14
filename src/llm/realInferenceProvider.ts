@@ -1,4 +1,4 @@
-import { InferenceMode, InferenceProvider, PromptPayload, SimulationConfig } from "../core/types.js";
+import { InferenceMode, InferenceProvider, PromptPayload, RetryProgressHook, SimulationConfig } from "../core/types.js";
 import { SecretStore } from "../security/secretStore.js";
 import { MockInferenceProvider } from "./mockInferenceProvider.js";
 
@@ -8,14 +8,17 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function withRetry<T>(attempts: number, fn: () => Promise<T>): Promise<T> {
+async function withRetry<T>(attempts: number, fn: () => Promise<T>, onRetryProgress?: RetryProgressHook): Promise<T> {
   let lastError: unknown;
   for (let i = 0; i <= attempts; i += 1) {
     try {
       return await fn();
     } catch (error) {
       lastError = error;
-      if (i < attempts) await wait(250 * 2 ** i);
+      if (i < attempts) {
+        onRetryProgress?.(i + 1, (error as Error).message);
+        await wait(250 * 2 ** i);
+      }
     }
   }
   throw lastError;
@@ -63,21 +66,26 @@ export class HybridInferenceProvider implements InferenceProvider {
     }
   }
 
-  public async generate(payload: PromptPayload, config: SimulationConfig): Promise<string> {
+  public async generate(payload: PromptPayload, config: SimulationConfig, onRetryProgress?: RetryProgressHook): Promise<string> {
     if (this.mode === "mock-local" || this.mode === "mock-cloud") {
-      return this.mockProvider.generate(payload, { ...config, inferenceMode: this.mode });
+      return this.mockProvider.generate(payload, { ...config, inferenceMode: this.mode }, onRetryProgress);
     }
 
     try {
-      return await withRetry(config.provider.maxRetries, async () => {
-        if (this.mode === "ollama" || this.mode === "lmstudio") {
-          return this.generateLocal(payload, config);
-        }
-        return this.generateCloud(payload, config);
-      });
+      return await withRetry(
+        config.provider.maxRetries,
+        async () => {
+          if (this.mode === "ollama" || this.mode === "lmstudio") {
+            return this.generateLocal(payload, config);
+          }
+          return this.generateCloud(payload, config);
+        },
+        onRetryProgress
+      );
     } catch (primaryError) {
       if (this.mode === "ollama" || this.mode === "lmstudio") {
-        return withRetry(config.provider.maxRetries, async () => this.generateCloud(payload, config));
+        onRetryProgress?.(config.provider.maxRetries + 1, `Local failure: ${(primaryError as Error).message}; falling back to cloud.`);
+        return withRetry(config.provider.maxRetries, async () => this.generateCloud(payload, config), onRetryProgress);
       }
       throw primaryError;
     }

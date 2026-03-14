@@ -1,15 +1,18 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ComplianceLogger } from "./services/complianceLogger.js";
+import { sharedDeviceCapturePipeline } from "./capture/deviceCapturePipeline.js";
+import { sharedSttEngine } from "./capture/sttEngine.js";
 import { ConfigStore } from "./config/configStore.js";
 import { mergeConfig } from "./config/runtimeConfig.js";
 import { SimulationConfig } from "./core/types.js";
 import { redactSecrets } from "./security/diagnostics.js";
+import { banlistDiagnostics } from "./security/banlistRegistry.js";
 import { SecretStore } from "./security/secretStore.js";
+import { collectHardwareProfile, recommendTier } from "./services/bootDiagnostics.js";
+import { ComplianceLogger } from "./services/complianceLogger.js";
+import { runReadinessChecks } from "./services/readinessChecks.js";
 import { SimulationOrchestrator } from "./services/simulationOrchestrator.js";
-import { sharedDeviceCapturePipeline } from "./capture/deviceCapturePipeline.js";
-import { sharedSttEngine } from "./capture/sttEngine.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +26,9 @@ const complianceLogger = new ComplianceLogger();
 const secretStore = new SecretStore();
 let config: SimulationConfig = configStore.load();
 let onboardingComplete = config.compliance.eulaAccepted;
+let bootProfile: Awaited<ReturnType<typeof collectHardwareProfile>> | null = null;
+let tierRecommendation: ReturnType<typeof recommendTier> | null = null;
+let readinessState: Awaited<ReturnType<typeof runReadinessChecks>> | null = null;
 
 const sseClients = new Set<express.Response>();
 const emit = (event: string, payload: unknown) => {
@@ -35,6 +41,14 @@ const orchestrator = new SimulationOrchestrator(
   (messages) => emit("messages", messages),
   (meta) => emit("meta", meta)
 );
+
+async function refreshBootAndReadiness(): Promise<void> {
+  bootProfile = await collectHardwareProfile(config);
+  tierRecommendation = recommendTier(bootProfile);
+  readinessState = await runReadinessChecks(config);
+}
+
+void refreshBootAndReadiness();
 
 app.get("/api/events", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
@@ -60,6 +74,7 @@ app.post("/api/config", (req, res) => {
     onboardingComplete = true;
   }
 
+  void refreshBootAndReadiness();
   res.json({ ok: true, config, onboardingComplete });
 });
 
@@ -83,6 +98,11 @@ app.post("/api/security/override-localhost", (req, res) => {
 app.post("/api/start", (_req, res) => {
   if (!config.compliance.eulaAccepted || !onboardingComplete) {
     res.status(400).json({ ok: false, error: "Onboarding + EULA acceptance is required before starting simulation." });
+    return;
+  }
+
+  if (readinessState && !readinessState.ready) {
+    res.status(400).json({ ok: false, error: "Readiness checks are blocking start. Resolve readiness issues first.", readiness: readinessState });
     return;
   }
 
@@ -110,13 +130,26 @@ app.post("/api/audio/rebind", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/onboarding/complete", (_req, res) => {
+app.post("/api/onboarding/complete", async (_req, res) => {
   if (!config.compliance.eulaAccepted) {
     res.status(400).json({ ok: false, error: "EULA acceptance is required." });
     return;
   }
+
+  const readiness = await runReadinessChecks(config);
+  readinessState = readiness;
+  if (!readiness.ready) {
+    res.status(400).json({ ok: false, error: "Readiness checks failed.", readiness });
+    return;
+  }
+
   onboardingComplete = true;
-  res.json({ ok: true, onboardingComplete });
+  res.json({ ok: true, onboardingComplete, readiness });
+});
+
+app.get("/api/onboarding/readiness", async (_req, res) => {
+  readinessState = await runReadinessChecks(config);
+  res.json({ ok: true, readiness: readinessState });
 });
 
 app.post("/api/secrets/cloud-key", (req, res) => {
@@ -140,7 +173,6 @@ app.post("/api/capture/mic-frame", (req, res) => {
   res.json({ ok: true });
 });
 
-
 app.post("/api/capture/audio-chunk", async (req, res) => {
   const base64 = typeof req.body?.audioBase64 === "string" ? req.body.audioBase64 : "";
   if (!base64) {
@@ -162,6 +194,12 @@ app.get("/api/status", (_req, res) => {
     config,
     audioState: orchestrator.getAudioState(),
     onboardingComplete,
+    bootDiagnostics: {
+      profile: bootProfile,
+      recommendation: tierRecommendation
+    },
+    readiness: readinessState,
+    banlist: banlistDiagnostics(),
     secrets: secretStore.diagnostics(),
     privacy: {
       framePersistence: false,
@@ -176,7 +214,7 @@ app.get("/api/diagnostics", (_req, res) => {
     return;
   }
 
-  res.json({ ok: true, diagnostics: redactSecrets({ config, env: process.env }) });
+  res.json({ ok: true, diagnostics: redactSecrets({ config, env: process.env, bootProfile, tierRecommendation, banlist: banlistDiagnostics() }) });
 });
 
 app.get("/health", (_req, res) => {
