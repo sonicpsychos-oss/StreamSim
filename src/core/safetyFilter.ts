@@ -1,16 +1,20 @@
 import { ChatMessage } from "./types.js";
+import { loadBanlist } from "../security/banlistRegistry.js";
 
-const bannedPatterns = [
-  /\bslur1\b/i,
-  /\bslur2\b/i,
-  /\bkill\s+yourself\b/i,
-  /\bself\s*harm\b/i
-];
+function safePatterns(): RegExp[] {
+  const banlist = loadBanlist();
+  if (!banlist.terms.length) throw new Error("banlist terms unavailable");
+  return banlist.terms.map((term) => new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+")}\\b`, "i"));
+}
 
 export function passesSafetyFilter(message: ChatMessage): boolean {
-  return !bannedPatterns.some((pattern) => pattern.test(message.text));
+  return !safePatterns().some((pattern) => pattern.test(message.text));
 }
 
 export function applySafetyFilter(messages: ChatMessage[]): ChatMessage[] {
-  return messages.filter(passesSafetyFilter);
+  try {
+    return messages.filter(passesSafetyFilter);
+  } catch {
+    return messages.filter((message) => message.username.toLowerCase() === "system" || message.emotes.length > 0);
+  }
 }

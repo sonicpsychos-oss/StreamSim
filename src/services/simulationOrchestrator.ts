@@ -1,14 +1,14 @@
+import { sharedSttEngine } from "../capture/sttEngine.js";
 import { AudioStateManager } from "../core/audioStateManager.js";
 import { applySafetyFilter } from "../core/safetyFilter.js";
 import { ChatMessage, SimulationConfig } from "../core/types.js";
-import { sharedSttEngine } from "../capture/sttEngine.js";
-import { createCaptureProvider } from "../capture/captureProviders.js";
 import { createInferenceProvider } from "../llm/providerFactory.js";
 import { classifyMalformedOutput, parseInferenceOutput, recommendedRecoveryAction } from "../pipeline/outputParser.js";
 import { buildPromptPayload } from "../pipeline/promptBuilder.js";
+import { createCaptureProvider } from "../capture/captureProviders.js";
 import { ObservabilityLogger } from "./observability.js";
-import { SpoolingEngine } from "./spoolingEngine.js";
 import { SidecarManager } from "./sidecarManager.js";
+import { SpoolingEngine } from "./spoolingEngine.js";
 
 export class SimulationOrchestrator {
   private readonly spooler = new SpoolingEngine();
@@ -55,14 +55,21 @@ export class SimulationOrchestrator {
     this.emitMeta({ sidecar: status });
   }
 
-  public getAudioState(): { isTtsPlaying: boolean; micListening: boolean; sttPaused: boolean } {
+  public getAudioState(): { isTtsPlaying: boolean; micListening: boolean; sttPaused: boolean; ttsAgeMs: number } {
     return { ...this.audioState.getState(), sttPaused: sharedSttEngine.state().paused };
   }
 
   public recoverAudioDevices(): void {
-    this.audioState.stopTts();
+    this.audioState.markDeviceDisconnect();
     sharedSttEngine.resume();
     this.emitMeta({ warning: "Audio capture device rebind requested." });
+  }
+
+  private cloudRecoveryMeta(attempt: number, maxRetries: number, reason: string): { phase: string; message: string; blocking: boolean } {
+    if (attempt <= maxRetries) {
+      return { phase: "retrying", message: `Cloud request retry ${attempt}/${maxRetries} after: ${reason}`, blocking: false };
+    }
+    return { phase: "degraded", message: `Cloud retries exhausted. Entering degraded recovery state: ${reason}`, blocking: false };
   }
 
   private async loop(): Promise<void> {
@@ -81,7 +88,7 @@ export class SimulationOrchestrator {
 
     const sidecarStatus = await this.sidecar.ensureReady(config);
     if (!sidecarStatus.ready) {
-      this.emitMeta({ warning: sidecarStatus.details, fallbackSuggested: sidecarStatus.fallbackSuggested, blocked: false });
+      this.emitMeta({ warning: sidecarStatus.details, fallbackSuggested: sidecarStatus.fallbackSuggested, blocked: false, recovery: sidecarStatus.uxAction });
       this.obs.log("sidecar_status", { sidecarStatus: sidecarStatus.phase, progress: sidecarStatus.progress });
     }
 
@@ -108,7 +115,10 @@ export class SimulationOrchestrator {
 
       const inferenceStarted = Date.now();
       try {
-        const rawOutput = await provider.generate(payload, config);
+        const rawOutput = await provider.generate(payload, config, (attempt, reason) => {
+          const recovery = this.cloudRecoveryMeta(attempt, config.provider.maxRetries, reason);
+          this.emitMeta({ warnings: [recovery.message], cloudRecovery: recovery.phase, blocked: recovery.blocking });
+        });
         try {
           messages = parseInferenceOutput(rawOutput);
         } catch (parseError) {
@@ -130,7 +140,7 @@ export class SimulationOrchestrator {
       } catch (error) {
         this.obs.log("reliability_recovery", { ok: false, reason: (error as Error).message });
         if (config.safety.dropOnParseFailure) {
-          this.emitMeta({ warning: (error as Error).message, dropped: true, blocked: false });
+          this.emitMeta({ warning: (error as Error).message, dropped: true, blocked: false, cloudRecovery: "degraded" });
         }
       }
       const inferenceLatencyMs = Date.now() - inferenceStarted;
@@ -147,10 +157,12 @@ export class SimulationOrchestrator {
           }, 1400);
           if (this.ttsWatchdogTimer) clearTimeout(this.ttsWatchdogTimer);
           this.ttsWatchdogTimer = setTimeout(() => {
-            this.audioState.stopTts();
-            sharedSttEngine.resume();
-            this.emitMeta({ warnings: ["TTS watchdog forced stale-state reset."], blocked: false });
-          }, 5000);
+            const forced = this.audioState.forceResetIfStale(2800);
+            if (forced) {
+              sharedSttEngine.resume();
+              this.emitMeta({ warnings: ["TTS watchdog forced stale-state reset."], blocked: false });
+            }
+          }, 3200);
         }
       });
 
@@ -163,7 +175,8 @@ export class SimulationOrchestrator {
         latencyMs,
         captureLatencyMs,
         inferenceLatencyMs,
-        targetDelayMs: timing.actualDelayMs
+        targetDelayMs: timing.actualDelayMs,
+        jankMs: Math.max(0, latencyMs - timing.actualDelayMs)
       });
 
       this.emitMeta({

@@ -24,7 +24,7 @@ Legend:
 ### Safety + Compliance
 - [x] Local synchronous pre-render safety filter
 - [~] Drop-policy behavior (drop instead of censor)
-- [ ] Banlist source-of-truth/versioning strategy
+- [x] Banlist source-of-truth/versioning strategy
 - [x] Compliance/audit logging for EULA acceptance and version lifecycle events
 
 ### Audio / Input Intelligence
@@ -43,10 +43,10 @@ Legend:
 ## 2) User Flow / Lifecycle (Boot Sequence + Runtime)
 
 ### Phase 1: Initialization
-- [ ] Hardware profiling (VRAM/CPU/network)
-- [ ] Logic tiering recommendations (high-tier local / low-tier cloud)
+- [x] Hardware profiling (VRAM/CPU/network)
+- [x] Logic tiering recommendations (high-tier local / low-tier cloud)
 - [x] One-click local sidecar orchestrator (OS-specific install/start/pull commands, pull checkpoint persistence, deterministic failure taxonomy + UX actions)
-- [ ] First-run setup wizard and readiness checks
+- [x] First-run setup wizard and readiness checks
 - [x] EULA gate before simulation starts
 
 ### Phase 2: Capture and Context
@@ -74,8 +74,8 @@ Legend:
 
 ## 4) Non-Functional Requirements (NFRs)
 
-- [~] End-to-end latency target: 2–3s under expected load (benchmark harness + thresholds added)
-- [~] Jank-free rendering at high throughput with explicit delay/jitter thresholds
+- [~] End-to-end latency target: 2–3s under expected load (benchmark harness + percentile fail gates added)
+- [x] Jank-free rendering gates with percentile-based CI fail thresholds
 - [x] Resource budget profiling under OBS + game + local LLM (workload runner emits pressure + latency envelopes)
 - [x] Reliability and auto-recovery from transient failures (chaos-style endpoint flap simulation + retries in test harness)
 - [x] Structured pipeline observability logs
@@ -85,15 +85,15 @@ Legend:
 
 ### Inference
 - [x] Retry/backoff for local endpoint failures
-- [~] Cloud retry with non-blocking warnings (UI warning surface still basic)
+- [x] Cloud retry with non-blocking warnings + deterministic recovery states/messages
 - [x] Malformed JSON repair + regenerate fallback
 
 ### Audio
-- [ ] Device disconnect rebind
-- [ ] `is_tts_playing` watchdog reset for stale state
+- [x] Device disconnect rebind
+- [x] `is_tts_playing` watchdog reset for stale state
 
 ### Safety
-- [ ] Conservative fallback mode when dictionary fails (emotes/system only)
+- [x] Conservative fallback mode when dictionary fails (emotes/system only)
 
 ### Sidecar
 - [x] Guided fallback from failed local sidecar startup to cloud

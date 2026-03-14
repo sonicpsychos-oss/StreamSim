@@ -1,4 +1,4 @@
-import { InferenceProvider, PromptPayload, SimulationConfig } from "../core/types.js";
+import { InferenceProvider, PromptPayload, RetryProgressHook, SimulationConfig } from "../core/types.js";
 import { generateAudienceBatch } from "./mockAudienceGenerator.js";
 
 export class MockInferenceProvider implements InferenceProvider {
@@ -10,7 +10,7 @@ export class MockInferenceProvider implements InferenceProvider {
     return { ok: true, details: "mock ok" };
   }
 
-  public async generate(payload: PromptPayload, config: SimulationConfig): Promise<string> {
+  public async generate(payload: PromptPayload, config: SimulationConfig, _onRetryProgress?: RetryProgressHook): Promise<string> {
     const messages = generateAudienceBatch(config, payload.context.tone).slice(0, payload.requestedMessageCount);
 
     const serialized = JSON.stringify({ messages });

@@ -1,6 +1,8 @@
 const chatEl = document.getElementById("chat");
 const metaEl = document.getElementById("meta");
 const wizardBackdrop = document.getElementById("wizardBackdrop");
+const readinessList = document.getElementById("readinessList");
+const diagnosticsSummary = document.getElementById("diagnosticsSummary");
 
 const controls = {
   viewerCount: document.getElementById("viewerCount"),
@@ -88,6 +90,29 @@ function hydrateControls(config) {
   controls.eulaAccepted.checked = config.compliance.eulaAccepted;
 }
 
+function renderReadiness(readiness) {
+  readinessList.innerHTML = "";
+  if (!readiness?.checks?.length) {
+    readinessList.innerHTML = "<li>Readiness checks pending...</li>";
+    return;
+  }
+
+  readiness.checks.forEach((check) => {
+    const li = document.createElement("li");
+    const icon = check.ok ? "✅" : check.severity === "blocking" ? "❌" : "⚠️";
+    li.textContent = `${icon} ${check.id.toUpperCase()}: ${check.message}`;
+    readinessList.appendChild(li);
+  });
+}
+
+function renderDiagnostics(payload) {
+  const recommendation = payload.bootDiagnostics?.recommendation;
+  const profile = payload.bootDiagnostics?.profile;
+  const tierText = recommendation ? `${recommendation.tier} → ${recommendation.inferenceMode} (${recommendation.reason})` : "pending";
+  const network = profile ? `${profile.networkLatencyMs}ms` : "pending";
+  diagnosticsSummary.textContent = `Tier: ${tierText}\nNetwork probe: ${network}\nBanlist: ${payload.banlist?.version ?? "n/a"} (${payload.banlist?.checksum ?? "n/a"})`;
+}
+
 async function post(url, body = undefined) {
   const response = await fetch(url, {
     method: "POST",
@@ -120,6 +145,11 @@ document.getElementById("stop").addEventListener("click", async () => post("/api
 document.getElementById("rebindAudio").addEventListener("click", async () => post("/api/audio/rebind"));
 document.getElementById("sidecarCancel").addEventListener("click", async () => post("/api/sidecar/cancel"));
 document.getElementById("sidecarResume").addEventListener("click", async () => post("/api/sidecar/resume"));
+document.getElementById("runReadiness").addEventListener("click", async () => {
+  const response = await fetch("/api/onboarding/readiness");
+  const payload = await response.json();
+  renderReadiness(payload.readiness);
+});
 document.getElementById("applyOverride").addEventListener("click", async () => {
   try {
     await post("/api/security/override-localhost", {
@@ -132,7 +162,8 @@ document.getElementById("applyOverride").addEventListener("click", async () => {
 });
 document.getElementById("completeWizard").addEventListener("click", async () => {
   try {
-    await post("/api/onboarding/complete");
+    const payload = await post("/api/onboarding/complete");
+    renderReadiness(payload.readiness);
     wizardBackdrop.classList.add("hidden");
   } catch (error) {
     metaEl.textContent = `Onboarding blocked: ${error.message}`;
@@ -155,7 +186,8 @@ events.addEventListener("messages", (event) => {
 events.addEventListener("meta", (event) => {
   const meta = JSON.parse(event.data);
   const warningLines = [meta.warning, ...(meta.warnings ?? [])].filter(Boolean);
-  const banner = warningLines.length ? `⚠️ ${warningLines.join(" | ")}\n` : "";
+  const recovery = meta.cloudRecovery ? `Recovery=${meta.cloudRecovery}` : "";
+  const banner = warningLines.length ? `⚠️ ${warningLines.join(" | ")} ${recovery}`.trim() + "\n" : "";
   metaEl.textContent = `${banner}${JSON.stringify(meta, null, 2)}`;
 });
 
@@ -163,6 +195,8 @@ async function boot() {
   const response = await fetch("/api/status");
   const payload = await response.json();
   hydrateControls(payload.config);
+  renderReadiness(payload.readiness);
+  renderDiagnostics(payload);
   if (!payload.onboardingComplete) wizardBackdrop.classList.remove("hidden");
 }
 

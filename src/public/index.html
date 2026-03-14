@@ -64,8 +64,11 @@
           <button id="rebindAudio">Rebind Audio</button>
           <button id="sidecarCancel">Cancel Sidecar Pull</button>
           <button id="sidecarResume">Resume Sidecar Pull</button>
+          <button id="runReadiness">Run Readiness</button>
           <button id="applyOverride">Apply Override</button>
         </div>
+        <pre id="diagnosticsSummary"></pre>
+        <ul id="readinessList"></ul>
         <pre id="meta"></pre>
       </section>
 
@@ -81,7 +84,8 @@
         <h2>First-run setup required</h2>
         <p>Complete this one-time setup to unlock simulation start.</p>
         <ol>
-          <li>Review provider/capture defaults.</li>
+          <li>Review auto hardware tier recommendation and choose provider mode.</li>
+          <li>Run readiness checks until all blocking checks pass.</li>
           <li>Accept EULA checkbox in control panel.</li>
           <li>Click the button below to finish onboarding.</li>
         </ol>
