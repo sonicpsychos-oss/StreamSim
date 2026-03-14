@@ -10,72 +10,115 @@
     <main class="layout">
       <section class="panel controls">
         <h1>StreamSim Control Center</h1>
-        <div class="grid">
-          <label>Viewer Count <input id="viewerCount" type="number" min="1" value="100" /></label>
-          <label>Engagement Multiplier <input id="engagementMultiplier" type="number" step="0.1" value="1" /></label>
-          <label>Donation Frequency <input id="donationFrequency" type="number" step="0.01" min="0" max="1" value="0.08" /></label>
-          <label>Persona
-            <select id="persona">
-              <option value="supportive">Supportive</option>
-              <option value="trolls">Trolls</option>
-              <option value="meme-lords">Meme-lords</option>
-              <option value="neutral">Neutral</option>
-            </select>
-          </label>
-          <label>Bias
-            <select id="bias">
-              <option value="split">Split</option>
-              <option value="agree">Agree</option>
-              <option value="disagree">Disagree</option>
-            </select>
-          </label>
-          <label>Inference Mode
-            <select id="inferenceMode">
-              <option value="mock-local">Mock Local</option>
-              <option value="mock-cloud">Mock Cloud</option>
-              <option value="ollama">Ollama</option>
-              <option value="lmstudio">LM Studio</option>
-              <option value="openai">OpenAI</option>
-              <option value="groq">Groq</option>
-            </select>
-          </label>
-          <label>Local endpoint <input id="localEndpoint" type="text" value="http://127.0.0.1:11434" /></label>
-          <label>Local model <input id="localModel" type="text" value="llama3.1:8b-instruct-q4_K_M" /></label>
-          <label>Cloud endpoint <input id="cloudEndpoint" type="text" value="https://api.openai.com/v1/chat/completions" /></label>
-          <label>Cloud model <input id="cloudModel" type="text" value="gpt-4o-mini" /></label>
-          <label>Request timeout ms <input id="requestTimeoutMs" type="number" min="1000" max="30000" value="7000" /></label>
-          <label>Max retries <input id="maxRetries" type="number" min="0" max="5" value="2" /></label>
-          <label>Safety drop policy
-            <select id="dropPolicy">
-              <option value="drop">Drop flagged content</option>
-              <option value="censor">Censor flagged content</option>
-            </select>
-          </label>
-          <label>Cloud API key <input id="cloudApiKey" type="password" placeholder="sk-..." /></label>
-          <label><input id="slowMode" type="checkbox" /> Slow Mode</label>
-          <label><input id="emoteOnly" type="checkbox" /> Emote-Only</label>
-          <label><input id="ttsEnabled" type="checkbox" checked /> TTS Enabled</label>
-          <label><input id="visionEnabled" type="checkbox" checked /> Vision Capture Enabled</label>
-          <label><input id="useRealCapture" type="checkbox" /> Use real capture endpoints</label>
-          <label>Vision Interval (seconds) <input id="visionIntervalSec" type="number" min="5" max="120" value="25" /></label>
-          <label>STT endpoint <input id="sttEndpoint" type="text" value="http://127.0.0.1:7778/stt" /></label>
-          <label>Vision endpoint <input id="visionEndpoint" type="text" value="http://127.0.0.1:7778/vision-tags" /></label>
-          <label><input id="allowDiagnostics" type="checkbox" /> Allow diagnostics export</label>
-          <label><input id="allowNonLocalSidecarOverride" type="checkbox" /> Allow non-local sidecar override</label>
-          <label>Override reason <input id="overrideReason" type="text" placeholder="Required if override enabled" /></label>
-          <label class="eula"><input id="eulaAccepted" type="checkbox" /> I accept the simulation EULA/compliance terms</label>
-        </div>
-        <div class="buttons">
-          <button id="save">Save Config</button>
-          <button id="start" class="primary">Start Simulation</button>
-          <button id="stop">Stop</button>
-          <button id="rebindAudio">Rebind Audio</button>
-          <button id="sidecarCancel">Cancel Sidecar Pull</button>
-          <button id="sidecarResume">Resume Sidecar Pull</button>
-          <button id="runReadiness">Run Readiness</button>
-          <button id="applyOverride">Apply Override</button>
-          <button id="saveCloudKey">Save Cloud Key</button>
-          <button id="refreshStatus">Refresh Status</button>
+
+        <section class="onboarding-panel" id="onboardingPanel">
+          <div class="onboarding-head">
+            <h2>Quick Start Onboarding</h2>
+            <span id="onboardingPill" class="pill pending">Pending</span>
+          </div>
+          <ol class="onboarding-steps">
+            <li>Choose a provider mode and stream profile.</li>
+            <li>Run readiness + performance checks.</li>
+            <li>Accept EULA to unlock simulation start.</li>
+          </ol>
+          <div class="wizard-inline-controls">
+            <label class="eula"><input id="wizardEulaAccepted" type="checkbox" /> I accept the simulation EULA/compliance terms</label>
+            <div class="buttons">
+              <button id="runReadiness" type="button">Run Readiness</button>
+              <button id="completeWizard" type="button" class="primary">Complete onboarding</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h3>Stream Profile</h3>
+          <div class="grid compact-grid">
+            <label>Viewer Count <input id="viewerCount" type="number" min="1" value="100" /></label>
+            <label>Engagement Multiplier <input id="engagementMultiplier" type="number" step="0.1" value="1" /></label>
+            <label>Donation Frequency <input id="donationFrequency" type="number" step="0.01" min="0" max="1" value="0.08" /></label>
+            <label>Persona
+              <select id="persona">
+                <option value="supportive">Supportive</option>
+                <option value="trolls">Trolls</option>
+                <option value="meme-lords">Meme-lords</option>
+                <option value="neutral">Neutral</option>
+              </select>
+            </label>
+            <label>Bias
+              <select id="bias">
+                <option value="split">Split</option>
+                <option value="agree">Agree</option>
+                <option value="disagree">Disagree</option>
+              </select>
+            </label>
+            <label>Inference Mode
+              <select id="inferenceMode">
+                <option value="mock-local">Mock Local</option>
+                <option value="mock-cloud">Mock Cloud</option>
+                <option value="ollama">Ollama</option>
+                <option value="lmstudio">LM Studio</option>
+                <option value="openai">OpenAI</option>
+                <option value="groq">Groq</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <details class="control-group">
+          <summary>Provider + Capture Settings</summary>
+          <div class="grid">
+            <label>Local endpoint <input id="localEndpoint" type="text" value="http://127.0.0.1:11434" /></label>
+            <label>Local model <input id="localModel" type="text" value="llama3.1:8b-instruct-q4_K_M" /></label>
+            <label>Cloud endpoint <input id="cloudEndpoint" type="text" value="https://api.openai.com/v1/chat/completions" /></label>
+            <label>Cloud model <input id="cloudModel" type="text" value="gpt-4o-mini" /></label>
+            <label>Request timeout ms <input id="requestTimeoutMs" type="number" min="1000" max="30000" value="7000" /></label>
+            <label>Max retries <input id="maxRetries" type="number" min="0" max="5" value="2" /></label>
+            <label><input id="ttsEnabled" type="checkbox" checked /> TTS Enabled</label>
+            <label><input id="visionEnabled" type="checkbox" checked /> Vision Capture Enabled</label>
+            <label><input id="useRealCapture" type="checkbox" /> Use real capture endpoints</label>
+            <label>Vision Interval (seconds) <input id="visionIntervalSec" type="number" min="5" max="120" value="25" /></label>
+            <label>STT endpoint <input id="sttEndpoint" type="text" value="http://127.0.0.1:7778/stt" /></label>
+            <label>Vision endpoint <input id="visionEndpoint" type="text" value="http://127.0.0.1:7778/vision-tags" /></label>
+          </div>
+        </details>
+
+        <details class="control-group">
+          <summary>Safety, Moderation, and Security</summary>
+          <div class="grid">
+            <label>Safety drop policy
+              <select id="dropPolicy">
+                <option value="drop">Drop flagged content</option>
+                <option value="censor">Censor flagged content</option>
+              </select>
+            </label>
+            <label><input id="slowMode" type="checkbox" /> Slow Mode</label>
+            <label><input id="emoteOnly" type="checkbox" /> Emote-Only</label>
+            <label><input id="allowDiagnostics" type="checkbox" /> Allow diagnostics export</label>
+            <label><input id="allowNonLocalSidecarOverride" type="checkbox" /> Allow non-local sidecar override</label>
+            <label>Override reason <input id="overrideReason" type="text" placeholder="Required if override enabled" /></label>
+            <label class="eula"><input id="eulaAccepted" type="checkbox" /> I accept the simulation EULA/compliance terms</label>
+          </div>
+        </details>
+
+        <details class="control-group">
+          <summary>Secrets + Maintenance</summary>
+          <div class="grid">
+            <label>Cloud API key <input id="cloudApiKey" type="password" placeholder="sk-..." /></label>
+          </div>
+          <div class="buttons">
+            <button id="saveCloudKey" type="button">Save Cloud Key</button>
+            <button id="rebindAudio" type="button">Rebind Audio</button>
+            <button id="sidecarCancel" type="button">Cancel Sidecar Pull</button>
+            <button id="sidecarResume" type="button">Resume Sidecar Pull</button>
+            <button id="applyOverride" type="button">Apply Override</button>
+          </div>
+        </details>
+
+        <div class="buttons sticky-actions">
+          <button id="save" type="button">Save Config</button>
+          <button id="start" type="button" class="primary">Start Simulation</button>
+          <button id="stop" type="button">Stop</button>
+          <button id="refreshStatus" type="button">Refresh Status</button>
         </div>
         <p id="statusBanner" class="status-banner" aria-live="polite">Ready.</p>
         <pre id="diagnosticsSummary"></pre>
@@ -89,20 +132,6 @@
         <div id="chat"></div>
       </section>
     </main>
-
-    <section id="wizardBackdrop" class="wizard-backdrop hidden">
-      <div class="wizard">
-        <h2>First-run setup required</h2>
-        <p>Complete this one-time setup to unlock simulation start.</p>
-        <ol>
-          <li>Review auto hardware tier recommendation and choose provider mode.</li>
-          <li>Run readiness checks until all blocking checks pass.</li>
-          <li>Accept EULA checkbox in control panel.</li>
-          <li>Click the button below to finish onboarding.</li>
-        </ol>
-        <button id="completeWizard">Complete onboarding</button>
-      </div>
-    </section>
 
     <script type="module" src="/app.js"></script>
   </body>
