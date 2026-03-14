@@ -92,6 +92,8 @@ export interface PromptPayload {
   providerConditioning: ProviderConditioning;
 }
 
+export type MessageSource = "real-inference" | "mock-inference" | "mock-audience" | "fallback-mock" | "unknown";
+
 export interface ChatMessage {
   id: string;
   username: string;
@@ -100,6 +102,7 @@ export interface ChatMessage {
   donationCents?: number;
   ttsText?: string;
   createdAt: string;
+  source?: MessageSource;
 }
 
 export interface QueueMessage {

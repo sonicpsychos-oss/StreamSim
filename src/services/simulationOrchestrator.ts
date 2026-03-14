@@ -81,20 +81,9 @@ export class SimulationOrchestrator {
     return { ...this.aiStatus };
   }
 
-  private setAiStatus(patch: Partial<{ state: "idle" | "running" | "degraded" | "error"; providerHealth: "unknown" | "ok" | "degraded"; fallbackMode: string | null; detail: string }>): void {
-    this.aiStatus = {
-      ...this.aiStatus,
-      ...patch,
-      updatedAt: new Date().toISOString()
-    };
-    this.emitMeta({ ai: this.getAiStatus() });
-  }
-
-  public getAiStatus(): { state: string; providerHealth: string; fallbackMode: string | null; detail: string; updatedAt: string } {
-    return { ...this.aiStatus };
-  }
-
-  private setAiStatus(patch: Partial<{ state: "idle" | "running" | "degraded" | "error"; providerHealth: "unknown" | "ok" | "degraded"; fallbackMode: string | null; detail: string }>): void {
+  private setAiStatus(
+    patch: Partial<{ state: "idle" | "running" | "degraded" | "error"; providerHealth: "unknown" | "ok" | "degraded"; fallbackMode: string | null; detail: string }>
+  ): void {
     this.aiStatus = {
       ...this.aiStatus,
       ...patch,
@@ -114,6 +103,10 @@ export class SimulationOrchestrator {
       return { phase: "retrying", message: `Cloud request retry ${attempt}/${maxRetries} after: ${reason}`, blocking: false };
     }
     return { phase: "degraded", message: `Cloud retries exhausted. Entering degraded recovery state: ${reason}`, blocking: false };
+  }
+
+  private tagMessages(messages: ChatMessage[], source: ChatMessage["source"]): ChatMessage[] {
+    return messages.map((message) => ({ ...message, source: message.source ?? source ?? "unknown" }));
   }
 
   private async loop(): Promise<void> {
@@ -169,7 +162,7 @@ export class SimulationOrchestrator {
           this.emitMeta({ warnings: [recovery.message], cloudRecovery: recovery.phase, blocked: recovery.blocking });
         });
         try {
-          messages = parseInferenceOutput(rawOutput);
+          messages = this.tagMessages(parseInferenceOutput(rawOutput), "real-inference");
         } catch (parseError) {
           const malformedClass = classifyMalformedOutput(rawOutput);
           const action = recommendedRecoveryAction(malformedClass);
@@ -177,7 +170,7 @@ export class SimulationOrchestrator {
 
           if ((action === "repair" || action === "regenerate") && config.safety.regenerateOnMalformedJson) {
             const retryOutput = await provider.generate(payload, config);
-            messages = parseInferenceOutput(retryOutput);
+            messages = this.tagMessages(parseInferenceOutput(retryOutput), "real-inference");
             this.emitMeta({ warnings: [`Malformed inference JSON recovered via ${action} fallback.`], blocked: false, malformedClass, action });
             this.obs.log("malformed_json_counter", { malformedClass, action, stage: "recovered" });
           } else {
@@ -193,9 +186,18 @@ export class SimulationOrchestrator {
 
         try {
           const fallbackOutput = await this.mockProvider.generate(payload, { ...config, inferenceMode: "mock-local" });
-          messages = parseInferenceOutput(fallbackOutput);
+          messages = this.tagMessages(parseInferenceOutput(fallbackOutput), "fallback-mock");
           this.setAiStatus({ state: "degraded", providerHealth: "degraded", fallbackMode: "mock-local", detail: `Primary inference failed; mock fallback active: ${reason}` });
-          this.emitMeta({ warnings: [reason, "Fallback engaged: mock-local"], dropped: false, blocked: false, cloudRecovery: "degraded" });
+          this.emitMeta({
+            warnings: [reason, "Fallback engaged: mock-local"],
+            dropped: false,
+            blocked: false,
+            cloudRecovery: "degraded",
+            source: "fallback-mock",
+            provider: config.inferenceMode,
+            timeoutMs: config.provider.requestTimeoutMs,
+            retries: config.provider.maxRetries
+          });
         } catch (fallbackError) {
           const fallbackReason = (fallbackError as Error).message;
           this.setAiStatus({ state: "error", providerHealth: "degraded", fallbackMode: null, detail: `Fallback failed: ${fallbackReason}` });
@@ -246,6 +248,7 @@ export class SimulationOrchestrator {
         timing,
         audioState: this.getAudioState(),
         inferenceMode: config.inferenceMode,
+        providerSource: safeMessages[0]?.source ?? "unknown",
         requestedMessageCount: payload.requestedMessageCount,
         latencyMs,
         captureLatencyMs,
@@ -260,7 +263,12 @@ export class SimulationOrchestrator {
           targetMs: 3000,
           withinTarget: latencyMs <= 3000
         },
-        ai: this.getAiStatus()
+        ai: this.getAiStatus(),
+        providerDiagnostics: {
+          timeoutMs: config.provider.requestTimeoutMs,
+          retries: config.provider.maxRetries,
+          fallbackActive: this.aiStatus.fallbackMode !== null
+        }
       });
     }
 

@@ -20,6 +20,9 @@ describe("runtime verification + monitoring UI wiring", () => {
     expect(appJs).toContain("liveMonitorEnabled?.addEventListener(\"change\"");
     expect(appJs).toContain('const liveVideo = document.getElementById("liveVideo")');
     expect(appJs).toContain('const voiceMeter = document.getElementById("voiceMeter")');
+    expect(appJs).toContain("getUserMedia({ audio: true, video: true })");
+    expect(appJs).toContain("function updateMonitorAvailability(verification)");
+    expect(appJs).toContain("source.className = \"source-tag\"");
   });
 
   it("keeps runtime verification and live monitor markup IDs in index.html", () => {
@@ -45,6 +48,7 @@ describe("runtime verification + monitoring UI wiring", () => {
     expect(stylesCss).toContain(".live-monitor-grid");
     expect(stylesCss).toContain("#liveVideo");
     expect(stylesCss).toContain("#voiceMeter");
+    expect(stylesCss).toContain(".source-tag");
   });
 
   it("keeps runtime defaults aligned for onboarding + hardware verification", () => {
