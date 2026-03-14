@@ -30,8 +30,8 @@ Legend:
 ### Audio / Input Intelligence
 - [x] Audio mutual exclusion for TTS playback (pause mic ingest)
 - [~] Voice/tone analysis loop (simulated tone values)
-- [ ] Real microphone capture integration
-- [ ] STT integration (Whisper.cpp/Deepgram or equivalent)
+- [~] Real microphone capture integration (direct ingest pipeline + pause control; native device drivers pending)
+- [~] STT integration (device/STT pause-resume wiring integrated; external engine adapters pending)
 - [~] Vision tagging pipeline (mock periodic tags with interval controls)
 
 ### Chat Behavior Controls
@@ -45,7 +45,7 @@ Legend:
 ### Phase 1: Initialization
 - [ ] Hardware profiling (VRAM/CPU/network)
 - [ ] Logic tiering recommendations (high-tier local / low-tier cloud)
-- [ ] One-click local sidecar orchestrator (install/start/pull model)
+- [~] One-click local sidecar orchestrator (install/start/pull model with lifecycle events; installer remains adapter-backed)
 - [ ] First-run setup wizard and readiness checks
 - [x] EULA gate before simulation starts
 
@@ -76,17 +76,17 @@ Legend:
 
 - [~] End-to-end latency target: 2–3s under expected load (benchmark harness + thresholds added)
 - [~] Jank-free rendering at high throughput with explicit delay/jitter thresholds
-- [ ] Resource budget profiling under OBS + game + local LLM
-- [ ] Reliability and auto-recovery from transient failures
+- [~] Resource budget profiling under OBS + game + local LLM (observability instrumentation added; realistic workload harness pending)
+- [~] Reliability and auto-recovery from transient failures (recovery instrumentation + fallback paths added; chaos tests pending)
 - [x] Structured pipeline observability logs
-- [ ] Privacy-by-default validation (no frame persistence, opt-in diagnostics)
+- [~] Privacy-by-default validation (no frame persistence validation and status diagnostics added; overlay automation remains)
 
 ## 5) Error Handling & Recovery Strategy
 
 ### Inference
 - [x] Retry/backoff for local endpoint failures
 - [~] Cloud retry with non-blocking warnings (UI warning surface still basic)
-- [ ] Malformed JSON repair + regenerate fallback
+- [x] Malformed JSON repair + regenerate fallback
 
 ### Audio
 - [ ] Device disconnect rebind
@@ -97,12 +97,12 @@ Legend:
 
 ### Sidecar
 - [x] Guided fallback from failed local sidecar startup to cloud
-- [~] Model pull progress/resume/cancel support (status hooks implemented; resume/cancel pending)
+- [x] Model pull progress/resume/cancel support (streamed status events + cancel/resume endpoints)
 
 ## 6) Security Controls
 
 - [x] Secrets in OS keychain (no plaintext keys)
-- [ ] Localhost-only sidecar defaults with explicit override
+- [x] Localhost-only sidecar defaults with explicit override
 - [x] Redacted diagnostic exports
 - [x] Local compliance event log implementation
 

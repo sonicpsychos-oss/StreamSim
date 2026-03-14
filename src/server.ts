@@ -62,6 +62,23 @@ app.post("/api/config", (req, res) => {
   res.json({ ok: true, config, onboardingComplete });
 });
 
+app.post("/api/security/override-localhost", (req, res) => {
+  const allow = Boolean(req.body?.allow);
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+
+  if (allow && !reason) {
+    res.status(400).json({ ok: false, error: "Reason is required for non-localhost sidecar override." });
+    return;
+  }
+
+  config = mergeConfig(config, { security: { allowNonLocalSidecarOverride: allow } });
+  configStore.save(config);
+  if (allow) {
+    complianceLogger.logEvent("localhost_override_enabled", { reason });
+  }
+  res.json({ ok: true, security: config.security });
+});
+
 app.post("/api/start", (_req, res) => {
   if (!config.compliance.eulaAccepted || !onboardingComplete) {
     res.status(400).json({ ok: false, error: "Onboarding + EULA acceptance is required before starting simulation." });
@@ -74,6 +91,16 @@ app.post("/api/start", (_req, res) => {
 
 app.post("/api/stop", (_req, res) => {
   orchestrator.stop();
+  res.json({ ok: true });
+});
+
+app.post("/api/sidecar/cancel", (_req, res) => {
+  orchestrator.cancelSidecarPull();
+  res.json({ ok: true });
+});
+
+app.post("/api/sidecar/resume", async (_req, res) => {
+  await orchestrator.resumeSidecarPull();
   res.json({ ok: true });
 });
 
@@ -91,7 +118,6 @@ app.post("/api/onboarding/complete", (_req, res) => {
   res.json({ ok: true, onboardingComplete });
 });
 
-
 app.post("/api/secrets/cloud-key", (req, res) => {
   const key = typeof req.body?.key === "string" ? req.body.key.trim() : "";
   if (!key) {
@@ -101,7 +127,7 @@ app.post("/api/secrets/cloud-key", (req, res) => {
 
   const stored = secretStore.setCloudApiKey(key);
   if (!stored) {
-    res.status(500).json({ ok: false, error: "Failed to store key in OS keychain." });
+    res.status(500).json({ ok: false, error: "Failed to store key in OS keychain. Check provider dependencies in diagnostics." });
     return;
   }
 
@@ -117,8 +143,18 @@ app.post("/api/capture/vision-sample", (req, res) => {
   sharedDeviceCapturePipeline.ingestVisionSample(req.body ?? {});
   res.json({ ok: true });
 });
+
 app.get("/api/status", (_req, res) => {
-  res.json({ config, audioState: orchestrator.getAudioState(), onboardingComplete, secrets: secretStore.diagnostics() });
+  res.json({
+    config,
+    audioState: orchestrator.getAudioState(),
+    onboardingComplete,
+    secrets: secretStore.diagnostics(),
+    privacy: {
+      framePersistence: false,
+      captureBuffer: sharedDeviceCapturePipeline.diagnostics()
+    }
+  });
 });
 
 app.get("/api/diagnostics", (_req, res) => {

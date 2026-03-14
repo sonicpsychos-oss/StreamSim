@@ -31,6 +31,7 @@ export interface ProviderConfig {
 
 export interface SecurityConfig {
   sidecarLocalhostOnly: boolean;
+  allowNonLocalSidecarOverride: boolean;
   allowDiagnostics: boolean;
 }
 

@@ -35,6 +35,7 @@ export const defaultConfig: SimulationConfig = {
   },
   security: {
     sidecarLocalhostOnly: true,
+    allowNonLocalSidecarOverride: false,
     allowDiagnostics: false
   }
 };
@@ -107,6 +108,7 @@ export function sanitizeConfig(input: unknown): SimulationConfig {
     },
     security: {
       sidecarLocalhostOnly: asBoolean(security.sidecarLocalhostOnly, defaultConfig.security.sidecarLocalhostOnly),
+      allowNonLocalSidecarOverride: asBoolean(security.allowNonLocalSidecarOverride, defaultConfig.security.allowNonLocalSidecarOverride),
       allowDiagnostics: asBoolean(security.allowDiagnostics, defaultConfig.security.allowDiagnostics)
     }
   };
