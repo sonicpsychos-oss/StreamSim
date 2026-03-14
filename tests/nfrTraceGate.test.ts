@@ -1,21 +1,23 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { evaluateTraceAgainstBaseline } from "../src/services/nfrTraceGate.js";
+import { evaluateTraceAgainstBaseline, TraceSummary } from "../src/services/nfrTraceGate.js";
 import { WorkloadRunner } from "../src/services/workloadRunner.js";
 
 describe("NFR trace baseline gate", () => {
-  it("compares low/mid/high profiles against baseline deltas", () => {
+  it("compares reproducible low/mid/high profiles against stored baseline deltas", () => {
     const runner = new WorkloadRunner();
+    const baselinePath = path.resolve(process.cwd(), "data/traces/nfr-profile-baseline.json");
+    const baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8")) as TraceSummary[];
 
-    const baselineLow = { profile: "low" as const, p95LatencyMs: 2600, avgCpuPressure: 0.8, avgGpuPressure: 0.75 };
-    const baselineMid = { profile: "mid" as const, p95LatencyMs: 2200, avgCpuPressure: 0.65, avgGpuPressure: 0.58 };
-    const baselineHigh = { profile: "high" as const, p95LatencyMs: 1800, avgCpuPressure: 0.5, avgGpuPressure: 0.42 };
+    const baselineByProfile = new Map(baseline.map((item) => [item.profile, item]));
 
-    const low = runner.run({ name: "obs_game_local_model", hardwareClass: "low", ticks: 40, disconnectRate: 0.05 });
-    const mid = runner.run({ name: "obs_game_local_model", hardwareClass: "mid", ticks: 40, disconnectRate: 0.05 });
-    const high = runner.run({ name: "obs_game_local_model", hardwareClass: "high", ticks: 40, disconnectRate: 0.05 });
+    const low = runner.captureTrace({ name: "obs_game_local_model", hardwareClass: "low", ticks: 60, disconnectRate: 0.05, seed: 1101 });
+    const mid = runner.captureTrace({ name: "obs_game_local_model", hardwareClass: "mid", ticks: 60, disconnectRate: 0.05, seed: 2202 });
+    const high = runner.captureTrace({ name: "obs_game_local_model", hardwareClass: "high", ticks: 60, disconnectRate: 0.05, seed: 3303 });
 
-    expect(evaluateTraceAgainstBaseline({ profile: "low", ...low }, baselineLow).pass).toBe(true);
-    expect(evaluateTraceAgainstBaseline({ profile: "mid", ...mid }, baselineMid).pass).toBe(true);
-    expect(evaluateTraceAgainstBaseline({ profile: "high", ...high }, baselineHigh).pass).toBe(true);
+    expect(evaluateTraceAgainstBaseline({ profile: "low", ...low }, baselineByProfile.get("low") as TraceSummary).pass).toBe(true);
+    expect(evaluateTraceAgainstBaseline({ profile: "mid", ...mid }, baselineByProfile.get("mid") as TraceSummary).pass).toBe(true);
+    expect(evaluateTraceAgainstBaseline({ profile: "high", ...high }, baselineByProfile.get("high") as TraceSummary).pass).toBe(true);
   });
 });

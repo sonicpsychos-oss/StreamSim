@@ -14,6 +14,20 @@ export interface CaptureConfig {
 export interface SafetyConfig {
   dropOnParseFailure: boolean;
   regenerateOnMalformedJson: boolean;
+  dropPolicy: "drop" | "censor";
+}
+
+export interface PersonaCalibration {
+  positivity: number;
+  sarcasm: number;
+  contrarianism: number;
+}
+
+export interface ProviderConditioning {
+  providerClass: "mock" | "local" | "cloud";
+  expressiveness: number;
+  volatility: number;
+  policyStrictness: number;
 }
 
 export interface ComplianceConfig {
@@ -72,6 +86,8 @@ export interface PromptPayload {
   viewerCount: number;
   context: StreamContext;
   requestedMessageCount: number;
+  personaCalibration: PersonaCalibration;
+  providerConditioning: ProviderConditioning;
 }
 
 export interface ChatMessage {
@@ -82,6 +98,32 @@ export interface ChatMessage {
   donationCents?: number;
   ttsText?: string;
   createdAt: string;
+}
+
+export interface QueueMessage {
+  id: string;
+  queueVersion: "v1";
+  createdAt: string;
+  channel: "chat" | "donation" | "system";
+  author: {
+    handle: string;
+    persona: PersonaMode;
+    bias: "agree" | "disagree" | "neutral";
+  };
+  payload: {
+    text: string;
+    emotes: string[];
+    donationCents?: number;
+    ttsText?: string;
+  };
+  moderation: {
+    safetyAction: "pass" | "drop" | "censor";
+    droppedTerms: string[];
+  };
+  render: {
+    priority: number;
+    ttlMs: number;
+  };
 }
 
 export type RetryProgressHook = (attempt: number, reason: string) => void;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applySafetyFilter } from "../src/core/safetyFilter.js";
+import { applySafetyPolicy } from "../src/core/safetyFilter.js";
 import { defaultConfig } from "../src/config/runtimeConfig.js";
 import { SpoolingEngine } from "../src/services/spoolingEngine.js";
 
@@ -52,8 +52,9 @@ describe("Safety Filter", () => {
       createdAt: new Date().toISOString()
     };
 
-    const result = applySafetyFilter([safe, unsafe]);
-    expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("1");
+    const result = applySafetyPolicy([safe, unsafe], defaultConfig);
+    expect(result.safeMessages).toHaveLength(1);
+    expect(result.safeMessages[0].id).toBe("1");
+    expect(result.droppedCount).toBe(1);
   });
 });

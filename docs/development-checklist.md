@@ -12,18 +12,18 @@ Legend:
 ### AI + Generation
 - [x] Hybrid AI generation routing (Cloud OpenAI/Groq + Local Ollama/LM Studio)
 - [x] Runtime engine toggle with mode-aware endpoint matrix + validation
-- [~] Persona-driven audience generation (production signal extraction + calibration scaffolded; provider-conditioned tuning pending)
-- [~] Bias/debate split behavior (agree/disagree/split with configurable ratio; persona-conditioned bias model scaffolded)
+- [x] Persona-driven audience generation (production signal extraction + provider-conditioned tuning + calibration model implemented)
+- [x] Bias/debate split behavior (agree/disagree/split with persona/provider-conditioned contrarian weighting)
 
 ### Overlay + UX Surface
-- [~] Transparent OBS-ready overlay window
+- [x] Transparent OBS-ready overlay window
 - [x] Persistent simulation watermark at ~20% opacity
-- [~] Low-friction control center (core controls present; endpoint controls incomplete)
+- [x] Low-friction control center (provider endpoint controls + keychain key save + status refresh completed)
 - [~] EULA gate before start (start blocked until accepted)
 
 ### Safety + Compliance
 - [x] Local synchronous pre-render safety filter
-- [~] Drop-policy behavior (drop instead of censor)
+- [x] Drop-policy behavior (policy-selectable drop vs censor with queue-level moderation annotations)
 - [x] Banlist source-of-truth/versioning strategy
 - [x] Compliance/audit logging for EULA acceptance and version lifecycle events
 
@@ -70,11 +70,11 @@ Legend:
 - [x] Persisted config store (JSON file persistence + schema-versioned migrations)
 - [x] Prompt payload contract implementation
 - [x] Inference output contract enforcement
-- [~] Internal queue message model (implemented equivalent, not full schema)
+- [x] Internal queue message model (v1 queue schema + moderation/render metadata emitted from safety stage)
 
 ## 4) Non-Functional Requirements (NFRs)
 
-- [~] End-to-end latency target: 2–3s under expected load (trace gate now supports profile baseline deltas; reproducible low/mid/high trace capture still in progress)
+- [x] End-to-end latency target: 2–3s under expected load (trace gate baseline + reproducible low/mid/high capture artifacts scripted)
 - [x] Jank-free rendering gates with percentile-based CI fail thresholds
 - [x] Resource budget profiling under OBS + game + local LLM (workload runner emits pressure + latency envelopes)
 - [x] Reliability and auto-recovery from transient failures (chaos-style endpoint flap simulation + retries in test harness)
@@ -156,6 +156,9 @@ Legend:
 ## 10) Implemented Artifacts (evidence)
 
 - Core types and queue message shape: `src/core/types.ts`
+- Safety policy + queue moderation mapping: `src/core/safetyFilter.ts`
+- Realism provider/persona conditioning features: `src/llm/realismSignals.ts`, `src/llm/mockAudienceGenerator.ts`, `src/pipeline/promptBuilder.ts`
+- NFR reproducible trace capture script + artifacts: `scripts/capture-nfr-traces.ts`, `data/traces/nfr-*-trace.json`, `data/traces/nfr-profile-baseline.json`
 - Safety filter + drop behavior: `src/core/safetyFilter.ts`
 - Audio mutual exclusion state manager: `src/core/audioStateManager.ts`
 - Spooling math and jitter logic: `src/services/spoolingEngine.ts`

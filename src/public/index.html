@@ -43,7 +43,15 @@
           <label>Local model <input id="localModel" type="text" value="llama3.1:8b-instruct-q4_K_M" /></label>
           <label>Cloud endpoint <input id="cloudEndpoint" type="text" value="https://api.openai.com/v1/chat/completions" /></label>
           <label>Cloud model <input id="cloudModel" type="text" value="gpt-4o-mini" /></label>
+          <label>Request timeout ms <input id="requestTimeoutMs" type="number" min="1000" max="30000" value="7000" /></label>
           <label>Max retries <input id="maxRetries" type="number" min="0" max="5" value="2" /></label>
+          <label>Safety drop policy
+            <select id="dropPolicy">
+              <option value="drop">Drop flagged content</option>
+              <option value="censor">Censor flagged content</option>
+            </select>
+          </label>
+          <label>Cloud API key <input id="cloudApiKey" type="password" placeholder="sk-..." /></label>
           <label><input id="slowMode" type="checkbox" /> Slow Mode</label>
           <label><input id="emoteOnly" type="checkbox" /> Emote-Only</label>
           <label><input id="ttsEnabled" type="checkbox" checked /> TTS Enabled</label>
@@ -66,13 +74,15 @@
           <button id="sidecarResume">Resume Sidecar Pull</button>
           <button id="runReadiness">Run Readiness</button>
           <button id="applyOverride">Apply Override</button>
+          <button id="saveCloudKey">Save Cloud Key</button>
+          <button id="refreshStatus">Refresh Status</button>
         </div>
         <pre id="diagnosticsSummary"></pre>
         <ul id="readinessList"></ul>
         <pre id="meta"></pre>
       </section>
 
-      <section class="panel overlay" id="overlay">
+      <section class="panel overlay transparent-ready" id="overlay">
         <div class="watermark">Powered by StreamSim</div>
         <h2>Overlay Preview</h2>
         <div id="chat"></div>

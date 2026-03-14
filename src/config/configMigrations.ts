@@ -1,7 +1,7 @@
 import { SimulationConfig } from "../core/types.js";
 import { defaultConfig, sanitizeConfig } from "./runtimeConfig.js";
 
-export const CURRENT_CONFIG_SCHEMA_VERSION = 2;
+export const CURRENT_CONFIG_SCHEMA_VERSION = 3;
 
 interface PersistedEnvelope {
   schemaVersion?: unknown;
@@ -24,8 +24,21 @@ function migrateV1toV2(input: Record<string, unknown>): Record<string, unknown> 
   };
 }
 
+
+function migrateV2toV3(input: Record<string, unknown>): Record<string, unknown> {
+  const safety = (input.safety ?? {}) as Record<string, unknown>;
+  return {
+    ...input,
+    safety: {
+      ...safety,
+      dropPolicy: safety.dropPolicy === "censor" || safety.dropPolicy === "drop" ? safety.dropPolicy : defaultConfig.safety.dropPolicy
+    }
+  };
+}
+
 const migrationRegistry: Record<number, MigrationFn> = {
-  1: migrateV1toV2
+  1: migrateV1toV2,
+  2: migrateV2toV3
 };
 
 function normalizeVersion(version: unknown): number {

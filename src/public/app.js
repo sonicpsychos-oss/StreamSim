@@ -15,7 +15,10 @@ const controls = {
   localModel: document.getElementById("localModel"),
   cloudEndpoint: document.getElementById("cloudEndpoint"),
   cloudModel: document.getElementById("cloudModel"),
+  requestTimeoutMs: document.getElementById("requestTimeoutMs"),
   maxRetries: document.getElementById("maxRetries"),
+  dropPolicy: document.getElementById("dropPolicy"),
+  cloudApiKey: document.getElementById("cloudApiKey"),
   slowMode: document.getElementById("slowMode"),
   emoteOnly: document.getElementById("emoteOnly"),
   ttsEnabled: document.getElementById("ttsEnabled"),
@@ -53,7 +56,11 @@ function getPayload() {
       localModel: controls.localModel.value,
       cloudEndpoint: controls.cloudEndpoint.value,
       cloudModel: controls.cloudModel.value,
+      requestTimeoutMs: Number(controls.requestTimeoutMs.value),
       maxRetries: Number(controls.maxRetries.value)
+    },
+    safety: {
+      dropPolicy: controls.dropPolicy.value
     },
     compliance: {
       eulaAccepted: controls.eulaAccepted.checked
@@ -76,7 +83,9 @@ function hydrateControls(config) {
   controls.localModel.value = config.provider.localModel;
   controls.cloudEndpoint.value = config.provider.cloudEndpoint;
   controls.cloudModel.value = config.provider.cloudModel;
+  controls.requestTimeoutMs.value = config.provider.requestTimeoutMs;
   controls.maxRetries.value = config.provider.maxRetries;
+  controls.dropPolicy.value = config.safety.dropPolicy;
   controls.slowMode.checked = config.slowMode;
   controls.emoteOnly.checked = config.emoteOnly;
   controls.ttsEnabled.checked = config.ttsEnabled;
@@ -150,6 +159,22 @@ document.getElementById("runReadiness").addEventListener("click", async () => {
   const payload = await response.json();
   renderReadiness(payload.readiness);
 });
+document.getElementById("saveCloudKey").addEventListener("click", async () => {
+  try {
+    await post("/api/secrets/cloud-key", { key: controls.cloudApiKey.value });
+    metaEl.textContent = "Cloud API key saved to keychain.";
+    controls.cloudApiKey.value = "";
+  } catch (error) {
+    metaEl.textContent = `Cloud key save failed: ${error.message}`;
+  }
+});
+document.getElementById("refreshStatus").addEventListener("click", async () => {
+  const response = await fetch("/api/status");
+  const payload = await response.json();
+  renderReadiness(payload.readiness);
+  renderDiagnostics(payload);
+  hydrateControls(payload.config);
+});
 document.getElementById("applyOverride").addEventListener("click", async () => {
   try {
     await post("/api/security/override-localhost", {
@@ -185,6 +210,10 @@ events.addEventListener("messages", (event) => {
 
 events.addEventListener("meta", (event) => {
   const meta = JSON.parse(event.data);
+  if (meta?.queueMessages) {
+    meta.queuePreview = meta.queueMessages.slice(0, 3);
+    delete meta.queueMessages;
+  }
   const warningLines = [meta.warning, ...(meta.warnings ?? [])].filter(Boolean);
   const recovery = meta.cloudRecovery ? `Recovery=${meta.cloudRecovery}` : "";
   const banner = warningLines.length ? `⚠️ ${warningLines.join(" | ")} ${recovery}`.trim() + "\n" : "";

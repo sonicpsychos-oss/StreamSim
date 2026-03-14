@@ -1,6 +1,6 @@
 import { sharedSttEngine } from "../capture/sttEngine.js";
 import { AudioStateManager } from "../core/audioStateManager.js";
-import { applySafetyFilter } from "../core/safetyFilter.js";
+import { applySafetyPolicy } from "../core/safetyFilter.js";
 import { ChatMessage, SimulationConfig } from "../core/types.js";
 import { createInferenceProvider } from "../llm/providerFactory.js";
 import { classifyMalformedOutput, parseInferenceOutput, recommendedRecoveryAction } from "../pipeline/outputParser.js";
@@ -145,7 +145,8 @@ export class SimulationOrchestrator {
       }
       const inferenceLatencyMs = Date.now() - inferenceStarted;
 
-      const safeMessages = applySafetyFilter(messages);
+      const safety = applySafetyPolicy(messages, config);
+      const safeMessages = safety.safeMessages;
 
       safeMessages.forEach((msg) => {
         if (msg.ttsText) {
@@ -188,6 +189,12 @@ export class SimulationOrchestrator {
         latencyMs,
         captureLatencyMs,
         inferenceLatencyMs,
+        safety: {
+          dropPolicy: config.safety.dropPolicy,
+          droppedCount: safety.droppedCount,
+          queueSize: safety.queueMessages.length
+        },
+        queueMessages: safety.queueMessages,
         slo: {
           targetMs: 3000,
           withinTarget: latencyMs <= 3000

@@ -11,7 +11,7 @@ export class MockInferenceProvider implements InferenceProvider {
   }
 
   public async generate(payload: PromptPayload, config: SimulationConfig, _onRetryProgress?: RetryProgressHook): Promise<string> {
-    const messages = generateAudienceBatch(config, payload.context.tone, payload.context).slice(0, payload.requestedMessageCount);
+    const messages = generateAudienceBatch(config, payload.context.tone, payload.context, payload.providerConditioning).slice(0, payload.requestedMessageCount);
 
     const serialized = JSON.stringify({ messages });
 
