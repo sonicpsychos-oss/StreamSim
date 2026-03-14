@@ -170,8 +170,8 @@ To make the chat feel real, we replace the linear `1000ms / Rate` formula with a
 
 ### 6.1. The Base Math (Engagement Decay)
 In reality, a stream with 100,000 viewers does not have 1,000x the chat speed of a 100-viewer stream. Engagement rate drops as the room grows.
-* **Formula:** `Target_MPS (Messages Per Second) = log10(Viewer_Count) * Engagement_Multiplier`
-* *Example:* 100 viewers ≈ 2 MPS | 10,000 viewers ≈ 20 MPS.
+* **Formula:** `Target_MPS (Messages Per Second) = (sqrt(Viewer_Count) / 5) * Engagement_Multiplier`
+* *Example (Engagement_Multiplier = 1.0):* 100 viewers ≈ 2 MPS | 10,000 viewers ≈ 20 MPS.
 
 ### 6.2. Stochastic Timing (The Jitter)
 Instead of a message every 50ms, the Spooler uses a **Random Variance Window**:
@@ -184,7 +184,7 @@ The Spooler interacts with the **Audio Analysis Module**:
 * **Yelling/Hype Streamer:** Spooler increases `Engagement_Multiplier` by 200% and reduces the Jitter window, creating a "wall of text" effect.
 
 ### 6.4. Slow Mode & Emote-Only Logic
-* **Slow Mode:** When enabled, the Spooler ignores the calculated `Target_MPS` and enforces a hard `MAX_MPS = 0.5` (1 message every 2 seconds).
+* **Slow Mode:** When enabled, the Spooler ignores the calculated `Target_MPS` and enforces a hard `MAX_MPS = 0.333` (1 message every 3 seconds).
 * **Emote-Only:** A middleware filter in the queue.
 
 ```javascript
