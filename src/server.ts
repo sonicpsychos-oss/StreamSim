@@ -26,6 +26,7 @@ const configStore = new ConfigStore();
 const complianceLogger = new ComplianceLogger();
 const secretStore = new SecretStore();
 let config: SimulationConfig = configStore.load();
+sharedSttEngine.configure(config.capture.sttProvider, config.capture.sttEndpoint);
 let onboardingComplete = config.compliance.eulaAccepted;
 let bootProfile: Awaited<ReturnType<typeof collectHardwareProfile>> | null = null;
 let tierRecommendation: ReturnType<typeof recommendTier> | null = null;
@@ -74,6 +75,7 @@ app.post("/api/config", (req, res) => {
     compliance: complianceUpdate.compliance
   };
   configStore.save(config);
+  sharedSttEngine.configure(config.capture.sttProvider, config.capture.sttEndpoint);
 
   if (complianceUpdate.versionChanged) {
     complianceLogger.logEvent("eula_version_changed", {
@@ -109,6 +111,7 @@ app.post("/api/security/override-localhost", (req, res) => {
 
   config = mergeConfig(config, { security: { allowNonLocalSidecarOverride: allow } });
   configStore.save(config);
+  sharedSttEngine.configure(config.capture.sttProvider, config.capture.sttEndpoint);
   if (allow) {
     complianceLogger.logEvent("localhost_override_enabled", { reason });
   }
@@ -227,6 +230,13 @@ app.get("/api/status", (_req, res) => {
     config,
     audioState: orchestrator.getAudioState(),
     ai: orchestrator.getAiStatus(),
+    stt: {
+      configuredProvider: config.capture.sttProvider,
+      engineProvider: sharedSttEngine.state().provider,
+      deepgramKeyPresent: Boolean(process.env.STREAMSIM_DEEPGRAM_API_KEY),
+      endpoint: config.capture.sttEndpoint,
+      localConfigured: config.capture.sttProvider === "local-whisper"
+    },
     onboardingComplete,
     bootDiagnostics: {
       profile: bootProfile,

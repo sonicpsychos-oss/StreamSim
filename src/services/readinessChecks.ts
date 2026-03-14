@@ -35,6 +35,25 @@ function checkDevice(config: SimulationConfig): ReadinessCheck {
     errors.push("TTS enabled with zero retries may produce dropouts.");
   }
 
+  if (config.capture.useRealCapture && config.capture.sttProvider === "deepgram" && !process.env.STREAMSIM_DEEPGRAM_API_KEY) {
+    errors.push("Deepgram STT selected but STREAMSIM_DEEPGRAM_API_KEY is missing.");
+  }
+
+  if (config.capture.useRealCapture && (config.capture.sttProvider === "whispercpp" || config.capture.sttProvider === "local-whisper") && !config.capture.sttEndpoint.startsWith("http")) {
+    errors.push("Whisper STT endpoint must be a valid URL.");
+  }
+
+  if (config.capture.useRealCapture && config.capture.sttProvider === "local-whisper") {
+    try {
+      const parsed = new URL(config.capture.sttEndpoint);
+      if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
+        errors.push("Local Whisper STT must point to localhost/127.0.0.1 endpoint.");
+      }
+    } catch {
+      errors.push("Local Whisper STT endpoint must be a valid URL.");
+    }
+  }
+
   return {
     id: "device",
     ok: errors.length === 0,

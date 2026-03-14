@@ -7,6 +7,7 @@ const runtimeSummary = document.getElementById("runtimeSummary");
 const deviceChecks = document.getElementById("deviceChecks");
 const aiHealthSummary = document.getElementById("aiHealthSummary");
 const ttsHealthSummary = document.getElementById("ttsHealthSummary");
+const sttHealthSummary = document.getElementById("sttHealthSummary");
 const liveMonitorEnabled = document.getElementById("liveMonitorEnabled");
 const liveMonitorStatus = document.getElementById("liveMonitorStatus");
 const liveVideo = document.getElementById("liveVideo");
@@ -39,6 +40,7 @@ const controls = {
   visionEnabled: document.getElementById("visionEnabled"),
   useRealCapture: document.getElementById("useRealCapture"),
   visionIntervalSec: document.getElementById("visionIntervalSec"),
+  sttProvider: document.getElementById("sttProvider"),
   sttEndpoint: document.getElementById("sttEndpoint"),
   visionEndpoint: document.getElementById("visionEndpoint"),
   allowDiagnostics: document.getElementById("allowDiagnostics"),
@@ -173,6 +175,7 @@ function getPayload() {
       visionEnabled: controls.visionEnabled.checked,
       useRealCapture: controls.useRealCapture.checked,
       visionIntervalSec: Number(controls.visionIntervalSec.value),
+      sttProvider: controls.sttProvider.value,
       sttEndpoint: controls.sttEndpoint.value,
       visionEndpoint: controls.visionEndpoint.value
     },
@@ -218,6 +221,7 @@ function hydrateControls(config) {
   controls.visionEnabled.checked = config.capture.visionEnabled;
   controls.useRealCapture.checked = config.capture.useRealCapture;
   controls.visionIntervalSec.value = config.capture.visionIntervalSec;
+  controls.sttProvider.value = config.capture.sttProvider ?? "local-whisper";
   controls.sttEndpoint.value = config.capture.sttEndpoint;
   controls.visionEndpoint.value = config.capture.visionEndpoint;
   controls.allowDiagnostics.checked = config.security.allowDiagnostics;
@@ -273,6 +277,7 @@ function summarizeRuntime(payload) {
   const localMode = mode === "ollama" || mode === "lmstudio" || mode === "mock-local";
   const captureMode = payload.config.capture.useRealCapture ? "real capture endpoints" : "simulated capture";
   const sttMode = payload.config.capture.useRealCapture ? "expects microphone input from configured STT endpoint" : "mock/no verified mic pipeline";
+  const sttProvider = payload.config.capture.sttProvider ?? "mock";
   const ttsMode = payload.config.ttsMode ?? "local";
 
   runtimeSummary.textContent = [
@@ -281,6 +286,7 @@ function summarizeRuntime(payload) {
     `AI responses: ${usingMock ? "disabled (mock generator active)" : "enabled"}`,
     `Capture mode: ${captureMode}`,
     `STT path: ${sttMode}`,
+    `STT provider: ${sttProvider}`,
     `TTS path: ${payload.config.ttsEnabled ? ttsMode : "off"}`
   ].join("\n");
 }
@@ -318,6 +324,45 @@ function summarizeTtsHealth(payload) {
     `TTS mode: ${mode}`,
     `TTS ready: ${ready ? "yes" : "no"}`,
     `Detail: ${reason}`
+  ].join("\n");
+}
+
+function summarizeSttHealth(payload) {
+  if (!sttHealthSummary) return;
+  const capture = payload.config?.capture ?? {};
+  const provider = capture.sttProvider ?? "mock";
+  const useRealCapture = Boolean(capture.useRealCapture);
+  const endpoint = capture.sttEndpoint ?? "n/a";
+  const sttRuntime = payload.stt ?? {};
+
+  let ready = true;
+  let detail = "ready";
+  if (!useRealCapture) {
+    detail = "simulated capture mode (real STT optional)";
+  } else if (provider === "deepgram" && !sttRuntime.deepgramKeyPresent) {
+    ready = false;
+    detail = "Deepgram selected but STREAMSIM_DEEPGRAM_API_KEY is missing";
+  } else if ((provider === "whispercpp" || provider === "local-whisper") && !endpoint.startsWith("http")) {
+    ready = false;
+    detail = "Whisper endpoint must be a valid URL";
+  } else if (provider === "local-whisper") {
+    try {
+      const parsed = new URL(endpoint);
+      if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
+        ready = false;
+        detail = "Local Whisper must point to localhost/127.0.0.1 endpoint";
+      }
+    } catch {
+      ready = false;
+      detail = "Local Whisper endpoint must be a valid URL";
+    }
+  }
+
+  sttHealthSummary.textContent = [
+    `STT provider: ${provider}`,
+    `Capture mode: ${useRealCapture ? "real" : "simulated"}`,
+    `STT ready: ${ready ? "yes" : "no"}`,
+    `Detail: ${detail}`
   ].join("\n");
 }
 
@@ -512,6 +557,7 @@ refreshStatusBtn.addEventListener("click", async () => {
   summarizeRuntime(payload);
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
+  summarizeSttHealth(payload);
 });
 
 verifyDevicesBtn.addEventListener("click", async () => {
@@ -564,6 +610,7 @@ completeWizardBtn.addEventListener("click", async () => {
   summarizeRuntime(status);
   summarizeAiHealth(status);
   summarizeTtsHealth(status);
+  summarizeSttHealth(status);
 });
 
 
@@ -649,6 +696,7 @@ async function boot() {
   summarizeRuntime(payload);
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
+  summarizeSttHealth(payload);
 }
 
 void boot();

@@ -72,8 +72,22 @@ export class SimulationOrchestrator {
     this.emitMeta({ sidecar: status });
   }
 
-  public getAudioState(): { isTtsPlaying: boolean; micListening: boolean; sttPaused: boolean; ttsAgeMs: number } {
-    return { ...this.audioState.getState(), sttPaused: sharedSttEngine.state().paused };
+  public getAudioState(): { isTtsPlaying: boolean; micListening: boolean; sttPaused: boolean; sttProvider: string; ttsAgeMs: number } {
+    const sttState = sharedSttEngine.state();
+    return { ...this.audioState.getState(), sttPaused: sttState.paused, sttProvider: sttState.provider };
+  }
+
+  public getAiStatus(): { state: string; providerHealth: string; fallbackMode: string | null; detail: string; updatedAt: string } {
+    return { ...this.aiStatus };
+  }
+
+  private setAiStatus(patch: Partial<{ state: "idle" | "running" | "degraded" | "error"; providerHealth: "unknown" | "ok" | "degraded"; fallbackMode: string | null; detail: string }>): void {
+    this.aiStatus = {
+      ...this.aiStatus,
+      ...patch,
+      updatedAt: new Date().toISOString()
+    };
+    this.emitMeta({ ai: this.getAiStatus() });
   }
 
   public getAiStatus(): { state: string; providerHealth: string; fallbackMode: string | null; detail: string; updatedAt: string } {
