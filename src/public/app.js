@@ -1,6 +1,5 @@
 const chatEl = document.getElementById("chat");
 const metaEl = document.getElementById("meta");
-const wizardBackdrop = document.getElementById("wizardBackdrop");
 const readinessList = document.getElementById("readinessList");
 const diagnosticsSummary = document.getElementById("diagnosticsSummary");
 const statusBanner = document.getElementById("statusBanner");
@@ -126,8 +125,24 @@ function hydrateControls(config) {
   controls.allowDiagnostics.checked = config.security.allowDiagnostics;
   controls.allowNonLocalSidecarOverride.checked = config.security.allowNonLocalSidecarOverride;
   controls.eulaAccepted.checked = config.compliance.eulaAccepted;
+  if (wizardEulaAccepted) wizardEulaAccepted.checked = config.compliance.eulaAccepted;
 }
 
+
+function renderOnboardingState(payload) {
+  const onboardingDone = Boolean(payload?.onboardingComplete);
+  if (onboardingPill) {
+    onboardingPill.textContent = onboardingDone ? "Complete" : "Pending";
+    onboardingPill.classList.toggle("complete", onboardingDone);
+    onboardingPill.classList.toggle("pending", !onboardingDone);
+  }
+}
+
+function syncEulaCheckboxes(source) {
+  const checked = Boolean(source?.checked);
+  controls.eulaAccepted.checked = checked;
+  if (wizardEulaAccepted) wizardEulaAccepted.checked = checked;
+}
 function renderReadiness(readiness) {
   readinessList.innerHTML = "";
   if (!readiness?.checks?.length) {
@@ -177,6 +192,8 @@ const saveCloudKeyBtn = document.getElementById("saveCloudKey");
 const refreshStatusBtn = document.getElementById("refreshStatus");
 const applyOverrideBtn = document.getElementById("applyOverride");
 const completeWizardBtn = document.getElementById("completeWizard");
+const wizardEulaAccepted = document.getElementById("wizardEulaAccepted");
+const onboardingPill = document.getElementById("onboardingPill");
 
 saveBtn.addEventListener("click", async () => {
   const result = await runAction({
@@ -272,6 +289,7 @@ refreshStatusBtn.addEventListener("click", async () => {
   renderReadiness(payload.readiness);
   renderDiagnostics(payload);
   hydrateControls(payload.config);
+  renderOnboardingState(payload);
 });
 
 applyOverrideBtn.addEventListener("click", async () => {
@@ -288,15 +306,31 @@ applyOverrideBtn.addEventListener("click", async () => {
 });
 
 completeWizardBtn.addEventListener("click", async () => {
-  const payload = await runAction({
+  const onboardingPayload = await runAction({
     button: completeWizardBtn,
-    pendingText: "Completing onboarding...",
+    pendingText: "Saving compliance + completing onboarding...",
     successText: "Onboarding complete.",
-    onRun: () => post("/api/onboarding/complete")
+    onRun: async () => {
+      syncEulaCheckboxes(wizardEulaAccepted ?? controls.eulaAccepted);
+      await post("/api/config", getPayload());
+      return post("/api/onboarding/complete");
+    }
   });
-  if (!payload?.readiness) return;
-  renderReadiness(payload.readiness);
-  wizardBackdrop.classList.add("hidden");
+  if (!onboardingPayload?.readiness) return;
+  renderReadiness(onboardingPayload.readiness);
+  const status = await fetch("/api/status").then((response) => response.json());
+  hydrateControls(status.config);
+  renderDiagnostics(status);
+  renderOnboardingState(status);
+});
+
+
+controls.eulaAccepted?.addEventListener("change", () => {
+  syncEulaCheckboxes(controls.eulaAccepted);
+});
+
+wizardEulaAccepted?.addEventListener("change", () => {
+  syncEulaCheckboxes(wizardEulaAccepted);
 });
 
 const events = new EventSource("/api/events");
@@ -345,7 +379,7 @@ async function boot() {
   hydrateControls(payload.config);
   renderReadiness(payload.readiness);
   renderDiagnostics(payload);
-  if (!payload.onboardingComplete) wizardBackdrop.classList.remove("hidden");
+  renderOnboardingState(payload);
 }
 
 void boot();
