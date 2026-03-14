@@ -15,6 +15,7 @@ export const defaultConfig: SimulationConfig = {
     visionIntervalSec: 25,
     useRealCapture: false,
     sttEndpoint: "http://127.0.0.1:7778/stt",
+    sttProvider: "mock",
     visionEndpoint: "http://127.0.0.1:7778/vision-tags"
   },
   safety: {
@@ -88,6 +89,7 @@ export function sanitizeConfig(input: unknown): SimulationConfig {
       visionIntervalSec: Math.max(5, Math.min(120, Math.floor(asNumber(capture.visionIntervalSec, defaultConfig.capture.visionIntervalSec)))),
       useRealCapture: asBoolean(capture.useRealCapture, defaultConfig.capture.useRealCapture),
       sttEndpoint: asString(capture.sttEndpoint, defaultConfig.capture.sttEndpoint),
+      sttProvider: capture.sttProvider === "whispercpp" || capture.sttProvider === "deepgram" || capture.sttProvider === "mock" ? capture.sttProvider : defaultConfig.capture.sttProvider,
       visionEndpoint: asString(capture.visionEndpoint, defaultConfig.capture.visionEndpoint)
     },
     safety: {
