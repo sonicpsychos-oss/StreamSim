@@ -116,6 +116,53 @@ describe("hybrid routing and failover", () => {
     await server.close();
   });
 
+
+  it("surfaces OpenAI-style error payload + rate-limit headers", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
+    const server = await withTestServer((_req, res) => {
+      res.writeHead(429, {
+        "Content-Type": "application/json",
+        "retry-after": "2",
+        "x-ratelimit-remaining-requests": "0"
+      });
+      res.end(JSON.stringify({ error: { message: "rate limit exceeded", type: "rate_limit" } }));
+    });
+
+    const provider = new HybridInferenceProvider("openai");
+    const config = { ...defaultConfig, provider: { ...defaultConfig.provider, cloudEndpoint: server.url, cloudModel: "x", maxRetries: 0 } };
+    const payload = {
+      persona: "supportive" as const,
+      bias: "agree" as const,
+      emoteOnly: false,
+      viewerCount: 10,
+      requestedMessageCount: 1,
+      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+    };
+
+    await expect(provider.generate(payload, config)).rejects.toThrow(/429/);
+    await expect(provider.generate(payload, config)).rejects.toThrow(/retry_after=2/);
+    await server.close();
+  });
+
+  it("surfaces Groq timeout/network semantics with provider-specific context", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
+    const provider = new HybridInferenceProvider("groq");
+    const config = {
+      ...defaultConfig,
+      provider: { ...defaultConfig.provider, cloudEndpoint: "http://127.0.0.1:1/chat/completions", cloudModel: "x", requestTimeoutMs: 50, maxRetries: 0 }
+    };
+    const payload = {
+      persona: "supportive" as const,
+      bias: "agree" as const,
+      emoteOnly: false,
+      viewerCount: 10,
+      requestedMessageCount: 1,
+      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+    };
+
+    await expect(provider.generate(payload, config)).rejects.toThrow(/timeout\/network failure/i);
+  });
+
   it("routes openai/groq cloud requests with runtime mode switching", async () => {
     process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
     const server = await withTestServer(async (req, res) => {
