@@ -5,11 +5,6 @@ const diagnosticsSummary = document.getElementById("diagnosticsSummary");
 const statusBanner = document.getElementById("statusBanner");
 const runtimeSummary = document.getElementById("runtimeSummary");
 const deviceChecks = document.getElementById("deviceChecks");
-const liveMonitorEnabled = document.getElementById("liveMonitorEnabled");
-const liveMonitorPanel = document.getElementById("liveMonitorPanel");
-const liveMonitorStatus = document.getElementById("liveMonitorStatus");
-const cameraPreview = document.getElementById("cameraPreview");
-const voiceMeter = document.getElementById("voiceMeter");
 
 const controls = {
   viewerCount: document.getElementById("viewerCount"),
@@ -171,122 +166,6 @@ function renderDiagnostics(payload) {
   const tierText = recommendation ? `${recommendation.tier} → ${recommendation.inferenceMode} (${recommendation.reason})` : "pending";
   const network = profile ? `${profile.networkLatencyMs}ms` : "pending";
   diagnosticsSummary.textContent = `Tier: ${tierText}\nNetwork probe: ${network}\nBanlist: ${payload.banlist?.version ?? "n/a"} (${payload.banlist?.checksum ?? "n/a"})`;
-}
-
-let liveMonitorStream;
-let liveMonitorAudioContext;
-let liveMonitorAnalyser;
-let liveMonitorAnimationId;
-
-function stopLiveMonitor() {
-  if (liveMonitorAnimationId) {
-    cancelAnimationFrame(liveMonitorAnimationId);
-    liveMonitorAnimationId = undefined;
-  }
-
-  if (liveMonitorStream) {
-    liveMonitorStream.getTracks().forEach((track) => track.stop());
-    liveMonitorStream = undefined;
-  }
-
-  if (cameraPreview) cameraPreview.srcObject = null;
-  if (liveMonitorAudioContext) {
-    liveMonitorAudioContext.close().catch(() => undefined);
-    liveMonitorAudioContext = undefined;
-  }
-  liveMonitorAnalyser = undefined;
-
-  if (voiceMeter) {
-    const context = voiceMeter.getContext("2d");
-    if (context) {
-      context.clearRect(0, 0, voiceMeter.width, voiceMeter.height);
-      context.fillStyle = "#0b1220";
-      context.fillRect(0, 0, voiceMeter.width, voiceMeter.height);
-      context.fillStyle = "#64748b";
-      context.fillText("Voice meter inactive", 12, 34);
-    }
-  }
-
-  liveMonitorPanel?.classList.add("hidden");
-  if (liveMonitorStatus) liveMonitorStatus.textContent = "Live monitor is off.";
-}
-
-function drawVoiceMeter() {
-  if (!voiceMeter || !liveMonitorAnalyser) return;
-  const context = voiceMeter.getContext("2d");
-  if (!context) return;
-
-  const data = new Uint8Array(liveMonitorAnalyser.frequencyBinCount);
-  const render = () => {
-    if (!liveMonitorAnalyser) return;
-    liveMonitorAnalyser.getByteTimeDomainData(data);
-
-    let sum = 0;
-    for (let i = 0; i < data.length; i += 1) {
-      const sample = (data[i] - 128) / 128;
-      sum += sample * sample;
-    }
-    const rms = Math.sqrt(sum / data.length);
-    const normalized = Math.min(1, rms * 4.5);
-
-    context.clearRect(0, 0, voiceMeter.width, voiceMeter.height);
-    context.fillStyle = "#0b1220";
-    context.fillRect(0, 0, voiceMeter.width, voiceMeter.height);
-    context.fillStyle = "#1f2937";
-    context.fillRect(8, 16, voiceMeter.width - 16, 28);
-
-    const hue = 120 - Math.round(normalized * 95);
-    context.fillStyle = `hsl(${hue}, 85%, 55%)`;
-    context.fillRect(8, 16, Math.max(10, (voiceMeter.width - 16) * normalized), 28);
-
-    context.strokeStyle = "#334155";
-    context.strokeRect(8, 16, voiceMeter.width - 16, 28);
-    context.fillStyle = "#d1d5db";
-    context.font = "12px Inter, sans-serif";
-    context.fillText(`Voice level ${(normalized * 100).toFixed(0)}%`, 12, 54);
-
-    liveMonitorAnimationId = requestAnimationFrame(render);
-  };
-
-  render();
-}
-
-async function startLiveMonitor() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error("Browser does not support camera/microphone capture.");
-  }
-
-  stopLiveMonitor();
-
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      noiseSuppression: true,
-      echoCancellation: true,
-      autoGainControl: true
-    },
-    video: {
-      width: { ideal: 640 },
-      height: { ideal: 360 }
-    }
-  });
-
-  liveMonitorStream = stream;
-  if (cameraPreview) {
-    cameraPreview.srcObject = stream;
-  }
-
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (AudioContextClass) {
-    liveMonitorAudioContext = new AudioContextClass();
-    const source = liveMonitorAudioContext.createMediaStreamSource(stream);
-    liveMonitorAnalyser = liveMonitorAudioContext.createAnalyser();
-    liveMonitorAnalyser.fftSize = 2048;
-    source.connect(liveMonitorAnalyser);
-    drawVoiceMeter();
-  }
-
-  liveMonitorPanel?.classList.remove("hidden");
-  if (liveMonitorStatus) liveMonitorStatus.textContent = "Live monitor active: camera feed + voice meter running.";
 }
 
 function summarizeRuntime(payload) {
