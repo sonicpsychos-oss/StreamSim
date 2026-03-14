@@ -50,15 +50,15 @@ Legend:
 - [x] EULA gate before simulation starts
 
 ### Phase 2: Capture and Context
-- [ ] Live mic frame capture and buffering
-- [ ] STT transcript accumulation (last N seconds)
+- [x] Live mic frame capture and buffering
+- [x] STT transcript accumulation (last N seconds)
 - [~] Tone signal available for pacing (currently mocked)
-- [~] Vision capture every configured interval (mock scheduler implemented)
+- [x] Vision capture every configured interval (device pipeline-backed scheduler)
 - [x] Context assembler for transcript + tone + vision tags (mock capture sources)
 
 ### Phase 3: Generation Pipeline
 - [x] Prompt payload builder
-- [~] Provider adapters for local/cloud inference (mock providers wired through adapter interface)
+- [x] Provider adapters for local/cloud inference (verified payload routing + failover)
 - [x] Strict output parsing + schema validation + repair attempt
 - [x] Safety filter pre-render stage
 - [x] Virtualized queue feed into renderer
@@ -74,18 +74,18 @@ Legend:
 
 ## 4) Non-Functional Requirements (NFRs)
 
-- [ ] End-to-end latency target: 2–3s under expected load (measured)
-- [ ] Jank-free rendering at high throughput with explicit virtualization strategy
+- [~] End-to-end latency target: 2–3s under expected load (benchmark harness + thresholds added)
+- [~] Jank-free rendering at high throughput with explicit delay/jitter thresholds
 - [ ] Resource budget profiling under OBS + game + local LLM
 - [ ] Reliability and auto-recovery from transient failures
-- [ ] Structured pipeline observability logs
+- [x] Structured pipeline observability logs
 - [ ] Privacy-by-default validation (no frame persistence, opt-in diagnostics)
 
 ## 5) Error Handling & Recovery Strategy
 
 ### Inference
-- [ ] Retry/backoff for local endpoint failures
-- [ ] Cloud timeout/rate-limit retry + non-blocking warning UI
+- [x] Retry/backoff for local endpoint failures
+- [~] Cloud retry with non-blocking warnings (UI warning surface still basic)
 - [ ] Malformed JSON repair + regenerate fallback
 
 ### Audio
@@ -96,21 +96,21 @@ Legend:
 - [ ] Conservative fallback mode when dictionary fails (emotes/system only)
 
 ### Sidecar
-- [ ] Guided fallback from failed local sidecar startup to cloud
-- [ ] Model pull progress/resume/cancel support
+- [x] Guided fallback from failed local sidecar startup to cloud
+- [~] Model pull progress/resume/cancel support (status hooks implemented; resume/cancel pending)
 
 ## 6) Security Controls
 
-- [ ] Secrets in OS keychain (no plaintext keys)
+- [x] Secrets in OS keychain (no plaintext keys)
 - [ ] Localhost-only sidecar defaults with explicit override
-- [ ] Redacted diagnostic exports
-- [ ] Local compliance event log implementation
+- [x] Redacted diagnostic exports
+- [x] Local compliance event log implementation
 
 ## 7) Acceptance Test Matrix Coverage
 
 ### Hybrid Routing
-- [ ] Local mode routes to Ollama endpoint when available
-- [ ] Seamless switch to cloud mode without restart
+- [x] Local mode routes to Ollama endpoint when available
+- [x] Seamless switch to cloud mode without restart
 
 ### Safety Filter
 - [x] Banned content dropped pre-render
@@ -130,20 +130,20 @@ Legend:
 
 ### Privacy Controls
 - [ ] Vision frames not persisted by default (after vision implementation)
-- [ ] Key material remains in secure keychain
+- [x] Key material remains in secure keychain
 
 ## 8) Milestone Progress (from spec)
 
 ### Milestone 1 — Core Simulation Loop
 - [~] Capture → STT → Prompt → Inference → Safety Filter → Render
-  - Status: Render/filter/spool/control loop exists, but real capture/STT/provider inference are pending.
+  - Status: Real capture/STT buffering and verified provider routing are implemented; further hardening remains.
 
 ### Milestone 2 — Realism & Control
 - [~] Tone-based scaling, stochastic spooling, donation/TTS, bias, slow mode, emote-only
-  - Status: Mostly present in MVP form, with mocked tone + generator.
+  - Status: Present in MVP form with real capture buffering plus incremental realism gaps.
 
 ### Milestone 3 — Onboarding, Hardening, Compliance
-- [ ] Tiering + one-click orchestrator + robust fallback + polished compliance gate
+- [~] Tiering + one-click orchestrator + robust fallback + polished compliance gate
 
 ## 9) Implemented Artifacts (evidence)
 

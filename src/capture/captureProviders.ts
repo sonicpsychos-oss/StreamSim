@@ -1,5 +1,6 @@
 import { CaptureProvider, SimulationConfig, StreamContext } from "../core/types.js";
 import { ContextAssembler } from "../pipeline/contextAssembler.js";
+import { sharedDeviceCapturePipeline } from "./deviceCapturePipeline.js";
 
 interface JsonCaptureResponse {
   transcript?: string;
@@ -15,8 +16,21 @@ export class MockCaptureProvider implements CaptureProvider {
   }
 }
 
-export class EndpointCaptureProvider implements CaptureProvider {
+export class DeviceCaptureProvider implements CaptureProvider {
   private readonly fallback = new MockCaptureProvider();
+
+  public async getContext(config: SimulationConfig): Promise<StreamContext> {
+    const context = sharedDeviceCapturePipeline.getContext(config);
+    if (!context.transcript) {
+      return this.fallback.getContext(config);
+    }
+
+    return context;
+  }
+}
+
+export class EndpointCaptureProvider implements CaptureProvider {
+  private readonly fallback = new DeviceCaptureProvider();
 
   public async getContext(config: SimulationConfig): Promise<StreamContext> {
     try {
@@ -28,18 +42,18 @@ export class EndpointCaptureProvider implements CaptureProvider {
       const sttData = ((sttRes && sttRes.ok ? await sttRes.json() : {}) ?? {}) as JsonCaptureResponse;
       const visionData = ((visionRes && visionRes.ok ? await visionRes.json() : {}) ?? {}) as JsonCaptureResponse;
 
-      const transcript = sttData.transcript ?? "";
-      if (!transcript) throw new Error("STT transcript unavailable");
+      if (sttData.transcript) {
+        sharedDeviceCapturePipeline.ingestMicFrame({
+          transcriptChunk: sttData.transcript,
+          rms: sttData.tone?.volumeRms,
+          wordsPerMinute: sttData.tone?.paceWpm
+        });
+      }
+      if (Array.isArray(visionData.visionTags)) {
+        sharedDeviceCapturePipeline.ingestVisionSample({ tags: visionData.visionTags });
+      }
 
-      return {
-        transcript,
-        tone: {
-          volumeRms: Number(sttData.tone?.volumeRms ?? 0.2),
-          paceWpm: Number(sttData.tone?.paceWpm ?? 110)
-        },
-        visionTags: Array.isArray(visionData.visionTags) ? visionData.visionTags : [],
-        timestamp: new Date().toISOString()
-      };
+      return this.fallback.getContext(config);
     } catch {
       return this.fallback.getContext(config);
     }
@@ -47,5 +61,7 @@ export class EndpointCaptureProvider implements CaptureProvider {
 }
 
 export function createCaptureProvider(config: SimulationConfig): CaptureProvider {
-  return config.capture.useRealCapture ? new EndpointCaptureProvider() : new MockCaptureProvider();
+  if (!config.capture.useRealCapture) return new MockCaptureProvider();
+  if (config.capture.sttEndpoint || config.capture.visionEndpoint) return new EndpointCaptureProvider();
+  return new DeviceCaptureProvider();
 }

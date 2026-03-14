@@ -7,6 +7,7 @@ import { parseInferenceOutput } from "../pipeline/outputParser.js";
 import { buildPromptPayload } from "../pipeline/promptBuilder.js";
 import { ObservabilityLogger } from "./observability.js";
 import { SpoolingEngine } from "./spoolingEngine.js";
+import { SidecarManager } from "./sidecarManager.js";
 
 export class SimulationOrchestrator {
   private readonly spooler = new SpoolingEngine();
@@ -15,6 +16,7 @@ export class SimulationOrchestrator {
   private ttsWatchdogTimer: NodeJS.Timeout | null = null;
   private running = false;
   private readonly obs = new ObservabilityLogger();
+  private readonly sidecar = new SidecarManager();
 
   constructor(
     private readonly getConfig: () => SimulationConfig,
@@ -57,6 +59,12 @@ export class SimulationOrchestrator {
       this.emitMeta({ warning: "EULA must be accepted before simulation starts." });
       this.running = false;
       return;
+    }
+
+    const sidecarStatus = await this.sidecar.ensureReady(config);
+    if (!sidecarStatus.ready) {
+      this.emitMeta({ warning: sidecarStatus.details, fallbackSuggested: sidecarStatus.fallbackSuggested, blocked: false });
+      this.obs.log("sidecar_status", { sidecarStatus: sidecarStatus.phase, progress: sidecarStatus.progress });
     }
 
     const validation = provider.validateConfig(config);
