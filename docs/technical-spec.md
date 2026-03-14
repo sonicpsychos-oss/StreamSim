@@ -1,4 +1,4 @@
-# StreamSim Technical Specification (Working Title)
+# StreamSim Technical Specification
 
 ## 1. Executive Summary & Product Vision
 
