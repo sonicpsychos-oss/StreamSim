@@ -8,6 +8,7 @@ import { SimulationConfig } from "./core/types.js";
 import { redactSecrets } from "./security/diagnostics.js";
 import { SecretStore } from "./security/secretStore.js";
 import { SimulationOrchestrator } from "./services/simulationOrchestrator.js";
+import { sharedDeviceCapturePipeline } from "./capture/deviceCapturePipeline.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -90,6 +91,32 @@ app.post("/api/onboarding/complete", (_req, res) => {
   res.json({ ok: true, onboardingComplete });
 });
 
+
+app.post("/api/secrets/cloud-key", (req, res) => {
+  const key = typeof req.body?.key === "string" ? req.body.key.trim() : "";
+  if (!key) {
+    res.status(400).json({ ok: false, error: "Missing key." });
+    return;
+  }
+
+  const stored = secretStore.setCloudApiKey(key);
+  if (!stored) {
+    res.status(500).json({ ok: false, error: "Failed to store key in OS keychain." });
+    return;
+  }
+
+  res.json({ ok: true });
+});
+
+app.post("/api/capture/mic-frame", (req, res) => {
+  sharedDeviceCapturePipeline.ingestMicFrame(req.body ?? {});
+  res.json({ ok: true });
+});
+
+app.post("/api/capture/vision-sample", (req, res) => {
+  sharedDeviceCapturePipeline.ingestVisionSample(req.body ?? {});
+  res.json({ ok: true });
+});
 app.get("/api/status", (_req, res) => {
   res.json({ config, audioState: orchestrator.getAudioState(), onboardingComplete, secrets: secretStore.diagnostics() });
 });

@@ -1,4 +1,5 @@
 import { InferenceMode, InferenceProvider, PromptPayload, SimulationConfig } from "../core/types.js";
+import { SecretStore } from "../security/secretStore.js";
 import { MockInferenceProvider } from "./mockInferenceProvider.js";
 
 const LOCAL_MODES: InferenceMode[] = ["ollama", "lmstudio", "mock-local"];
@@ -22,6 +23,7 @@ async function withRetry<T>(attempts: number, fn: () => Promise<T>): Promise<T> 
 
 export class HybridInferenceProvider implements InferenceProvider {
   private readonly mockProvider = new MockInferenceProvider();
+  private readonly secretStore = new SecretStore();
 
   constructor(private readonly mode: InferenceMode) {}
 
@@ -62,38 +64,58 @@ export class HybridInferenceProvider implements InferenceProvider {
       return this.mockProvider.generate(payload, { ...config, inferenceMode: this.mode });
     }
 
-    return withRetry(config.provider.maxRetries, async () => {
+    try {
+      return await withRetry(config.provider.maxRetries, async () => {
+        if (this.mode === "ollama" || this.mode === "lmstudio") {
+          return this.generateLocal(payload, config);
+        }
+        return this.generateCloud(payload, config);
+      });
+    } catch (primaryError) {
       if (this.mode === "ollama" || this.mode === "lmstudio") {
-        return this.generateLocal(payload, config);
+        return withRetry(config.provider.maxRetries, async () => this.generateCloud(payload, config));
       }
-      return this.generateCloud(payload, config);
-    });
+      throw primaryError;
+    }
   }
 
   private async generateLocal(payload: PromptPayload, config: SimulationConfig): Promise<string> {
-    const response = await fetch(`${config.provider.localEndpoint}/api/generate`, {
+    const isLmStudio = this.mode === "lmstudio";
+    const endpoint = isLmStudio ? `${config.provider.localEndpoint}/v1/chat/completions` : `${config.provider.localEndpoint}/api/generate`;
+    const body = isLmStudio
+      ? {
+          model: config.provider.localModel,
+          temperature: 0.8,
+          messages: [
+            { role: "system", content: "You output strict JSON object with key messages only." },
+            { role: "user", content: JSON.stringify(payload) }
+          ]
+        }
+      : {
+          model: config.provider.localModel,
+          stream: false,
+          prompt: JSON.stringify(payload)
+        };
+
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: AbortSignal.timeout(config.provider.requestTimeoutMs),
-      body: JSON.stringify({
-        model: config.provider.localModel,
-        stream: false,
-        prompt: JSON.stringify(payload)
-      })
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {
       throw new Error(`Local provider failed (${response.status})`);
     }
 
-    const data = (await response.json()) as { response?: string; text?: string };
-    return data.response ?? data.text ?? "";
+    const data = (await response.json()) as { response?: string; text?: string; choices?: Array<{ message?: { content?: string } }> };
+    return data.response ?? data.text ?? data.choices?.[0]?.message?.content ?? "";
   }
 
   private async generateCloud(payload: PromptPayload, config: SimulationConfig): Promise<string> {
-    const apiKey = process.env.STREAMSIM_CLOUD_API_KEY ?? "";
+    const apiKey = this.secretStore.getCloudApiKey();
     if (!apiKey) {
-      throw new Error("Missing STREAMSIM_CLOUD_API_KEY for cloud provider.");
+      throw new Error("Missing cloud API key in keychain for cloud provider.");
     }
 
     const response = await fetch(config.provider.cloudEndpoint, {
