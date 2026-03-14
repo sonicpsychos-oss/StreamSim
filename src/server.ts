@@ -9,6 +9,7 @@ import { redactSecrets } from "./security/diagnostics.js";
 import { SecretStore } from "./security/secretStore.js";
 import { SimulationOrchestrator } from "./services/simulationOrchestrator.js";
 import { sharedDeviceCapturePipeline } from "./capture/deviceCapturePipeline.js";
+import { sharedSttEngine } from "./capture/sttEngine.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -136,6 +137,18 @@ app.post("/api/secrets/cloud-key", (req, res) => {
 
 app.post("/api/capture/mic-frame", (req, res) => {
   sharedDeviceCapturePipeline.ingestMicFrame(req.body ?? {});
+  res.json({ ok: true });
+});
+
+
+app.post("/api/capture/audio-chunk", async (req, res) => {
+  const base64 = typeof req.body?.audioBase64 === "string" ? req.body.audioBase64 : "";
+  if (!base64) {
+    res.status(400).json({ ok: false, error: "audioBase64 is required." });
+    return;
+  }
+  const frame = Buffer.from(base64, "base64");
+  await sharedSttEngine.ingestAudioFrame(frame);
   res.json({ ok: true });
 });
 

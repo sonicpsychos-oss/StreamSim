@@ -7,6 +7,7 @@ export interface CaptureConfig {
   visionIntervalSec: number;
   useRealCapture: boolean;
   sttEndpoint: string;
+  sttProvider: "mock" | "whispercpp" | "deepgram";
   visionEndpoint: string;
 }
 

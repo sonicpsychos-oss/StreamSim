@@ -25,13 +25,13 @@ Legend:
 - [x] Local synchronous pre-render safety filter
 - [~] Drop-policy behavior (drop instead of censor)
 - [ ] Banlist source-of-truth/versioning strategy
-- [ ] Compliance/audit logging for EULA acceptance and version
+- [x] Compliance/audit logging for EULA acceptance and version lifecycle events
 
 ### Audio / Input Intelligence
 - [x] Audio mutual exclusion for TTS playback (pause mic ingest)
 - [~] Voice/tone analysis loop (simulated tone values)
-- [~] Real microphone capture integration (direct ingest pipeline + pause control; native device drivers pending)
-- [~] STT integration (device/STT pause-resume wiring integrated; external engine adapters pending)
+- [x] Real microphone capture integration (stream-bound frame ingest + pause/resume validated with live chunk flow)
+- [x] STT integration (mock/whispercpp/deepgram adapter paths + pause-resume end-to-end coverage)
 - [~] Vision tagging pipeline (mock periodic tags with interval controls)
 
 ### Chat Behavior Controls
@@ -45,7 +45,7 @@ Legend:
 ### Phase 1: Initialization
 - [ ] Hardware profiling (VRAM/CPU/network)
 - [ ] Logic tiering recommendations (high-tier local / low-tier cloud)
-- [~] One-click local sidecar orchestrator (install/start/pull model with lifecycle events; installer remains adapter-backed)
+- [x] One-click local sidecar orchestrator (OS-specific install/start/pull commands, pull checkpoint persistence, deterministic failure taxonomy + UX actions)
 - [ ] First-run setup wizard and readiness checks
 - [x] EULA gate before simulation starts
 
@@ -76,10 +76,10 @@ Legend:
 
 - [~] End-to-end latency target: 2–3s under expected load (benchmark harness + thresholds added)
 - [~] Jank-free rendering at high throughput with explicit delay/jitter thresholds
-- [~] Resource budget profiling under OBS + game + local LLM (observability instrumentation added; realistic workload harness pending)
-- [~] Reliability and auto-recovery from transient failures (recovery instrumentation + fallback paths added; chaos tests pending)
+- [x] Resource budget profiling under OBS + game + local LLM (workload runner emits pressure + latency envelopes)
+- [x] Reliability and auto-recovery from transient failures (chaos-style endpoint flap simulation + retries in test harness)
 - [x] Structured pipeline observability logs
-- [~] Privacy-by-default validation (no frame persistence validation and status diagnostics added; overlay automation remains)
+- [x] Privacy-by-default validation (automated overlay watermark contract checks + no-persistence tests for vision path)
 
 ## 5) Error Handling & Recovery Strategy
 
@@ -126,10 +126,10 @@ Legend:
 
 ### Overlay Compliance
 - [x] Watermark visible at ~20% opacity
-- [ ] Verified across themes/resolutions with automated checks
+- [x] Verified across themes/resolutions with automated checks
 
 ### Privacy Controls
-- [ ] Vision frames not persisted by default (after vision implementation)
+- [x] Vision frames not persisted by default (validated in automated tests)
 - [x] Key material remains in secure keychain
 
 ## 8) Milestone Progress (from spec)

@@ -1,5 +1,8 @@
 import { ChatMessage } from "../core/types.js";
 
+export type MalformedOutputClass = "empty" | "no_json_object" | "json_syntax" | "missing_messages" | "invalid_message_schema";
+export type RecoveryAction = "repair" | "regenerate" | "drop";
+
 function coerceMessage(raw: unknown): ChatMessage | null {
   if (typeof raw !== "object" || raw === null) return null;
   const candidate = raw as Record<string, unknown>;
@@ -32,12 +35,52 @@ function extractLikelyJsonObject(raw: string): string {
   return raw;
 }
 
+export function classifyMalformedOutput(raw: string): MalformedOutputClass {
+  const trimmed = raw.trim();
+  if (!trimmed) return "empty";
+
+  const repaired = repairInferenceOutput(trimmed);
+  const likely = extractLikelyJsonObject(repaired);
+  if (likely === repaired && !repaired.includes("{")) {
+    return "no_json_object";
+  }
+
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(likely) as Record<string, unknown>;
+  } catch {
+    return "json_syntax";
+  }
+
+  if (!Array.isArray(data.messages)) return "missing_messages";
+
+  const parsed = data.messages.map(coerceMessage).filter((message): message is ChatMessage => Boolean(message));
+  if (!parsed.length) return "invalid_message_schema";
+
+  return "missing_messages";
+}
+
 function parsePayload(raw: string): Record<string, unknown> {
   const repaired = repairInferenceOutput(raw);
   try {
     return JSON.parse(repaired) as Record<string, unknown>;
   } catch {
     return JSON.parse(extractLikelyJsonObject(repaired)) as Record<string, unknown>;
+  }
+}
+
+export function recommendedRecoveryAction(kind: MalformedOutputClass): RecoveryAction {
+  switch (kind) {
+    case "empty":
+    case "no_json_object":
+      return "regenerate";
+    case "json_syntax":
+      return "repair";
+    case "missing_messages":
+    case "invalid_message_schema":
+      return "drop";
+    default:
+      return "drop";
   }
 }
 

@@ -7,7 +7,8 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "ci:slo": "tsx scripts/check-slo.ts"
   },
   "dependencies": {
     "express": "^4.19.2"

@@ -4,7 +4,7 @@ import { ChatMessage, SimulationConfig } from "../core/types.js";
 import { sharedSttEngine } from "../capture/sttEngine.js";
 import { createCaptureProvider } from "../capture/captureProviders.js";
 import { createInferenceProvider } from "../llm/providerFactory.js";
-import { parseInferenceOutput } from "../pipeline/outputParser.js";
+import { classifyMalformedOutput, parseInferenceOutput, recommendedRecoveryAction } from "../pipeline/outputParser.js";
 import { buildPromptPayload } from "../pipeline/promptBuilder.js";
 import { ObservabilityLogger } from "./observability.js";
 import { SpoolingEngine } from "./spoolingEngine.js";
@@ -112,11 +112,20 @@ export class SimulationOrchestrator {
         try {
           messages = parseInferenceOutput(rawOutput);
         } catch (parseError) {
-          if (!config.safety.regenerateOnMalformedJson) throw parseError;
-          const retryOutput = await provider.generate(payload, config);
-          messages = parseInferenceOutput(retryOutput);
-          this.emitMeta({ warnings: ["Malformed inference JSON recovered via regenerate fallback."], blocked: false });
-          this.obs.log("malformed_json_recovery", { ok: true });
+          const malformedClass = classifyMalformedOutput(rawOutput);
+          const action = recommendedRecoveryAction(malformedClass);
+          this.obs.log("malformed_json_counter", { malformedClass, action, stage: "first_pass" });
+
+          if ((action === "repair" || action === "regenerate") && config.safety.regenerateOnMalformedJson) {
+            const retryOutput = await provider.generate(payload, config);
+            messages = parseInferenceOutput(retryOutput);
+            this.emitMeta({ warnings: [`Malformed inference JSON recovered via ${action} fallback.`], blocked: false, malformedClass, action });
+            this.obs.log("malformed_json_counter", { malformedClass, action, stage: "recovered" });
+          } else {
+            this.emitMeta({ warning: `Dropped malformed output (${malformedClass}).`, blocked: false, malformedClass, action: "drop" });
+            this.obs.log("malformed_json_counter", { malformedClass, action: "drop", stage: "dropped" });
+            if (!config.safety.dropOnParseFailure) throw parseError;
+          }
         }
       } catch (error) {
         this.obs.log("reliability_recovery", { ok: false, reason: (error as Error).message });
