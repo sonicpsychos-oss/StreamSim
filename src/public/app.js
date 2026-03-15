@@ -378,9 +378,11 @@ function renderDeviceChecks(result) {
   deviceChecks.innerHTML = "";
   const cameraPermissionDetail = result.cameraPermission
     ? "granted"
-    : result.cameraPermissionState && result.cameraPermissionState !== "unknown"
-      ? `not granted (${result.cameraPermissionState})`
-      : "not granted";
+    : result.cameraPermissionState === "granted"
+      ? "granted (camera failed to start)"
+      : result.cameraPermissionState && result.cameraPermissionState !== "unknown"
+        ? `not granted (${result.cameraPermissionState})`
+        : "not granted";
 
   const rows = [
     { label: "Microphone permission", ok: result.micPermission, detail: result.micPermission ? "granted" : "not granted" },
@@ -473,9 +475,6 @@ async function verifyCameraOnly() {
   }
 
   const cameraPermissionState = await getMediaPermissionState("camera");
-  if (!cameraPermission && cameraPermissionState === "granted") {
-    cameraPermission = true;
-  }
 
   const inventory = await getDeviceInventory();
   return {
@@ -664,25 +663,29 @@ verifyCameraBtn?.addEventListener("click", async () => {
   const verification = await runAction({
     button: verifyCameraBtn,
     pendingText: "Requesting camera permission...",
-    successText: "Camera verification complete.",
-    onRun: async () => {
-      const result = await verifyCameraOnly();
-      if (!result.hasCameraDevice) {
-        throw new Error("No camera device detected. Connect a camera and try Verify Camera again.");
-      }
-      if (!result.cameraPermission) {
-        if (result.cameraPermissionState === "denied") {
-          throw new Error("Camera permission is denied in browser site settings. Change it to Allow and retry.");
-        }
-        throw new Error(`Camera did not start (${result.cameraFailureReason ?? "unknown reason"}). Close other apps using the camera and retry.`);
-      }
-      return result;
-    }
+    onRun: () => verifyCameraOnly()
   });
   if (!verification) return;
+
   latestDeviceVerification = verification;
   renderDeviceChecks(verification);
   updateMonitorAvailability(verification);
+
+  if (!verification.hasCameraDevice) {
+    setStatus("No camera device detected. Connect a camera and try Verify Camera again.", "error");
+    return;
+  }
+
+  if (!verification.cameraPermission) {
+    if (verification.cameraPermissionState === "denied") {
+      setStatus("Camera permission is denied in browser site settings. Change it to Allow and retry.", "error");
+      return;
+    }
+    setStatus(`Camera did not start (${verification.cameraFailureReason ?? "unknown reason"}). Close other apps using the camera and retry.`, "error");
+    return;
+  }
+
+  setStatus("Camera verification complete.", "success");
 });
 
 openOverlayWindowBtn.addEventListener("click", () => {
