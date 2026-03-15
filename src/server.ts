@@ -221,8 +221,7 @@ app.post("/api/stt/probe", async (req, res) => {
   const frame = Buffer.from(base64, "base64");
 
   try {
-    sharedSttEngine.configure(provider, endpoint);
-    const transcript = await sharedSttEngine.transcribeFrame(frame);
+    const transcript = await sharedSttEngine.transcribeFrameWith(provider, endpoint, frame);
     res.json({ ok: true, provider, endpoint, transcript });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

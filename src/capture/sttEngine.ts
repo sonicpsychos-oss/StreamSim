@@ -55,6 +55,7 @@ export interface SttEngine {
   resume(): void;
   state(): { paused: boolean; provider: SttProviderKind };
   transcribeFrame(frame: Buffer): Promise<string>;
+  transcribeFrameWith(provider: SttProviderKind, endpoint: string | undefined, frame: Buffer): Promise<string>;
   ingestAudioFrame(frame: Buffer): Promise<void>;
   bindAudioStream(stream: Readable): void;
 }
@@ -91,6 +92,12 @@ export class DeviceSttEngine implements SttEngine {
   public async transcribeFrame(frame: Buffer): Promise<string> {
     if (frame.length === 0) return "";
     return this.backend.transcribe(frame);
+  }
+
+  public async transcribeFrameWith(provider: SttProviderKind, endpoint: string | undefined, frame: Buffer): Promise<string> {
+    if (frame.length === 0) return "";
+    const backend = this.createBackend(provider, endpoint);
+    return backend.transcribe(frame);
   }
 
   public async ingestAudioFrame(frame: Buffer): Promise<void> {

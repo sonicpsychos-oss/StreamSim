@@ -35,6 +35,10 @@ let latestDeviceVerification = {
   cameraFailureReason: null
 };
 
+const MIC_CHECK_PROBE_SECONDS = 0.6;
+const MIC_CHECK_BUFFER_SECONDS = 1.8;
+const MIC_CHECK_MIN_SAMPLES = 2000;
+
 const controls = {
   viewerCount: document.getElementById("viewerCount"),
   engagementMultiplier: document.getElementById("engagementMultiplier"),
@@ -134,12 +138,12 @@ function arrayBufferToBase64(buffer) {
 }
 
 async function probeSttFromMicChunk() {
-  if (micCheckProbeInFlight || micCheckQueuedPcm.length < 2000) return;
+  if (micCheckProbeInFlight || micCheckQueuedPcm.length < MIC_CHECK_MIN_SAMPLES) return;
 
   const sampleRate = micCheckAudioContext?.sampleRate ?? 44100;
-  const clipSize = Math.min(micCheckQueuedPcm.length, Math.floor(sampleRate * 1.5));
+  const clipSize = Math.min(micCheckQueuedPcm.length, Math.floor(sampleRate * MIC_CHECK_PROBE_SECONDS));
   const clip = micCheckQueuedPcm.slice(-clipSize);
-  micCheckQueuedPcm = micCheckQueuedPcm.slice(-Math.floor(sampleRate * 2.5));
+  micCheckQueuedPcm = micCheckQueuedPcm.slice(-Math.floor(sampleRate * MIC_CHECK_BUFFER_SECONDS));
 
   const wav = encodePcm16Wav(clip, sampleRate);
   const audioBase64 = arrayBufferToBase64(wav);

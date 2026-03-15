@@ -63,6 +63,19 @@ describe("real audio capture + stt pause/resume", () => {
     expect(context.transcript).toContain("resume works");
   });
 
+  it("transcribes probe frames without mutating configured provider", async () => {
+    const stt = new DeviceSttEngine("mock");
+    stt.configure("mock");
+
+    const before = stt.state();
+    const transcript = await stt.transcribeFrameWith("mock", undefined, Buffer.from("probe text"));
+    const after = stt.state();
+
+    expect(transcript).toBe("probe text");
+    expect(before.provider).toBe("mock");
+    expect(after.provider).toBe("mock");
+  });
+
   it("hardens STT pause/resume under timing edge + fault-injection frames", async () => {
     sharedDeviceCapturePipeline.reset();
     const delayedBackend = {
