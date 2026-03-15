@@ -378,9 +378,11 @@ function renderDeviceChecks(result) {
   deviceChecks.innerHTML = "";
   const cameraPermissionDetail = result.cameraPermission
     ? "granted"
-    : result.cameraPermissionState && result.cameraPermissionState !== "unknown"
-      ? `not granted (${result.cameraPermissionState})`
-      : "not granted";
+    : result.cameraPermissionState === "granted"
+      ? "granted (camera failed to start)"
+      : result.cameraPermissionState && result.cameraPermissionState !== "unknown"
+        ? `not granted (${result.cameraPermissionState})`
+        : "not granted";
 
   const rows = [
     { label: "Microphone permission", ok: result.micPermission, detail: result.micPermission ? "granted" : "not granted" },

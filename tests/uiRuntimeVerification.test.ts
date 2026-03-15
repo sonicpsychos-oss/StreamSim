@@ -32,6 +32,7 @@ describe("runtime verification + monitoring UI wiring", () => {
     expect(appJs).toContain("No camera device detected.");
     expect(appJs).toContain("Camera permission is denied in browser site settings.");
     expect(appJs).toContain("Camera did not start (");
+    expect(appJs).toContain("granted (camera failed to start)");
     expect(appJs).toContain('setStatus("Camera verification complete.", "success")');
     expect(appJs).toContain("function updateMonitorAvailability(verification)");
     expect(appJs).toContain("source.className = \"source-tag\"");
