@@ -27,7 +27,10 @@ describe("runtime verification + monitoring UI wiring", () => {
     expect(appJs).toContain('const voiceMeter = document.getElementById("voiceMeter")');
     expect(appJs).toContain("getUserMedia({ audio: true })");
     expect(appJs).toContain("getUserMedia({ video: true })");
-    expect(appJs).toContain("Camera permission not granted.");
+    expect(appJs).toContain("function getMediaPermissionState(name)");
+    expect(appJs).toContain("No camera device detected.");
+    expect(appJs).toContain("Camera permission is denied in browser site settings.");
+    expect(appJs).toContain("Camera did not start (");
     expect(appJs).toContain("function updateMonitorAvailability(verification)");
     expect(appJs).toContain("source.className = \"source-tag\"");
   });
