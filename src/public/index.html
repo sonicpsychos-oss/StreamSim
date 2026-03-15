@@ -135,7 +135,7 @@
           <button id="stop" type="button">Stop</button>
           <button id="refreshStatus" type="button">Refresh Status</button>
           <button id="verifyMic" type="button">Verify Microphone</button>
-          <button id="verifyCamera" type="button" disabled>Verify Camera (inactive)</button>
+          <button id="verifyCamera" type="button" disabled>Verify Camera</button>
           <button id="openOverlayWindow" type="button">Open Transparent Chat Window</button>
         </div>
         <p id="statusBanner" class="status-banner" aria-live="polite">Ready.</p>
@@ -147,6 +147,8 @@
           <pre id="sttHealthSummary">STT health pending...</pre>
           <label class="live-monitor-toggle"><input id="liveMonitorEnabled" type="checkbox" /> Enable live camera + voice monitor</label>
           <p id="liveMonitorStatus" class="monitor-status">Live monitor disabled.</p>
+          <p id="sttCaptionStatus" class="monitor-status">Run Verify Microphone to start mic/STT check.</p>
+          <div id="sttCaptionPreview" class="caption-preview" aria-live="polite">No speech captured yet.</div>
           <div class="live-monitor-grid">
             <video id="liveVideo" autoplay playsinline muted></video>
             <canvas id="voiceMeter" width="280" height="80" aria-label="Voice meter"></canvas>

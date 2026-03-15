@@ -54,6 +54,8 @@ export interface SttEngine {
   pause(): void;
   resume(): void;
   state(): { paused: boolean; provider: SttProviderKind };
+  transcribeFrame(frame: Buffer): Promise<string>;
+  transcribeFrameWith(provider: SttProviderKind, endpoint: string | undefined, frame: Buffer): Promise<string>;
   ingestAudioFrame(frame: Buffer): Promise<void>;
   bindAudioStream(stream: Readable): void;
 }
@@ -87,9 +89,20 @@ export class DeviceSttEngine implements SttEngine {
     return { paused: this.paused, provider: this.provider };
   }
 
+  public async transcribeFrame(frame: Buffer): Promise<string> {
+    if (frame.length === 0) return "";
+    return this.backend.transcribe(frame);
+  }
+
+  public async transcribeFrameWith(provider: SttProviderKind, endpoint: string | undefined, frame: Buffer): Promise<string> {
+    if (frame.length === 0) return "";
+    const backend = this.createBackend(provider, endpoint);
+    return backend.transcribe(frame);
+  }
+
   public async ingestAudioFrame(frame: Buffer): Promise<void> {
     if (this.paused || frame.length === 0) return;
-    const transcriptChunk = await this.backend.transcribe(frame);
+    const transcriptChunk = await this.transcribeFrame(frame);
     if (!transcriptChunk) return;
 
     const paceWpm = Math.max(70, Math.min(220, Math.round((transcriptChunk.split(/\s+/).length / 2) * 60)));

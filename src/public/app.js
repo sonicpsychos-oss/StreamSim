@@ -12,10 +12,19 @@ const liveMonitorEnabled = document.getElementById("liveMonitorEnabled");
 const liveMonitorStatus = document.getElementById("liveMonitorStatus");
 const liveVideo = document.getElementById("liveVideo");
 const voiceMeter = document.getElementById("voiceMeter");
+const sttCaptionStatus = document.getElementById("sttCaptionStatus");
+const sttCaptionPreview = document.getElementById("sttCaptionPreview");
 
 let liveMonitorStream = null;
 let liveMonitorAudioContext = null;
 let liveMonitorMeterInterval = null;
+let micCheckStream = null;
+let micCheckAudioContext = null;
+let micCheckMeterInterval = null;
+let micCheckDataInterval = null;
+let micCheckQueuedPcm = [];
+let micCheckProbeInFlight = false;
+let latestCaptionText = "";
 let latestStatusPayload = null;
 let latestDeviceVerification = {
   micPermission: false,
@@ -25,6 +34,10 @@ let latestDeviceVerification = {
   cameraPermissionState: "unknown",
   cameraFailureReason: null
 };
+
+const MIC_CHECK_PROBE_SECONDS = 0.6;
+const MIC_CHECK_BUFFER_SECONDS = 1.8;
+const MIC_CHECK_MIN_SAMPLES = 2000;
 
 const controls = {
   viewerCount: document.getElementById("viewerCount"),
@@ -70,6 +83,93 @@ function setLiveMonitorStatus(message, tone = "warn") {
   liveMonitorStatus.classList.add(tone);
 }
 
+function setCaptionStatus(message, tone = "warn") {
+  if (!sttCaptionStatus) return;
+  sttCaptionStatus.textContent = message;
+  sttCaptionStatus.classList.remove("ok", "warn", "error");
+  sttCaptionStatus.classList.add(tone);
+}
+
+function setCaptionPreview(text) {
+  if (!sttCaptionPreview) return;
+  sttCaptionPreview.textContent = text?.trim() || "No speech captured yet.";
+}
+
+function encodePcm16Wav(samples, sampleRate) {
+  const dataLength = samples.length * 2;
+  const buffer = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(buffer);
+  const writeString = (offset, value) => {
+    for (let i = 0; i < value.length; i += 1) view.setUint8(offset + i, value.charCodeAt(i));
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataLength, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataLength, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    offset += 2;
+  }
+
+  return buffer;
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function probeSttFromMicChunk() {
+  if (micCheckProbeInFlight || micCheckQueuedPcm.length < MIC_CHECK_MIN_SAMPLES) return;
+
+  const sampleRate = micCheckAudioContext?.sampleRate ?? 44100;
+  const clipSize = Math.min(micCheckQueuedPcm.length, Math.floor(sampleRate * MIC_CHECK_PROBE_SECONDS));
+  const clip = micCheckQueuedPcm.slice(-clipSize);
+  micCheckQueuedPcm = micCheckQueuedPcm.slice(-Math.floor(sampleRate * MIC_CHECK_BUFFER_SECONDS));
+
+  const wav = encodePcm16Wav(clip, sampleRate);
+  const audioBase64 = arrayBufferToBase64(wav);
+
+  micCheckProbeInFlight = true;
+  try {
+    const result = await post("/api/stt/probe", {
+      audioBase64,
+      provider: controls.sttProvider.value,
+      endpoint: controls.sttEndpoint.value
+    });
+
+    const transcript = (result?.transcript ?? "").trim();
+    if (transcript) {
+      latestCaptionText = transcript;
+      setCaptionPreview(transcript);
+    }
+    setCaptionStatus(`Mic stream active · STT(${result.provider}) ${transcript ? "captured transcript" : "reachable; waiting for speech"}.`, "ok");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setCaptionStatus(`Mic stream active but STT probe failed: ${message}`, "error");
+  } finally {
+    micCheckProbeInFlight = false;
+  }
+}
+
 function drawVoiceMeter(level) {
   if (!voiceMeter) return;
   const ctx = voiceMeter.getContext("2d");
@@ -88,6 +188,80 @@ function drawVoiceMeter(level) {
   ctx.fillRect(0, 0, meterWidth, height);
   ctx.strokeStyle = "#334155";
   ctx.strokeRect(0, 0, width, height);
+}
+
+function stopMicVerificationCheck() {
+  if (micCheckMeterInterval) {
+    clearInterval(micCheckMeterInterval);
+    micCheckMeterInterval = null;
+  }
+  if (micCheckDataInterval) {
+    clearInterval(micCheckDataInterval);
+    micCheckDataInterval = null;
+  }
+  if (micCheckAudioContext) {
+    void micCheckAudioContext.close();
+    micCheckAudioContext = null;
+  }
+  if (micCheckStream) {
+    micCheckStream.getTracks().forEach((track) => track.stop());
+    micCheckStream = null;
+  }
+  micCheckQueuedPcm = [];
+  micCheckProbeInFlight = false;
+}
+
+async function startMicVerificationCheck() {
+  stopMicVerificationCheck();
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setCaptionStatus("Browser does not support microphone verification stream.", "error");
+    return;
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  micCheckStream = stream;
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) {
+    setCaptionStatus("Microphone granted, but AudioContext is unavailable in this browser.", "warn");
+    return;
+  }
+
+  micCheckAudioContext = new AudioContextCtor();
+  const source = micCheckAudioContext.createMediaStreamSource(stream);
+  const analyser = micCheckAudioContext.createAnalyser();
+  analyser.fftSize = 256;
+  source.connect(analyser);
+
+  const processor = micCheckAudioContext.createScriptProcessor(4096, 1, 1);
+  source.connect(processor);
+  processor.connect(micCheckAudioContext.destination);
+  processor.onaudioprocess = (event) => {
+    const input = event.inputBuffer.getChannelData(0);
+    micCheckQueuedPcm.push(...input);
+    const maxSamples = Math.floor((micCheckAudioContext?.sampleRate ?? 44100) * 4);
+    if (micCheckQueuedPcm.length > maxSamples) {
+      micCheckQueuedPcm = micCheckQueuedPcm.slice(-maxSamples);
+    }
+  };
+
+  const samples = new Uint8Array(analyser.frequencyBinCount);
+  micCheckMeterInterval = setInterval(() => {
+    analyser.getByteTimeDomainData(samples);
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 1) {
+      const centered = (samples[i] - 128) / 128;
+      sum += centered * centered;
+    }
+    const rms = Math.sqrt(sum / samples.length);
+    drawVoiceMeter(Math.min(1, rms * 3.2));
+  }, 80);
+
+  micCheckDataInterval = setInterval(() => {
+    void probeSttFromMicChunk();
+  }, 1800);
+
+  setCaptionStatus("Mic stream active. Speak a short phrase to verify STT transcript.", "ok");
+  setCaptionPreview(latestCaptionText || "Listening for speech...");
 }
 
 function stopLiveMonitor() {
@@ -655,6 +829,15 @@ verifyMicBtn?.addEventListener("click", async () => {
   latestDeviceVerification = verification;
   renderDeviceChecks(verification);
   updateMonitorAvailability(verification);
+
+  if (verification.micPermission && verification.hasMicDevice) {
+    try {
+      await startMicVerificationCheck();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCaptionStatus(`Unable to start mic/STT check: ${message}`, "error");
+    }
+  }
 });
 
 ensureVerifyCameraButtonActive();
@@ -761,6 +944,7 @@ liveMonitorEnabled?.addEventListener("change", async () => {
 
 window.addEventListener("beforeunload", () => {
   stopLiveMonitor();
+  stopMicVerificationCheck();
 });
 
 const events = new EventSource("/api/events");
@@ -826,6 +1010,9 @@ async function boot() {
     liveMonitorEnabled.disabled = true;
   }
   setLiveMonitorStatus("Run Verify Mic/Camera to enable the live monitor.", "warn");
+  stopMicVerificationCheck();
+  setCaptionPreview("No speech captured yet.");
+  setCaptionStatus("Run Verify Microphone to start mic/STT check.", "warn");
   ensureVerifyCameraButtonActive();
 }
 
