@@ -490,6 +490,13 @@ const completeWizardBtn = document.getElementById("completeWizard");
 const wizardEulaAccepted = document.getElementById("wizardEulaAccepted");
 const onboardingPill = document.getElementById("onboardingPill");
 
+
+function ensureVerifyCameraButtonActive() {
+  if (!verifyCameraBtn) return;
+  verifyCameraBtn.disabled = false;
+  verifyCameraBtn.textContent = "Verify Camera";
+}
+
 saveBtn.addEventListener("click", async () => {
   const result = await runAction({
     button: saveBtn,
@@ -615,6 +622,8 @@ verifyMicBtn?.addEventListener("click", async () => {
   renderDeviceChecks(verification);
   updateMonitorAvailability(verification);
 });
+
+ensureVerifyCameraButtonActive();
 
 verifyCameraBtn?.addEventListener("click", async () => {
   const verification = await runAction({
@@ -773,9 +782,7 @@ async function boot() {
     liveMonitorEnabled.disabled = true;
   }
   setLiveMonitorStatus("Run Verify Mic/Camera to enable the live monitor.", "warn");
-  if (verifyCameraBtn) {
-    verifyCameraBtn.disabled = false;
-  }
+  ensureVerifyCameraButtonActive();
 }
 
 void boot();

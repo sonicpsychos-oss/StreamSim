@@ -19,6 +19,8 @@ describe("runtime verification + monitoring UI wiring", () => {
     expect(appJs).toContain('const verifyCameraBtn = document.getElementById("verifyCamera")');
     expect(appJs).toContain("verifyMicBtn?.addEventListener(\"click\"");
     expect(appJs).toContain("verifyCameraBtn?.addEventListener(\"click\"");
+    expect(appJs).toContain("function ensureVerifyCameraButtonActive()");
+    expect(appJs).toContain("verifyCameraBtn.textContent = \"Verify Camera\"");
     expect(appJs).toContain('const liveMonitorEnabled = document.getElementById("liveMonitorEnabled")');
     expect(appJs).toContain("liveMonitorEnabled?.addEventListener(\"change\"");
     expect(appJs).toContain('const liveVideo = document.getElementById("liveVideo")');
