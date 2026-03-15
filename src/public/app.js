@@ -490,6 +490,13 @@ const completeWizardBtn = document.getElementById("completeWizard");
 const wizardEulaAccepted = document.getElementById("wizardEulaAccepted");
 const onboardingPill = document.getElementById("onboardingPill");
 
+
+function ensureVerifyCameraButtonActive() {
+  if (!verifyCameraBtn) return;
+  verifyCameraBtn.disabled = false;
+  verifyCameraBtn.textContent = "Verify Camera";
+}
+
 saveBtn.addEventListener("click", async () => {
   const result = await runAction({
     button: saveBtn,
@@ -616,12 +623,20 @@ verifyMicBtn?.addEventListener("click", async () => {
   updateMonitorAvailability(verification);
 });
 
+ensureVerifyCameraButtonActive();
+
 verifyCameraBtn?.addEventListener("click", async () => {
   const verification = await runAction({
     button: verifyCameraBtn,
     pendingText: "Requesting camera permission...",
     successText: "Camera verification complete.",
-    onRun: () => verifyCameraOnly()
+    onRun: async () => {
+      const result = await verifyCameraOnly();
+      if (!result.cameraPermission) {
+        throw new Error("Camera permission not granted. Allow camera access in the browser prompt/site settings.");
+      }
+      return result;
+    }
   });
   if (!verification) return;
   latestDeviceVerification = verification;
@@ -767,6 +782,7 @@ async function boot() {
     liveMonitorEnabled.disabled = true;
   }
   setLiveMonitorStatus("Run Verify Mic/Camera to enable the live monitor.", "warn");
+  ensureVerifyCameraButtonActive();
 }
 
 void boot();
