@@ -21,7 +21,9 @@ let latestDeviceVerification = {
   micPermission: false,
   cameraPermission: false,
   hasMicDevice: false,
-  hasCameraDevice: false
+  hasCameraDevice: false,
+  cameraPermissionState: "unknown",
+  cameraFailureReason: null
 };
 
 const controls = {
@@ -374,12 +376,22 @@ function summarizeSttHealth(payload) {
 
 function renderDeviceChecks(result) {
   deviceChecks.innerHTML = "";
+  const cameraPermissionDetail = result.cameraPermission
+    ? "granted"
+    : result.cameraPermissionState && result.cameraPermissionState !== "unknown"
+      ? `not granted (${result.cameraPermissionState})`
+      : "not granted";
+
   const rows = [
     { label: "Microphone permission", ok: result.micPermission, detail: result.micPermission ? "granted" : "not granted" },
-    { label: "Camera permission", ok: result.cameraPermission, detail: result.cameraPermission ? "granted" : "not granted" },
+    { label: "Camera permission", ok: result.cameraPermission, detail: cameraPermissionDetail },
     { label: "Microphone device", ok: result.hasMicDevice, detail: result.hasMicDevice ? "detected" : "not detected" },
     { label: "Camera device", ok: result.hasCameraDevice, detail: result.hasCameraDevice ? "detected" : "not detected" }
   ];
+
+  if (result.cameraFailureReason) {
+    rows.push({ label: "Camera runtime", ok: false, detail: result.cameraFailureReason });
+  }
 
   rows.forEach((row) => {
     const li = document.createElement("li");
@@ -432,22 +444,45 @@ async function verifyMicrophoneOnly() {
   };
 }
 
+async function getMediaPermissionState(name) {
+  if (!navigator.permissions?.query) return "unknown";
+  try {
+    const result = await navigator.permissions.query({ name });
+    return result.state;
+  } catch {
+    return "unknown";
+  }
+}
+
 async function verifyCameraOnly() {
   if (!navigator.mediaDevices?.enumerateDevices) {
     throw new Error("Browser does not support media device enumeration.");
   }
 
   let cameraPermission = false;
+  let cameraFailureReason = null;
+
   try {
     const videoOnly = await navigator.mediaDevices.getUserMedia({ video: true });
     cameraPermission = true;
     videoOnly.getTracks().forEach((track) => track.stop());
-  } catch {}
+  } catch (error) {
+    const name = error && typeof error === "object" && "name" in error ? String(error.name) : "Error";
+    const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Unable to access camera";
+    cameraFailureReason = `${name}: ${message}`;
+  }
+
+  const cameraPermissionState = await getMediaPermissionState("camera");
+  if (!cameraPermission && cameraPermissionState === "granted") {
+    cameraPermission = true;
+  }
 
   const inventory = await getDeviceInventory();
   return {
     ...latestDeviceVerification,
     cameraPermission,
+    cameraPermissionState,
+    cameraFailureReason,
     ...inventory
   };
 }
@@ -489,6 +524,13 @@ const applyOverrideBtn = document.getElementById("applyOverride");
 const completeWizardBtn = document.getElementById("completeWizard");
 const wizardEulaAccepted = document.getElementById("wizardEulaAccepted");
 const onboardingPill = document.getElementById("onboardingPill");
+
+
+function ensureVerifyCameraButtonActive() {
+  if (!verifyCameraBtn) return;
+  verifyCameraBtn.disabled = false;
+  verifyCameraBtn.textContent = "Verify Camera";
+}
 
 saveBtn.addEventListener("click", async () => {
   const result = await runAction({
@@ -616,12 +658,26 @@ verifyMicBtn?.addEventListener("click", async () => {
   updateMonitorAvailability(verification);
 });
 
+ensureVerifyCameraButtonActive();
+
 verifyCameraBtn?.addEventListener("click", async () => {
   const verification = await runAction({
     button: verifyCameraBtn,
     pendingText: "Requesting camera permission...",
     successText: "Camera verification complete.",
-    onRun: () => verifyCameraOnly()
+    onRun: async () => {
+      const result = await verifyCameraOnly();
+      if (!result.hasCameraDevice) {
+        throw new Error("No camera device detected. Connect a camera and try Verify Camera again.");
+      }
+      if (!result.cameraPermission) {
+        if (result.cameraPermissionState === "denied") {
+          throw new Error("Camera permission is denied in browser site settings. Change it to Allow and retry.");
+        }
+        throw new Error(`Camera did not start (${result.cameraFailureReason ?? "unknown reason"}). Close other apps using the camera and retry.`);
+      }
+      return result;
+    }
   });
   if (!verification) return;
   latestDeviceVerification = verification;
@@ -761,12 +817,13 @@ async function boot() {
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
   summarizeSttHealth(payload);
-  latestDeviceVerification = { micPermission: false, cameraPermission: false, hasMicDevice: false, hasCameraDevice: false };
+  latestDeviceVerification = { micPermission: false, cameraPermission: false, hasMicDevice: false, hasCameraDevice: false, cameraPermissionState: "unknown", cameraFailureReason: null };
   if (liveMonitorEnabled) {
     liveMonitorEnabled.checked = false;
     liveMonitorEnabled.disabled = true;
   }
   setLiveMonitorStatus("Run Verify Mic/Camera to enable the live monitor.", "warn");
+  ensureVerifyCameraButtonActive();
 }
 
 void boot();
