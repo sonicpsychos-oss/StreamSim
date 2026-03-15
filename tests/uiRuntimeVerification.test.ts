@@ -19,12 +19,20 @@ describe("runtime verification + monitoring UI wiring", () => {
     expect(appJs).toContain('const verifyCameraBtn = document.getElementById("verifyCamera")');
     expect(appJs).toContain("verifyMicBtn?.addEventListener(\"click\"");
     expect(appJs).toContain("verifyCameraBtn?.addEventListener(\"click\"");
+    expect(appJs).toContain("onRun: () => verifyCameraOnly()");
+    expect(appJs).toContain("function ensureVerifyCameraButtonActive()");
+    expect(appJs).toContain("verifyCameraBtn.textContent = \"Verify Camera\"");
     expect(appJs).toContain('const liveMonitorEnabled = document.getElementById("liveMonitorEnabled")');
     expect(appJs).toContain("liveMonitorEnabled?.addEventListener(\"change\"");
     expect(appJs).toContain('const liveVideo = document.getElementById("liveVideo")');
     expect(appJs).toContain('const voiceMeter = document.getElementById("voiceMeter")');
     expect(appJs).toContain("getUserMedia({ audio: true })");
     expect(appJs).toContain("getUserMedia({ video: true })");
+    expect(appJs).toContain("function getMediaPermissionState(name)");
+    expect(appJs).toContain("No camera device detected.");
+    expect(appJs).toContain("Camera permission is denied in browser site settings.");
+    expect(appJs).toContain("Camera did not start (");
+    expect(appJs).toContain('setStatus("Camera verification complete.", "success")');
     expect(appJs).toContain("function updateMonitorAvailability(verification)");
     expect(appJs).toContain("source.className = \"source-tag\"");
   });
@@ -36,6 +44,7 @@ describe("runtime verification + monitoring UI wiring", () => {
     expect(indexHtml).toContain('id="runtimeSummary"');
     expect(indexHtml).toContain('id="verifyMic"');
     expect(indexHtml).toContain('id="verifyCamera"');
+    expect(indexHtml).toContain(">Verify Camera<");
     expect(indexHtml).toContain('id="liveMonitorEnabled"');
     expect(indexHtml).toContain('id="liveMonitorStatus"');
     expect(indexHtml).toContain('id="liveVideo"');
