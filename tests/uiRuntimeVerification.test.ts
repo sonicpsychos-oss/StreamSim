@@ -24,6 +24,8 @@ describe("runtime verification + monitoring UI wiring", () => {
     expect(appJs).toContain('const liveVideo = document.getElementById("liveVideo")');
     expect(appJs).toContain('const voiceMeter = document.getElementById("voiceMeter")');
     expect(appJs).toContain("getUserMedia({ audio: true })");
+    expect(appJs).toContain("getUserMedia({ video: true })");
+    expect(appJs).toContain("Camera permission not granted.");
     expect(appJs).toContain("function updateMonitorAvailability(verification)");
     expect(appJs).toContain("source.className = \"source-tag\"");
   });
@@ -35,7 +37,7 @@ describe("runtime verification + monitoring UI wiring", () => {
     expect(indexHtml).toContain('id="runtimeSummary"');
     expect(indexHtml).toContain('id="verifyMic"');
     expect(indexHtml).toContain('id="verifyCamera"');
-    expect(indexHtml).toContain("Verify Camera (inactive)");
+    expect(indexHtml).toContain(">Verify Camera<");
     expect(indexHtml).toContain('id="liveMonitorEnabled"');
     expect(indexHtml).toContain('id="liveMonitorStatus"');
     expect(indexHtml).toContain('id="liveVideo"');
