@@ -218,3 +218,15 @@ pre { margin-top: 12px; background: #0c0e14; border: 1px solid #293145; border-r
   min-height: 82px;
   margin-top: 8px;
 }
+
+.caption-preview {
+  min-height: 56px;
+  margin-bottom: 8px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #020617;
+  padding: 8px 10px;
+  font-size: 0.84rem;
+  color: #cbd5e1;
+  line-height: 1.35;
+}

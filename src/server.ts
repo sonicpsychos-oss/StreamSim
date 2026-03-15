@@ -209,6 +209,27 @@ app.post("/api/capture/mic-frame", (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/stt/probe", async (req, res) => {
+  const base64 = typeof req.body?.audioBase64 === "string" ? req.body.audioBase64 : "";
+  if (!base64) {
+    res.status(400).json({ ok: false, error: "audioBase64 is required." });
+    return;
+  }
+
+  const provider = (typeof req.body?.provider === "string" ? req.body.provider : config.capture.sttProvider) as typeof config.capture.sttProvider;
+  const endpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint : config.capture.sttEndpoint;
+  const frame = Buffer.from(base64, "base64");
+
+  try {
+    sharedSttEngine.configure(provider, endpoint);
+    const transcript = await sharedSttEngine.transcribeFrame(frame);
+    res.json({ ok: true, provider, endpoint, transcript });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(502).json({ ok: false, provider, endpoint, error: message });
+  }
+});
+
 app.post("/api/capture/audio-chunk", async (req, res) => {
   const base64 = typeof req.body?.audioBase64 === "string" ? req.body.audioBase64 : "";
   if (!base64) {
