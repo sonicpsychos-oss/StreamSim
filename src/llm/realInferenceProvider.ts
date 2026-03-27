@@ -47,6 +47,56 @@ async function parseProviderError(response: Response): Promise<string> {
   return [detail, extras].filter(Boolean).join(" | ");
 }
 
+type ProviderResponseShape = {
+  response?: string;
+  text?: string;
+  output_text?: string;
+  content?: Array<{ type?: string; text?: string | { value?: string } }>;
+  choices?: Array<{
+    text?: string;
+    message?: {
+      content?: string | Array<{ type?: string; text?: string | { value?: string } }>;
+    };
+  }>;
+};
+
+function extractTextFromContentParts(
+  parts: Array<{ type?: string; text?: string | { value?: string } }> | undefined
+): string | null {
+  if (!Array.isArray(parts) || parts.length === 0) return null;
+  const joined = parts
+    .map((part) => {
+      if (typeof part?.text === "string") return part.text;
+      if (part?.text && typeof part.text === "object" && typeof part.text.value === "string") return part.text.value;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  return joined.length ? joined : null;
+}
+
+function extractProviderText(data: ProviderResponseShape): string {
+  const chatMessageContent = data.choices?.[0]?.message?.content;
+  if (typeof chatMessageContent === "string" && chatMessageContent.trim()) return chatMessageContent;
+  if (Array.isArray(chatMessageContent)) {
+    const fromParts = extractTextFromContentParts(chatMessageContent);
+    if (fromParts) return fromParts;
+  }
+
+  const choiceText = data.choices?.[0]?.text;
+  if (typeof choiceText === "string" && choiceText.trim()) return choiceText;
+
+  if (typeof data.output_text === "string" && data.output_text.trim()) return data.output_text;
+  if (typeof data.response === "string" && data.response.trim()) return data.response;
+  if (typeof data.text === "string" && data.text.trim()) return data.text;
+
+  const topLevelContent = extractTextFromContentParts(data.content);
+  if (topLevelContent) return topLevelContent;
+
+  return "";
+}
+
 export class HybridInferenceProvider implements InferenceProvider {
   private readonly mockProvider = new MockInferenceProvider();
   private readonly secretStore = new SecretStore();
@@ -143,8 +193,8 @@ export class HybridInferenceProvider implements InferenceProvider {
       throw new Error(`Local provider failed (${response.status})`);
     }
 
-    const data = (await response.json()) as { response?: string; text?: string; choices?: Array<{ message?: { content?: string } }> };
-    return data.response ?? data.text ?? data.choices?.[0]?.message?.content ?? "";
+    const data = (await response.json()) as ProviderResponseShape;
+    return extractProviderText(data);
   }
 
   private async generateCloud(payload: PromptPayload, config: SimulationConfig): Promise<string> {
@@ -181,12 +231,8 @@ export class HybridInferenceProvider implements InferenceProvider {
       throw new Error(`Cloud provider failed (${response.status})${detail ? `: ${detail}` : ""}`);
     }
 
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-      output_text?: string;
-    };
-
-    return data.choices?.[0]?.message?.content ?? data.output_text ?? "";
+    const data = (await response.json()) as ProviderResponseShape;
+    return extractProviderText(data);
   }
 
   private healthEndpointForCloud(config: SimulationConfig): string {

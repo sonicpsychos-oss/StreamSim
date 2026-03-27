@@ -198,6 +198,43 @@ describe("hybrid routing and failover", () => {
     await expect(groqProvider.generate(payload, config)).resolves.toContain("messages");
     await server.close();
   });
+
+  it("accepts chat-completions content parts payloads used by newer OpenAI-compatible SDKs", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
+    const server = await withTestServer((req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: [{ type: "text", text: '{"messages":[{"username":"newapi","text":"hello","emotes":[]}]}' }]
+              }
+            }
+          ]
+        })
+      );
+    });
+
+    const provider = new HybridInferenceProvider("openai");
+    const config = { ...defaultConfig, provider: { ...defaultConfig.provider, cloudEndpoint: server.url, cloudModel: "x" } };
+    const payload = {
+      persona: "supportive" as const,
+      bias: "agree" as const,
+      emoteOnly: false,
+      viewerCount: 10,
+      requestedMessageCount: 1,
+      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+    };
+
+    await expect(provider.generate(payload, config)).resolves.toContain('"username":"newapi"');
+    await server.close();
+  });
 });
 
 describe("device capture pipeline + security + observability schema", () => {
