@@ -39,6 +39,13 @@ const MIC_CHECK_PROBE_SECONDS = 0.6;
 const MIC_CHECK_BUFFER_SECONDS = 1.8;
 const MIC_CHECK_MIN_SAMPLES = 2000;
 const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
+const STT_DEFAULT_ENDPOINTS = {
+  "local-whisper": "http://127.0.0.1:7778/stt",
+  whispercpp: "http://127.0.0.1:7778/stt",
+  deepgram: "https://api.deepgram.com/v1/listen?model=nova-2&punctuate=true",
+  "openai-whisper": "https://api.openai.com/v1/audio/transcriptions",
+  mock: "http://127.0.0.1:7778/stt"
+};
 
 const controls = {
   viewerCount: document.getElementById("viewerCount"),
@@ -447,12 +454,21 @@ function hydrateControls(config) {
   controls.useRealCapture.checked = config.capture.useRealCapture;
   controls.visionIntervalSec.value = config.capture.visionIntervalSec;
   controls.sttProvider.value = config.capture.sttProvider ?? "local-whisper";
-  controls.sttEndpoint.value = config.capture.sttEndpoint;
+  controls.sttEndpoint.value = config.capture.sttEndpoint || STT_DEFAULT_ENDPOINTS[controls.sttProvider.value] || STT_DEFAULT_ENDPOINTS["local-whisper"];
   controls.visionEndpoint.value = config.capture.visionEndpoint;
   controls.allowDiagnostics.checked = config.security.allowDiagnostics;
   controls.allowNonLocalSidecarOverride.checked = config.security.allowNonLocalSidecarOverride;
   controls.eulaAccepted.checked = config.compliance.eulaAccepted;
   if (wizardEulaAccepted) wizardEulaAccepted.checked = config.compliance.eulaAccepted;
+}
+
+function syncSttEndpointForProvider() {
+  const provider = controls.sttProvider.value;
+  const currentEndpoint = controls.sttEndpoint.value?.trim();
+  const knownDefaults = new Set(Object.values(STT_DEFAULT_ENDPOINTS));
+  if (!currentEndpoint || knownDefaults.has(currentEndpoint)) {
+    controls.sttEndpoint.value = STT_DEFAULT_ENDPOINTS[provider] || STT_DEFAULT_ENDPOINTS["local-whisper"];
+  }
 }
 
 
@@ -567,6 +583,9 @@ function summarizeSttHealth(payload) {
   } else if (provider === "deepgram" && !sttRuntime.deepgramKeyPresent) {
     ready = false;
     detail = "Deepgram selected but STREAMSIM_DEEPGRAM_API_KEY is missing";
+  } else if (provider === "openai-whisper" && !sttRuntime.cloudKeyPresent) {
+    ready = false;
+    detail = "OpenAI Whisper selected but no cloud API key is stored";
   } else if ((provider === "whispercpp" || provider === "local-whisper") && !endpoint.startsWith("http")) {
     ready = false;
     detail = "Whisper endpoint must be a valid URL";
@@ -781,12 +800,16 @@ startBtn.addEventListener("click", async () => {
     onRun: async () => {
       const mode = controls.inferenceMode.value;
       const cloudMode = mode === "openai" || mode === "groq" || mode === "mock-cloud";
+      const cloudStt = controls.useRealCapture.checked && controls.sttProvider.value === "openai-whisper";
       const hasCloudKey = Boolean(latestStatusPayload?.secrets?.hasCloudKey);
       if (cloudMode && !hasCloudKey) {
         throw new Error("Cloud inference selected but no API key is stored. Save a Cloud API key before starting.");
       }
       if (controls.ttsEnabled.checked && controls.ttsMode.value === "cloud" && !hasCloudKey) {
         throw new Error("Cloud TTS selected but no API key is stored. Save a Cloud API key or switch TTS path to local.");
+      }
+      if (cloudStt && !hasCloudKey) {
+        throw new Error("OpenAI Whisper STT selected but no API key is stored. Save a Cloud API key or switch STT provider.");
       }
       return post("/api/start");
     }
@@ -983,6 +1006,10 @@ controls.eulaAccepted?.addEventListener("change", () => {
 
 wizardEulaAccepted?.addEventListener("change", () => {
   syncEulaCheckboxes(wizardEulaAccepted);
+});
+
+controls.sttProvider?.addEventListener("change", () => {
+  syncSttEndpointForProvider();
 });
 
 liveMonitorEnabled?.addEventListener("change", async () => {

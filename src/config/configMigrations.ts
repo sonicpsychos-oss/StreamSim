@@ -17,7 +17,11 @@ function migrateV1toV2(input: Record<string, unknown>): Record<string, unknown> 
     capture: {
       ...capture,
       sttProvider:
-        capture.sttProvider === "mock" || capture.sttProvider === "local-whisper" || capture.sttProvider === "whispercpp" || capture.sttProvider === "deepgram"
+        capture.sttProvider === "mock" ||
+        capture.sttProvider === "local-whisper" ||
+        capture.sttProvider === "whispercpp" ||
+        capture.sttProvider === "deepgram" ||
+        capture.sttProvider === "openai-whisper"
           ? capture.sttProvider
           : defaultConfig.capture.sttProvider
     }
