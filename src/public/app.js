@@ -6,6 +6,7 @@ const statusBanner = document.getElementById("statusBanner");
 const runtimeSummary = document.getElementById("runtimeSummary");
 const deviceChecks = document.getElementById("deviceChecks");
 const aiHealthSummary = document.getElementById("aiHealthSummary");
+const aiActiveModelLabel = document.getElementById("aiActiveModelLabel");
 const ttsHealthSummary = document.getElementById("ttsHealthSummary");
 const sttHealthSummary = document.getElementById("sttHealthSummary");
 const liveMonitorEnabled = document.getElementById("liveMonitorEnabled");
@@ -565,9 +566,16 @@ function summarizeAiHealth(payload) {
   const health = ai.providerHealth ?? "unknown";
   const state = ai.state ?? "idle";
   const fallback = ai.fallbackMode ? ` | fallback: ${ai.fallbackMode}` : "";
+  const mode = payload?.config?.inferenceMode ?? "mock-local";
+  const resolvedPrimaryModel = mode === "openai" || mode === "groq" || mode === "mock-cloud"
+    ? payload?.config?.provider?.cloudModel
+    : payload?.config?.provider?.localModel;
+  const activeModel = ai.activeModel ?? resolvedPrimaryModel ?? "n/a";
+  if (aiActiveModelLabel) aiActiveModelLabel.textContent = `(model: ${activeModel})`;
   aiHealthSummary.textContent = [
     `AI state: ${state}`,
     `Provider health: ${health}`,
+    `Active model: ${activeModel}`,
     `Last update: ${ai.updatedAt ?? "n/a"}${fallback}`,
     `Last detail: ${ai.detail ?? "n/a"}`
   ].join("\n");
