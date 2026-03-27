@@ -32,8 +32,8 @@ export const defaultConfig: SimulationConfig = {
     localEndpoint: "http://127.0.0.1:11434",
     localModel: "llama3.1:8b-instruct-q4_K_M",
     cloudEndpoint: "https://api.openai.com/v1/chat/completions",
-    cloudModel: "gpt-5-nano",
-    requestTimeoutMs: 15000,
+    cloudModel: "gpt-5.4-nano-2026-03-17",
+    requestTimeoutMs: 30000,
     maxRetries: 1
   },
   security: {
@@ -117,7 +117,7 @@ export function sanitizeConfig(input: unknown): SimulationConfig {
       localModel: asString(provider.localModel, defaultConfig.provider.localModel),
       cloudEndpoint: asString(provider.cloudEndpoint, defaultConfig.provider.cloudEndpoint),
       cloudModel: asString(provider.cloudModel, defaultConfig.provider.cloudModel),
-      requestTimeoutMs: Math.max(1000, Math.min(30000, Math.floor(asNumber(provider.requestTimeoutMs, defaultConfig.provider.requestTimeoutMs)))),
+      requestTimeoutMs: Math.max(1000, Math.min(120000, Math.floor(asNumber(provider.requestTimeoutMs, defaultConfig.provider.requestTimeoutMs)))),
       maxRetries: Math.max(0, Math.min(5, Math.floor(asNumber(provider.maxRetries, defaultConfig.provider.maxRetries))))
     },
     security: {

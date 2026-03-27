@@ -299,6 +299,87 @@ describe("hybrid routing and failover", () => {
     await expect(provider.generate(payload, config)).resolves.toContain("messages");
     await server.close();
   });
+
+  it("falls back from gpt-5.4-nano-2026-03-17 to gpt-5-mini on timeout/network failure", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
+    const modelsSeen: string[] = [];
+    const server = await withTestServer((req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk.toString("utf8")));
+      req.on("end", () => {
+        const parsed = JSON.parse(body);
+        modelsSeen.push(parsed.model);
+        if (parsed.model === "gpt-5.4-nano-2026-03-17") {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: { message: "upstream timeout" } }));
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
+      });
+    });
+
+    const provider = new HybridInferenceProvider("openai");
+    const config = { ...defaultConfig, provider: { ...defaultConfig.provider, cloudEndpoint: server.url, cloudModel: "gpt-5.4-nano-2026-03-17", maxRetries: 0 } };
+    const payload = {
+      persona: "supportive" as const,
+      bias: "agree" as const,
+      emoteOnly: false,
+      viewerCount: 10,
+      requestedMessageCount: 1,
+      context: { transcript: "can you hear me?", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+    };
+
+    await expect(provider.generate(payload, config)).resolves.toContain("messages");
+    expect(modelsSeen).toEqual(["gpt-5.4-nano-2026-03-17", "gpt-5-mini"]);
+    await server.close();
+  });
+
+  it("includes context.transcript and anti-generic reactive instructions in system prompt", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
+    const server = await withTestServer((req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk.toString("utf8")));
+      req.on("end", () => {
+        const parsed = JSON.parse(body);
+        const systemPrompt = parsed.messages[0]?.content as string;
+        const userPayload = JSON.parse(parsed.messages[1]?.content as string);
+
+        expect(systemPrompt).toMatch(/react directly to the streamer's latest words/i);
+        expect(systemPrompt).toMatch(/Do not output generic filler/i);
+        expect(userPayload.context.transcript).toBe("can you hear me?");
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
+      });
+    });
+
+    const provider = new HybridInferenceProvider("openai");
+    const config = { ...defaultConfig, provider: { ...defaultConfig.provider, cloudEndpoint: server.url, cloudModel: "gpt-4o-mini", maxRetries: 0 } };
+    const payload = {
+      persona: "supportive" as const,
+      bias: "agree" as const,
+      emoteOnly: false,
+      viewerCount: 10,
+      requestedMessageCount: 1,
+      context: { transcript: "can you hear me?", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["headset"], timestamp: new Date().toISOString() }
+    };
+
+    await expect(provider.generate(payload, config)).resolves.toContain("messages");
+    await server.close();
+  });
 });
 
 describe("device capture pipeline + security + observability schema", () => {
