@@ -5,9 +5,14 @@ import { sharedDeviceCapturePipeline } from "./deviceCapturePipeline.js";
 interface JsonCaptureResponse {
   transcript?: string;
   text?: string;
+  description?: string;
+  caption?: string;
   tone?: { volumeRms?: number; paceWpm?: number };
   visionTags?: string[];
   tags?: string[];
+  labels?: string[];
+  objects?: string[];
+  detections?: Array<{ label?: string; name?: string }>;
   results?: { channels?: Array<{ alternatives?: Array<{ transcript?: string }> }> };
 }
 
@@ -17,8 +22,30 @@ function normalizeTranscript(payload: JsonCaptureResponse): string {
 }
 
 function normalizeVisionTags(payload: JsonCaptureResponse): string[] {
-  const raw = Array.isArray(payload.visionTags) ? payload.visionTags : Array.isArray(payload.tags) ? payload.tags : [];
-  return raw.filter((tag): tag is string => typeof tag === "string").map((tag) => tag.trim()).filter(Boolean);
+  const listCandidates = [
+    payload.visionTags,
+    payload.tags,
+    payload.labels,
+    payload.objects,
+    payload.detections?.map((entry) => entry.label ?? entry.name ?? "")
+  ];
+  const listTags = listCandidates
+    .flatMap((candidate) => (Array.isArray(candidate) ? candidate : []))
+    .filter((tag): tag is string => typeof tag === "string")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+  if (listTags.length > 0) return listTags;
+
+  const captionCandidates = [payload.description, payload.caption, payload.text];
+  const caption = captionCandidates.find((value): value is string => typeof value === "string" && value.trim().length > 0);
+  if (!caption) return [];
+
+  return caption
+    .split(/[|,;\n]/g)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 export class MockCaptureProvider implements CaptureProvider {
@@ -39,32 +66,39 @@ export class EndpointCaptureProvider implements CaptureProvider {
   private readonly fallback = new DeviceCaptureProvider();
 
   public async getContext(config: SimulationConfig): Promise<StreamContext> {
-    try {
-      const [sttRes, visionRes] = await Promise.all([
-        fetch(config.capture.sttEndpoint, { signal: AbortSignal.timeout(1500) }),
-        config.capture.visionEnabled ? fetch(config.capture.visionEndpoint, { signal: AbortSignal.timeout(1500) }) : Promise.resolve(null)
-      ]);
-
-      const sttData = ((sttRes && sttRes.ok ? await sttRes.json() : {}) ?? {}) as JsonCaptureResponse;
-      const visionData = ((visionRes && visionRes.ok ? await visionRes.json() : {}) ?? {}) as JsonCaptureResponse;
-
-      const transcript = normalizeTranscript(sttData);
-      if (transcript) {
-        sharedDeviceCapturePipeline.ingestMicFrame({
-          transcriptChunk: transcript,
-          rms: sttData.tone?.volumeRms,
-          wordsPerMinute: sttData.tone?.paceWpm
-        });
-      }
-      const visionTags = normalizeVisionTags(visionData);
-      if (visionTags.length) {
-        sharedDeviceCapturePipeline.ingestVisionSample({ tags: visionTags });
-      }
-
-      return this.fallback.getContext(config);
-    } catch {
-      return this.fallback.getContext(config);
+    const requests: Array<Promise<Response | null>> = [];
+    if (config.capture.sttEndpoint) {
+      requests.push(fetch(config.capture.sttEndpoint, { signal: AbortSignal.timeout(1500) }));
+    } else {
+      requests.push(Promise.resolve(null));
     }
+    if (config.capture.visionEnabled && config.capture.visionEndpoint) {
+      requests.push(fetch(config.capture.visionEndpoint, { signal: AbortSignal.timeout(1500) }));
+    } else {
+      requests.push(Promise.resolve(null));
+    }
+
+    const [sttResult, visionResult] = await Promise.allSettled(requests);
+    const sttRes = sttResult.status === "fulfilled" ? sttResult.value : null;
+    const visionRes = visionResult.status === "fulfilled" ? visionResult.value : null;
+
+    const sttData = ((sttRes && sttRes.ok ? await sttRes.json() : {}) ?? {}) as JsonCaptureResponse;
+    const visionData = ((visionRes && visionRes.ok ? await visionRes.json() : {}) ?? {}) as JsonCaptureResponse;
+
+    const transcript = normalizeTranscript(sttData);
+    if (transcript) {
+      sharedDeviceCapturePipeline.ingestMicFrame({
+        transcriptChunk: transcript,
+        rms: sttData.tone?.volumeRms,
+        wordsPerMinute: sttData.tone?.paceWpm
+      });
+    }
+    const visionTags = normalizeVisionTags(visionData);
+    if (visionTags.length) {
+      sharedDeviceCapturePipeline.ingestVisionSample({ tags: visionTags });
+    }
+
+    return this.fallback.getContext(config);
   }
 }
 
