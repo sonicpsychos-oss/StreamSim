@@ -6,6 +6,7 @@ const statusBanner = document.getElementById("statusBanner");
 const runtimeSummary = document.getElementById("runtimeSummary");
 const deviceChecks = document.getElementById("deviceChecks");
 const aiHealthSummary = document.getElementById("aiHealthSummary");
+const aiActiveModelLabel = document.getElementById("aiActiveModelLabel");
 const ttsHealthSummary = document.getElementById("ttsHealthSummary");
 const sttHealthSummary = document.getElementById("sttHealthSummary");
 const liveMonitorEnabled = document.getElementById("liveMonitorEnabled");
@@ -213,6 +214,11 @@ async function probeSttFromMicChunk() {
 
     const transcript = (result?.transcript ?? "").trim();
     if (transcript) {
+      const rms = Math.min(1, Math.max(0.05, Math.sqrt(clip.reduce((sum, sample) => sum + sample * sample, 0) / Math.max(1, clip.length))));
+      const words = transcript.split(/\s+/).filter(Boolean).length;
+      const clipDurationSec = Math.max(1, clip.length / Math.max(1, sampleRate));
+      const wordsPerMinute = Math.max(70, Math.min(220, Math.round((words / clipDurationSec) * 60)));
+      await post("/api/capture/mic-frame", { transcriptChunk: transcript, rms, wordsPerMinute });
       latestCaptionText = transcript;
       setCaptionPreview(transcript);
     }
@@ -565,9 +571,16 @@ function summarizeAiHealth(payload) {
   const health = ai.providerHealth ?? "unknown";
   const state = ai.state ?? "idle";
   const fallback = ai.fallbackMode ? ` | fallback: ${ai.fallbackMode}` : "";
+  const mode = payload?.config?.inferenceMode ?? "mock-local";
+  const resolvedPrimaryModel = mode === "openai" || mode === "groq" || mode === "mock-cloud"
+    ? payload?.config?.provider?.cloudModel
+    : payload?.config?.provider?.localModel;
+  const activeModel = ai.activeModel ?? resolvedPrimaryModel ?? "n/a";
+  if (aiActiveModelLabel) aiActiveModelLabel.textContent = `(model: ${activeModel})`;
   aiHealthSummary.textContent = [
     `AI state: ${state}`,
     `Provider health: ${health}`,
+    `Active model: ${activeModel}`,
     `Last update: ${ai.updatedAt ?? "n/a"}${fallback}`,
     `Last detail: ${ai.detail ?? "n/a"}`
   ].join("\n");

@@ -1,7 +1,7 @@
 import { sharedSttEngine } from "../capture/sttEngine.js";
 import { AudioStateManager } from "../core/audioStateManager.js";
 import { applySafetyPolicy } from "../core/safetyFilter.js";
-import { ChatMessage, SimulationConfig } from "../core/types.js";
+import { ChatMessage, PromptPayload, SimulationConfig } from "../core/types.js";
 import { createInferenceProvider } from "../llm/providerFactory.js";
 import { classifyMalformedOutput, parseInferenceOutput, recommendedRecoveryAction } from "../pipeline/outputParser.js";
 import { buildPromptPayload } from "../pipeline/promptBuilder.js";
@@ -27,12 +27,14 @@ export class SimulationOrchestrator {
     state: "idle" | "running" | "degraded" | "error";
     providerHealth: "unknown" | "ok" | "degraded";
     fallbackMode: string | null;
+    activeModel: string;
     detail: string;
     updatedAt: string;
   } = {
     state: "idle",
     providerHealth: "unknown",
     fallbackMode: null,
+    activeModel: "n/a",
     detail: "Awaiting first simulation tick.",
     updatedAt: new Date().toISOString()
   };
@@ -83,12 +85,18 @@ export class SimulationOrchestrator {
     return { ...this.audioState.getState(), sttPaused: sttState.paused, sttProvider: sttState.provider };
   }
 
-  public getAiStatus(): { state: string; providerHealth: string; fallbackMode: string | null; detail: string; updatedAt: string } {
+  public getAiStatus(): { state: string; providerHealth: string; fallbackMode: string | null; activeModel: string; detail: string; updatedAt: string } {
     return { ...this.aiStatus };
   }
 
   private setAiStatus(
-    patch: Partial<{ state: "idle" | "running" | "degraded" | "error"; providerHealth: "unknown" | "ok" | "degraded"; fallbackMode: string | null; detail: string }>
+    patch: Partial<{
+      state: "idle" | "running" | "degraded" | "error";
+      providerHealth: "unknown" | "ok" | "degraded";
+      fallbackMode: string | null;
+      activeModel: string;
+      detail: string;
+    }>
   ): void {
     this.aiStatus = {
       ...this.aiStatus,
@@ -114,6 +122,37 @@ export class SimulationOrchestrator {
   private hydrateMessages(messages: ChatMessage[], source: ChatMessage["source"]): ChatMessage[] {
     const tagged = messages.map((message) => ({ ...message, source: message.source ?? source ?? "unknown" }));
     return this.identityManager.assignToMessages(tagged);
+  }
+
+  private resolveActiveModelName(config: SimulationConfig): string {
+    if (config.inferenceMode === "openai" || config.inferenceMode === "groq" || config.inferenceMode === "mock-cloud") {
+      return config.provider.cloudModel;
+    }
+    return config.provider.localModel;
+  }
+
+  private verbosePipelineLog(
+    route: "primary" | "fallback",
+    providerMode: string,
+    activeModel: string,
+    payload: PromptPayload,
+    rawInferenceResult: string
+  ): void {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[SimulationOrchestrator][VerbosePipelineLog] route=${route} provider=${providerMode} model=${activeModel} transcript/visionTags + raw InferenceResult`
+    );
+    // eslint-disable-next-line no-console
+    console.log({
+      route,
+      providerMode,
+      activeModel,
+      inferencePayload: {
+        transcript: payload.context.transcript,
+        visionTags: payload.context.visionTags
+      },
+      rawInferenceResult
+    });
   }
 
   private async loop(): Promise<void> {
@@ -165,12 +204,19 @@ export class SimulationOrchestrator {
         let messages: ChatMessage[] = [];
 
         const inferenceStarted = Date.now();
-        this.setAiStatus({ state: "running", fallbackMode: null, detail: `Generating via ${config.inferenceMode}.` });
+        const activePrimaryModel = this.resolveActiveModelName(config);
+        this.setAiStatus({
+          state: "running",
+          fallbackMode: null,
+          activeModel: activePrimaryModel,
+          detail: `Generating via ${config.inferenceMode}.`
+        });
         try {
           const rawOutput = await provider.generate(payload, config, (attempt, reason) => {
             const recovery = this.cloudRecoveryMeta(attempt, config.provider.maxRetries, reason);
             this.emitMeta({ warnings: [recovery.message], cloudRecovery: recovery.phase, blocked: recovery.blocking });
           });
+          this.verbosePipelineLog("primary", config.inferenceMode, activePrimaryModel, payload, rawOutput);
           try {
             messages = this.hydrateMessages(parseInferenceOutput(rawOutput), "real-inference");
           } catch (parseError) {
@@ -196,8 +242,15 @@ export class SimulationOrchestrator {
 
           try {
             const fallbackOutput = await this.mockProvider.generate(payload, { ...config, inferenceMode: "mock-local" });
+            this.verbosePipelineLog("fallback", "mock-local", "mock-local", payload, fallbackOutput);
             messages = this.hydrateMessages(parseInferenceOutput(fallbackOutput), "fallback-mock");
-            this.setAiStatus({ state: "degraded", providerHealth: "degraded", fallbackMode: "mock-local", detail: `Primary inference failed; mock fallback active: ${reason}` });
+            this.setAiStatus({
+              state: "degraded",
+              providerHealth: "degraded",
+              fallbackMode: "mock-local",
+              activeModel: "mock-local",
+              detail: `Primary inference failed; mock fallback active: ${reason}`
+            });
             this.emitMeta({
               warnings: [reason, "Fallback engaged: mock-local"],
               dropped: false,
