@@ -1,5 +1,6 @@
 import { BiasMode, ChatMessage, PersonaMode, ProviderConditioning, SimulationConfig, StreamContext, ToneSnapshot } from "../core/types.js";
 import { providerConditioningForMode, RealismSignalModel, resolvePersonaCalibration } from "./realismSignals.js";
+import { IdentityManager } from "../services/identityManager.js";
 
 const supportive = ["Let's go!", "Huge improvement today", "W gameplay", "You're cooking"];
 const trolls = ["That was rough", "Skill issue", "Chat is carrying", "No way you missed that"];
@@ -33,6 +34,7 @@ function withBias(text: string, bias: BiasMode, conditioning: ProviderConditioni
 }
 
 const realismModel = new RealismSignalModel();
+const mockIdentityManager = new IdentityManager();
 
 function engagementFromSignals(config: SimulationConfig, context: StreamContext, conditioning: ProviderConditioning): number {
   const features = realismModel.extract(context, config.persona);
@@ -71,7 +73,7 @@ export function generateAudienceBatch(config: SimulationConfig, tone: ToneSnapsh
     const features = realismModel.extract(safeContext, config.persona);
     const message: ChatMessage = {
       id: `${Date.now()}-${idx}-${Math.random().toString(16).slice(2)}`,
-      username: `viewer_${Math.floor(Math.random() * 9999)}`,
+      username: mockIdentityManager.nextIdentity(),
       text: withBias(text, config.bias === "split" && features.personaBiasScore < 0.45 ? "disagree" : config.bias, conditioning, personaCalibration.contrarianism),
       emotes: Math.random() > 0.45 ? [pick(emotePool)] : [],
       createdAt: new Date().toISOString(),

@@ -172,7 +172,7 @@ export class HybridInferenceProvider implements InferenceProvider {
           model: config.provider.localModel,
           temperature: 0.8,
           messages: [
-            { role: "system", content: "You output strict JSON object with key messages only." },
+            { role: "system", content: 'Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number?,"ttsText":"string?"}]}. Never include usernames.' },
             { role: "user", content: JSON.stringify(payload) }
           ]
         }
@@ -216,7 +216,7 @@ export class HybridInferenceProvider implements InferenceProvider {
           model: config.provider.cloudModel,
           temperature: 0.8,
           messages: [
-            { role: "system", content: "You output strict JSON object with key messages only." },
+            { role: "system", content: 'Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number?,"ttsText":"string?"}]}. Never include usernames.' },
             { role: "user", content: JSON.stringify(payload) }
           ]
         })
