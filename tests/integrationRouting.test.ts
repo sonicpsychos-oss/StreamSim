@@ -177,6 +177,7 @@ describe("hybrid routing and failover", () => {
       req.on("end", () => {
         const parsed = JSON.parse(body);
         expect(parsed.messages[1].role).toBe("user");
+        expect(parsed.temperature).toBe(0.8);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
       });
@@ -233,6 +234,41 @@ describe("hybrid routing and failover", () => {
     };
 
     await expect(provider.generate(payload, config)).resolves.toContain('"username":"newapi"');
+    await server.close();
+  });
+
+  it("omits temperature for GPT-5 family cloud models", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
+    const server = await withTestServer((req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk.toString("utf8")));
+      req.on("end", () => {
+        const parsed = JSON.parse(body);
+        expect(parsed.model).toBe("gpt-5-mini");
+        expect(parsed.temperature).toBeUndefined();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
+      });
+    });
+
+    const provider = new HybridInferenceProvider("openai");
+    const config = { ...defaultConfig, provider: { ...defaultConfig.provider, cloudEndpoint: server.url, cloudModel: "gpt-5-mini" } };
+    const payload = {
+      persona: "supportive" as const,
+      bias: "agree" as const,
+      emoteOnly: false,
+      viewerCount: 10,
+      requestedMessageCount: 1,
+      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+    };
+
+    await expect(provider.generate(payload, config)).resolves.toContain("messages");
     await server.close();
   });
 });
