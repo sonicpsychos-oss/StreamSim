@@ -33,8 +33,8 @@ export const defaultConfig: SimulationConfig = {
     localModel: "llama3.1:8b-instruct-q4_K_M",
     cloudEndpoint: "https://api.openai.com/v1/chat/completions",
     cloudModel: "gpt-5-nano",
-    requestTimeoutMs: 7000,
-    maxRetries: 2
+    requestTimeoutMs: 15000,
+    maxRetries: 1
   },
   security: {
     sidecarLocalhostOnly: true,
