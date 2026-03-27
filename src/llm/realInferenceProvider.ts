@@ -112,6 +112,11 @@ function systemPromptForPayload(payload: PromptPayload): string {
   ].join(" ");
 }
 
+function cloudModelSupportsTemperature(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return !/^gpt-5(?:$|[-:])/.test(normalized);
+}
+
 export class HybridInferenceProvider implements InferenceProvider {
   private readonly mockProvider = new MockInferenceProvider();
   private readonly secretStore = new SecretStore();
@@ -218,6 +223,21 @@ export class HybridInferenceProvider implements InferenceProvider {
       throw new Error("Missing cloud API key in keychain for cloud provider.");
     }
 
+    const body: {
+      model: string;
+      temperature?: number;
+      messages: Array<{ role: "system" | "user"; content: string }>;
+    } = {
+      model: config.provider.cloudModel,
+      messages: [
+        { role: "system", content: systemPromptForPayload(payload) },
+        { role: "user", content: JSON.stringify(payload) }
+      ]
+    };
+    if (cloudModelSupportsTemperature(config.provider.cloudModel)) {
+      body.temperature = 0.8;
+    }
+
     let response: Response;
     try {
       response = await fetch(config.provider.cloudEndpoint, {
@@ -227,14 +247,7 @@ export class HybridInferenceProvider implements InferenceProvider {
           ...this.cloudHeaders(apiKey)
         },
         signal: AbortSignal.timeout(config.provider.requestTimeoutMs),
-        body: JSON.stringify({
-          model: config.provider.cloudModel,
-          temperature: 0.8,
-          messages: [
-            { role: "system", content: systemPromptForPayload(payload) },
-            { role: "user", content: JSON.stringify(payload) }
-          ]
-        })
+        body: JSON.stringify(body)
       });
     } catch (error) {
       const message = (error as Error).message || "request failed";
