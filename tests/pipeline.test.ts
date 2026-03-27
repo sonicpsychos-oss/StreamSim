@@ -36,6 +36,13 @@ describe("output parser", () => {
     expect(result[0].username).toBe("a");
   });
 
+
+  it("accepts messages without username for local identity assignment", () => {
+    const result = parseInferenceOutput('{"messages":[{"text":"hi","emotes":[]}]}');
+    expect(result).toHaveLength(1);
+    expect(result[0].username).toBe("");
+  });
+
   it("throws when no valid messages are present", () => {
     expect(() => parseInferenceOutput('{"messages":[{"foo":1}]}')).toThrow(/No valid messages/);
   });

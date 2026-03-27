@@ -7,13 +7,12 @@ function coerceMessage(raw: unknown): ChatMessage | null {
   if (typeof raw !== "object" || raw === null) return null;
   const candidate = raw as Record<string, unknown>;
 
-  if (typeof candidate.username !== "string") return null;
   if (typeof candidate.text !== "string") return null;
   if (!Array.isArray(candidate.emotes) || !candidate.emotes.every((item) => typeof item === "string")) return null;
 
   return {
     id: typeof candidate.id === "string" ? candidate.id : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    username: candidate.username,
+    username: typeof candidate.username === "string" ? candidate.username : "",
     text: candidate.text,
     emotes: candidate.emotes,
     createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : new Date().toISOString(),

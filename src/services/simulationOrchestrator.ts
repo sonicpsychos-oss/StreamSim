@@ -10,6 +10,7 @@ import { ObservabilityLogger } from "./observability.js";
 import { SidecarManager } from "./sidecarManager.js";
 import { SpoolingEngine } from "./spoolingEngine.js";
 import { MockInferenceProvider } from "../llm/mockInferenceProvider.js";
+import { IdentityManager } from "./identityManager.js";
 
 export class SimulationOrchestrator {
   private readonly spooler = new SpoolingEngine();
@@ -20,6 +21,7 @@ export class SimulationOrchestrator {
   private readonly obs = new ObservabilityLogger();
   private readonly sidecar = new SidecarManager();
   private readonly mockProvider = new MockInferenceProvider();
+  private readonly identityManager = new IdentityManager();
   private aiStatus: {
     state: "idle" | "running" | "degraded" | "error";
     providerHealth: "unknown" | "ok" | "degraded";
@@ -105,8 +107,9 @@ export class SimulationOrchestrator {
     return { phase: "degraded", message: `Cloud retries exhausted. Entering degraded recovery state: ${reason}`, blocking: false };
   }
 
-  private tagMessages(messages: ChatMessage[], source: ChatMessage["source"]): ChatMessage[] {
-    return messages.map((message) => ({ ...message, source: message.source ?? source ?? "unknown" }));
+  private hydrateMessages(messages: ChatMessage[], source: ChatMessage["source"]): ChatMessage[] {
+    const tagged = messages.map((message) => ({ ...message, source: message.source ?? source ?? "unknown" }));
+    return this.identityManager.assignToMessages(tagged);
   }
 
   private async loop(): Promise<void> {
@@ -162,7 +165,7 @@ export class SimulationOrchestrator {
           this.emitMeta({ warnings: [recovery.message], cloudRecovery: recovery.phase, blocked: recovery.blocking });
         });
         try {
-          messages = this.tagMessages(parseInferenceOutput(rawOutput), "real-inference");
+          messages = this.hydrateMessages(parseInferenceOutput(rawOutput), "real-inference");
         } catch (parseError) {
           const malformedClass = classifyMalformedOutput(rawOutput);
           const action = recommendedRecoveryAction(malformedClass);
@@ -170,7 +173,7 @@ export class SimulationOrchestrator {
 
           if ((action === "repair" || action === "regenerate") && config.safety.regenerateOnMalformedJson) {
             const retryOutput = await provider.generate(payload, config);
-            messages = this.tagMessages(parseInferenceOutput(retryOutput), "real-inference");
+            messages = this.hydrateMessages(parseInferenceOutput(retryOutput), "real-inference");
             this.emitMeta({ warnings: [`Malformed inference JSON recovered via ${action} fallback.`], blocked: false, malformedClass, action });
             this.obs.log("malformed_json_counter", { malformedClass, action, stage: "recovered" });
           } else {
@@ -186,7 +189,7 @@ export class SimulationOrchestrator {
 
         try {
           const fallbackOutput = await this.mockProvider.generate(payload, { ...config, inferenceMode: "mock-local" });
-          messages = this.tagMessages(parseInferenceOutput(fallbackOutput), "fallback-mock");
+          messages = this.hydrateMessages(parseInferenceOutput(fallbackOutput), "fallback-mock");
           this.setAiStatus({ state: "degraded", providerHealth: "degraded", fallbackMode: "mock-local", detail: `Primary inference failed; mock fallback active: ${reason}` });
           this.emitMeta({
             warnings: [reason, "Fallback engaged: mock-local"],
