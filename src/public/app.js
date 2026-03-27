@@ -35,9 +35,9 @@ let latestDeviceVerification = {
   cameraFailureReason: null
 };
 
-const MIC_CHECK_PROBE_SECONDS = 0.6;
-const MIC_CHECK_BUFFER_SECONDS = 1.8;
-const MIC_CHECK_MIN_SAMPLES = 2000;
+const MIC_CHECK_PROBE_SECONDS = 3.5;
+const MIC_CHECK_BUFFER_SECONDS = 8;
+const MIC_CHECK_MIN_SAMPLES = 12000;
 const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
 const STT_DEFAULT_ENDPOINTS = {
   "local-whisper": "http://127.0.0.1:7778/stt",
@@ -288,7 +288,7 @@ async function startMicVerificationCheck() {
   processor.onaudioprocess = (event) => {
     const input = event.inputBuffer.getChannelData(0);
     micCheckQueuedPcm.push(...input);
-    const maxSamples = Math.floor((micCheckAudioContext?.sampleRate ?? 44100) * 4);
+    const maxSamples = Math.floor((micCheckAudioContext?.sampleRate ?? 44100) * MIC_CHECK_BUFFER_SECONDS);
     if (micCheckQueuedPcm.length > maxSamples) {
       micCheckQueuedPcm = micCheckQueuedPcm.slice(-maxSamples);
     }
@@ -308,9 +308,9 @@ async function startMicVerificationCheck() {
 
   micCheckDataInterval = setInterval(() => {
     void probeSttFromMicChunk();
-  }, 1800);
+  }, 3200);
 
-  setCaptionStatus("Mic stream active. Speak a short phrase to verify STT transcript.", "ok");
+  setCaptionStatus("Mic stream active. Speak naturally for a few seconds to verify sentence-level STT.", "ok");
   setCaptionPreview(latestCaptionText || "Listening for speech...");
 }
 
