@@ -2,7 +2,7 @@ import { Readable } from "node:stream";
 import { SecretStore } from "../security/secretStore.js";
 import { sharedDeviceCapturePipeline } from "./deviceCapturePipeline.js";
 
-export type SttProviderKind = "mock" | "local-whisper" | "whispercpp" | "deepgram" | "openai-whisper";
+export type SttProviderKind = "mock" | "local-whisper" | "whispercpp" | "deepgram" | "openai-whisper" | "gpt-4o-mini-transcribe";
 
 interface SttBackend {
   transcribe(frame: Buffer): Promise<string>;
@@ -181,6 +181,11 @@ export class DeviceSttEngine implements SttEngine {
       case "openai-whisper":
         return new OpenAiWhisperBackend(
           this.resolveProviderEndpoint(provider, endpoint, process.env.STREAMSIM_OPENAI_STT_ENDPOINT ?? DEFAULT_OPENAI_STT_ENDPOINT),
+          process.env.STREAMSIM_OPENAI_STT_MODEL ?? "whisper-1"
+        );
+      case "gpt-4o-mini-transcribe":
+        return new OpenAiWhisperBackend(
+          this.resolveProviderEndpoint(provider, endpoint, process.env.STREAMSIM_OPENAI_STT_ENDPOINT ?? DEFAULT_OPENAI_STT_ENDPOINT),
           process.env.STREAMSIM_OPENAI_STT_MODEL ?? "gpt-4o-mini-transcribe"
         );
       default:
@@ -188,11 +193,11 @@ export class DeviceSttEngine implements SttEngine {
     }
   }
 
-  private resolveProviderEndpoint(provider: "deepgram" | "openai-whisper", requestedEndpoint: string | undefined, fallback: string): string {
+  private resolveProviderEndpoint(provider: "deepgram" | "openai-whisper" | "gpt-4o-mini-transcribe", requestedEndpoint: string | undefined, fallback: string): string {
     if (!requestedEndpoint) return fallback;
     const normalized = requestedEndpoint.trim();
     if (!normalized) return fallback;
-    if (provider === "openai-whisper" && normalized === DEFAULT_LOCAL_STT_ENDPOINT) {
+    if ((provider === "openai-whisper" || provider === "gpt-4o-mini-transcribe") && normalized === DEFAULT_LOCAL_STT_ENDPOINT) {
       return fallback;
     }
     return normalized;

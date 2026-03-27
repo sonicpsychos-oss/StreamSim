@@ -97,6 +97,7 @@ export function sanitizeConfig(input: unknown): SimulationConfig {
         capture.sttProvider === "whispercpp" ||
         capture.sttProvider === "deepgram" ||
         capture.sttProvider === "openai-whisper" ||
+        capture.sttProvider === "gpt-4o-mini-transcribe" ||
         capture.sttProvider === "mock"
           ? capture.sttProvider
           : defaultConfig.capture.sttProvider,

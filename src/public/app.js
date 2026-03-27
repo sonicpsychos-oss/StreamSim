@@ -48,6 +48,7 @@ const STT_DEFAULT_ENDPOINTS = {
   whispercpp: "http://127.0.0.1:7778/stt",
   deepgram: "https://api.deepgram.com/v1/listen?model=nova-2&punctuate=true",
   "openai-whisper": "https://api.openai.com/v1/audio/transcriptions",
+  "gpt-4o-mini-transcribe": "https://api.openai.com/v1/audio/transcriptions",
   mock: "http://127.0.0.1:7778/stt"
 };
 
@@ -609,9 +610,9 @@ function summarizeSttHealth(payload) {
   } else if (provider === "deepgram" && !sttRuntime.deepgramKeyPresent) {
     ready = false;
     detail = "Deepgram selected but STREAMSIM_DEEPGRAM_API_KEY is missing";
-  } else if (provider === "openai-whisper" && !sttRuntime.cloudKeyPresent) {
+  } else if ((provider === "openai-whisper" || provider === "gpt-4o-mini-transcribe") && !sttRuntime.cloudKeyPresent) {
     ready = false;
-    detail = "OpenAI Whisper selected but no cloud API key is stored";
+    detail = "Cloud OpenAI STT selected but no cloud API key is stored";
   } else if ((provider === "whispercpp" || provider === "local-whisper") && !endpoint.startsWith("http")) {
     ready = false;
     detail = "Whisper endpoint must be a valid URL";
@@ -828,7 +829,9 @@ startBtn.addEventListener("click", async () => {
     onRun: async () => {
       const mode = controls.inferenceMode.value;
       const cloudMode = mode === "openai" || mode === "groq" || mode === "mock-cloud";
-      const cloudStt = controls.useRealCapture.checked && controls.sttProvider.value === "openai-whisper";
+      const cloudStt =
+        controls.useRealCapture.checked &&
+        (controls.sttProvider.value === "openai-whisper" || controls.sttProvider.value === "gpt-4o-mini-transcribe");
       const hasCloudKey = Boolean(latestStatusPayload?.secrets?.hasCloudKey);
       if (cloudMode && !hasCloudKey) {
         throw new Error("Cloud inference selected but no API key is stored. Save a Cloud API key before starting.");
@@ -837,7 +840,7 @@ startBtn.addEventListener("click", async () => {
         throw new Error("Cloud TTS selected but no API key is stored. Save a Cloud API key or switch TTS path to local.");
       }
       if (cloudStt && !hasCloudKey) {
-        throw new Error("OpenAI Whisper STT selected but no API key is stored. Save a Cloud API key or switch STT provider.");
+        throw new Error("Cloud OpenAI STT selected but no API key is stored. Save a Cloud API key or switch STT provider.");
       }
       return post("/api/start");
     }
