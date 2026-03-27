@@ -17,7 +17,6 @@ export class DeviceCapturePipeline {
   private readonly micFrames: MicFrame[] = [];
   private readonly transcriptWindowMs = 90_000;
   private lastVisionSample: VisionSample | null = null;
-  private lastVisionEmitAt = 0;
   private micPaused = false;
 
   public setMicPaused(paused: boolean): void {
@@ -53,15 +52,7 @@ export class DeviceCapturePipeline {
       .trim();
     const tone = this.computeTone();
     const now = Date.now();
-    let visionTags: string[] = [];
-
-    if (config.capture.visionEnabled && this.lastVisionSample) {
-      const intervalMs = Math.max(1000, config.capture.visionIntervalSec * 1000);
-      if (now - this.lastVisionEmitAt >= intervalMs) {
-        visionTags = this.lastVisionSample.tags;
-        this.lastVisionEmitAt = now;
-      }
-    }
+    const visionTags = config.capture.visionEnabled && this.lastVisionSample ? this.lastVisionSample.tags : [];
 
     return {
       transcript,
@@ -74,7 +65,6 @@ export class DeviceCapturePipeline {
   public reset(): void {
     this.micFrames.length = 0;
     this.lastVisionSample = null;
-    this.lastVisionEmitAt = 0;
   }
 
   public diagnostics(): { micPaused: boolean; bufferedFrames: number; hasVisionSample: boolean } {
