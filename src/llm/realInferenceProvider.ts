@@ -107,7 +107,7 @@ function systemPromptForPayload(payload: PromptPayload): string {
   const transcript = payload.context.transcript.trim();
   const transcriptDirective = transcript
     ? `Highest priority: react directly to the streamer's latest words from context.transcript ("${transcript.slice(0, 220)}").`
-    : "No transcript text is available right now; infer likely chat reactions from tone + vision tags without inventing quoted speech.";
+    : "No transcript text is available right now. Fall back to persona-led small talk and channel chatter topics without claiming missing feeds or missing tags.";
   const questionDirective = transcript && /\?/.test(transcript)
     ? "The transcript includes a question; at least one message must directly answer or acknowledge that question."
     : "If no question is present in the transcript, avoid inventing one.";
@@ -119,9 +119,45 @@ function systemPromptForPayload(payload: PromptPayload): string {
     questionDirective,
     "Treat context.transcript as more important than persona flavor text when they conflict.",
     "At least 70% of messages must reference specific transcript/tone/vision details.",
+    "Never mention RMS, WPM, telemetry, diagnostics, pipelines, or whether tags/transcript are missing.",
+    "Do not break the fourth wall by discussing system input quality or capture internals.",
     "Do not output generic filler like 'positive vibes', 'keep it up', or cheerleading with no context anchors.",
     "Supportive persona means kind tone, not generic praise; keep every message situational and reactive."
   ].join(" ");
+}
+
+function describeEnergy(volumeRms: number): "low" | "steady" | "high" {
+  if (volumeRms < 0.34) return "low";
+  if (volumeRms > 0.62) return "high";
+  return "steady";
+}
+
+function describePace(paceWpm: number): "slow" | "normal" | "fast" {
+  if (paceWpm < 100) return "slow";
+  if (paceWpm > 155) return "fast";
+  return "normal";
+}
+
+function buildModelFacingPayload(payload: PromptPayload): Record<string, unknown> {
+  return {
+    persona: payload.persona,
+    bias: payload.bias,
+    emoteOnly: payload.emoteOnly,
+    viewerCount: payload.viewerCount,
+    requestedMessageCount: payload.requestedMessageCount,
+    context: {
+      transcript: payload.context.transcript,
+      transcriptAvailable: payload.context.transcript.trim().length > 0,
+      tone: {
+        energy: describeEnergy(payload.context.tone.volumeRms),
+        pace: describePace(payload.context.tone.paceWpm)
+      },
+      visionTags: payload.context.visionTags,
+      timestamp: payload.context.timestamp
+    },
+    personaCalibration: payload.personaCalibration,
+    providerConditioning: payload.providerConditioning
+  };
 }
 
 function cloudModelSupportsTemperature(model: string): boolean {
@@ -222,13 +258,13 @@ export class HybridInferenceProvider implements InferenceProvider {
           temperature: 0.8,
           messages: [
             { role: "system", content: systemPromptForPayload(payload) },
-            { role: "user", content: JSON.stringify(payload) }
+            { role: "user", content: JSON.stringify(buildModelFacingPayload(payload)) }
           ]
         }
       : {
           model: config.provider.localModel,
           stream: false,
-          prompt: JSON.stringify(payload)
+          prompt: JSON.stringify(buildModelFacingPayload(payload))
         };
 
     const response = await fetch(endpoint, {
@@ -253,9 +289,10 @@ export class HybridInferenceProvider implements InferenceProvider {
     }
 
     const systemPrompt = systemPromptForPayload(payload);
+    const modelFacingPayload = buildModelFacingPayload(payload);
     const messages = [
       { role: "system" as const, content: systemPrompt },
-      { role: "user" as const, content: JSON.stringify(payload) }
+      { role: "user" as const, content: JSON.stringify(modelFacingPayload) }
     ];
 
     let lastError: Error | null = null;

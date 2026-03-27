@@ -4,8 +4,21 @@ import { sharedDeviceCapturePipeline } from "./deviceCapturePipeline.js";
 
 interface JsonCaptureResponse {
   transcript?: string;
+  text?: string;
   tone?: { volumeRms?: number; paceWpm?: number };
   visionTags?: string[];
+  tags?: string[];
+  results?: { channels?: Array<{ alternatives?: Array<{ transcript?: string }> }> };
+}
+
+function normalizeTranscript(payload: JsonCaptureResponse): string {
+  const fromTopLevel = payload.transcript ?? payload.text ?? payload.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
+  return typeof fromTopLevel === "string" ? fromTopLevel.trim() : "";
+}
+
+function normalizeVisionTags(payload: JsonCaptureResponse): string[] {
+  const raw = Array.isArray(payload.visionTags) ? payload.visionTags : Array.isArray(payload.tags) ? payload.tags : [];
+  return raw.filter((tag): tag is string => typeof tag === "string").map((tag) => tag.trim()).filter(Boolean);
 }
 
 export class MockCaptureProvider implements CaptureProvider {
@@ -35,15 +48,17 @@ export class EndpointCaptureProvider implements CaptureProvider {
       const sttData = ((sttRes && sttRes.ok ? await sttRes.json() : {}) ?? {}) as JsonCaptureResponse;
       const visionData = ((visionRes && visionRes.ok ? await visionRes.json() : {}) ?? {}) as JsonCaptureResponse;
 
-      if (sttData.transcript) {
+      const transcript = normalizeTranscript(sttData);
+      if (transcript) {
         sharedDeviceCapturePipeline.ingestMicFrame({
-          transcriptChunk: sttData.transcript,
+          transcriptChunk: transcript,
           rms: sttData.tone?.volumeRms,
           wordsPerMinute: sttData.tone?.paceWpm
         });
       }
-      if (Array.isArray(visionData.visionTags)) {
-        sharedDeviceCapturePipeline.ingestVisionSample({ tags: visionData.visionTags });
+      const visionTags = normalizeVisionTags(visionData);
+      if (visionTags.length) {
+        sharedDeviceCapturePipeline.ingestVisionSample({ tags: visionTags });
       }
 
       return this.fallback.getContext(config);

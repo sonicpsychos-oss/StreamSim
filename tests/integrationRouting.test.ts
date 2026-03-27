@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/runtimeConfig.js";
 import { HybridInferenceProvider } from "../src/llm/realInferenceProvider.js";
 import { DeviceCapturePipeline } from "../src/capture/deviceCapturePipeline.js";
+import { EndpointCaptureProvider } from "../src/capture/captureProviders.js";
 import { redactSecrets } from "../src/security/diagnostics.js";
 import { isValidObservabilityEvent } from "../src/services/observability.js";
 
@@ -380,6 +381,50 @@ describe("hybrid routing and failover", () => {
     await expect(provider.generate(payload, config)).resolves.toContain("messages");
     await server.close();
   });
+
+  it("uses small-talk fallback instructions and strips raw numeric telemetry from user payload", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
+    const server = await withTestServer((req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk.toString("utf8")));
+      req.on("end", () => {
+        const parsed = JSON.parse(body);
+        const systemPrompt = parsed.messages[0]?.content as string;
+        const userPayload = JSON.parse(parsed.messages[1]?.content as string);
+
+        expect(systemPrompt).toMatch(/small talk/i);
+        expect(systemPrompt).toMatch(/never mention RMS, WPM, telemetry/i);
+        expect(userPayload.context.transcriptAvailable).toBe(false);
+        expect(userPayload.context.tone.energy).toBe("high");
+        expect(userPayload.context.tone.pace).toBe("fast");
+        expect(typeof userPayload.context.tone.volumeRms).toBe("undefined");
+        expect(typeof userPayload.context.tone.paceWpm).toBe("undefined");
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
+      });
+    });
+
+    const provider = new HybridInferenceProvider("openai");
+    const config = { ...defaultConfig, provider: { ...defaultConfig.provider, cloudEndpoint: server.url, cloudModel: "gpt-4o-mini", maxRetries: 0 } };
+    const payload = {
+      persona: "supportive" as const,
+      bias: "agree" as const,
+      emoteOnly: false,
+      viewerCount: 10,
+      requestedMessageCount: 1,
+      context: { transcript: "", tone: { volumeRms: 0.8, paceWpm: 180 }, visionTags: [], timestamp: new Date().toISOString() }
+    };
+
+    await expect(provider.generate(payload, config)).resolves.toContain("messages");
+    await server.close();
+  });
 });
 
 describe("device capture pipeline + security + observability schema", () => {
@@ -407,5 +452,34 @@ describe("device capture pipeline + security + observability schema", () => {
   it("validates structured observability schema", () => {
     expect(isValidObservabilityEvent({ event: "pipeline_tick", at: new Date().toISOString(), latencyMs: 200 })).toBe(true);
     expect(isValidObservabilityEvent({ event: 1, at: "x" })).toBe(false);
+  });
+
+  it("normalizes endpoint STT/vision response shapes into capture context", async () => {
+    const stt = await withTestServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ text: "hello from endpoint", tone: { volumeRms: 0.7, paceWpm: 150 } }));
+    });
+    const vision = await withTestServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ tags: ["desk", "camera"] }));
+    });
+
+    const provider = new EndpointCaptureProvider();
+    const ctx = await provider.getContext({
+      ...defaultConfig,
+      capture: {
+        ...defaultConfig.capture,
+        useRealCapture: true,
+        sttEndpoint: stt.url,
+        visionEndpoint: vision.url,
+        visionEnabled: true,
+        visionIntervalSec: 1
+      }
+    });
+
+    expect(ctx.transcript).toContain("hello from endpoint");
+    expect(ctx.visionTags).toEqual(["desk", "camera"]);
+    await stt.close();
+    await vision.close();
   });
 });
