@@ -22,7 +22,7 @@ async function checkNetwork(config: SimulationConfig): Promise<ReadinessCheck> {
   }
 }
 
-function checkDevice(config: SimulationConfig): ReadinessCheck {
+function checkDevice(config: SimulationConfig, hasCloudKey: boolean): ReadinessCheck {
   const errors: string[] = [];
   try {
     new URL(config.capture.sttEndpoint);
@@ -37,6 +37,10 @@ function checkDevice(config: SimulationConfig): ReadinessCheck {
 
   if (config.capture.useRealCapture && config.capture.sttProvider === "deepgram" && !process.env.STREAMSIM_DEEPGRAM_API_KEY) {
     errors.push("Deepgram STT selected but STREAMSIM_DEEPGRAM_API_KEY is missing.");
+  }
+
+  if (config.capture.useRealCapture && config.capture.sttProvider === "openai-whisper" && !hasCloudKey) {
+    errors.push("OpenAI Whisper STT selected but no cloud API key is stored.");
   }
 
   if (config.capture.useRealCapture && (config.capture.sttProvider === "whispercpp" || config.capture.sttProvider === "local-whisper") && !config.capture.sttEndpoint.startsWith("http")) {
@@ -98,7 +102,7 @@ async function checkSidecar(config: SimulationConfig, sidecar: SidecarManager): 
 }
 
 export async function runReadinessChecks(config: SimulationConfig, sidecar = new SidecarManager(), hasCloudKey = false): Promise<{ checks: ReadinessCheck[]; ready: boolean }> {
-  const checks = [checkDevice(config), checkCredentials(config, hasCloudKey), await checkNetwork(config), await checkSidecar(config, sidecar)];
+  const checks = [checkDevice(config, hasCloudKey), checkCredentials(config, hasCloudKey), await checkNetwork(config), await checkSidecar(config, sidecar)];
   const ready = checks.filter((check) => check.severity === "blocking").every((check) => check.ok);
   return { checks, ready };
 }

@@ -126,13 +126,14 @@ app.post("/api/start", (_req, res) => {
 
   const cloudInference = config.inferenceMode === "openai" || config.inferenceMode === "groq" || config.inferenceMode === "mock-cloud";
   const cloudTts = config.ttsEnabled && config.ttsMode === "cloud";
+  const cloudStt = config.capture.useRealCapture && config.capture.sttProvider === "openai-whisper";
   const hasCloudKey = secretStore.diagnostics().hasCloudKey;
 
-  if ((cloudInference || cloudTts) && !hasCloudKey) {
+  if ((cloudInference || cloudTts || cloudStt) && !hasCloudKey) {
     res.status(400).json({
       ok: false,
-      error: "Cloud mode selected without API key. Save Cloud API key or switch inference/TTS to local.",
-      missing: { cloudInference, cloudTts }
+      error: "Cloud mode selected without API key. Save Cloud API key or switch inference/TTS/STT to local.",
+      missing: { cloudInference, cloudTts, cloudStt }
     });
     return;
   }
@@ -254,8 +255,10 @@ app.get("/api/status", (_req, res) => {
       configuredProvider: config.capture.sttProvider,
       engineProvider: sharedSttEngine.state().provider,
       deepgramKeyPresent: Boolean(process.env.STREAMSIM_DEEPGRAM_API_KEY),
+      cloudKeyPresent: secretStore.diagnostics().hasCloudKey,
       endpoint: config.capture.sttEndpoint,
-      localConfigured: config.capture.sttProvider === "local-whisper"
+      localConfigured: config.capture.sttProvider === "local-whisper",
+      openAiWhisperConfigured: config.capture.sttProvider === "openai-whisper"
     },
     onboardingComplete,
     bootDiagnostics: {
