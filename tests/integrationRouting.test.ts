@@ -360,6 +360,8 @@ describe("hybrid routing and failover", () => {
 
         expect(systemPrompt).toMatch(/react directly to the streamer's latest words/i);
         expect(systemPrompt).toMatch(/Do not output generic filler/i);
+        expect(systemPrompt).toMatch(/60%\+ of messages must be under 5 words/i);
+        expect(systemPrompt).toMatch(/drop F in chat|spam W|type yes\/no/i);
         expect(userPayload.context.transcript).toBe("can you hear me?");
 
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -428,7 +430,7 @@ describe("hybrid routing and failover", () => {
 });
 
 describe("device capture pipeline + security + observability schema", () => {
-  it("accumulates mic transcript and emits periodic vision tags", () => {
+  it("accumulates mic transcript and keeps latest vision tags available between updates", () => {
     const pipeline = new DeviceCapturePipeline();
     pipeline.ingestMicFrame({ transcriptChunk: "hello", rms: 0.4, wordsPerMinute: 100 });
     pipeline.ingestMicFrame({ transcriptChunk: "world", rms: 0.6, wordsPerMinute: 130 });
@@ -436,10 +438,12 @@ describe("device capture pipeline + security + observability schema", () => {
 
     const config = { ...defaultConfig, capture: { ...defaultConfig.capture, visionIntervalSec: 5, visionEnabled: true } };
     const ctx = pipeline.getContext(config);
+    const ctxImmediateFollowup = pipeline.getContext(config);
 
     expect(ctx.transcript).toContain("hello world");
     expect(ctx.tone.volumeRms).toBeGreaterThan(0.49);
     expect(ctx.visionTags).toEqual(["keyboard", "ring light"]);
+    expect(ctxImmediateFollowup.visionTags).toEqual(["keyboard", "ring light"]);
   });
 
   it("redacts auth and key material", () => {
