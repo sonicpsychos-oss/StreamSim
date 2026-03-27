@@ -163,6 +163,34 @@ describe("hybrid routing and failover", () => {
     await expect(provider.generate(payload, config)).rejects.toThrow(/timeout\/network failure/i);
   });
 
+  it("caps retries for longer timeout windows to avoid prolonged fallback delays", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
+    let attemptCount = 0;
+    const server = await withTestServer((_req, res) => {
+      attemptCount += 1;
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "temporary overload" } }));
+    });
+
+    const provider = new HybridInferenceProvider("openai");
+    const config = {
+      ...defaultConfig,
+      provider: { ...defaultConfig.provider, cloudEndpoint: server.url, cloudModel: "x", requestTimeoutMs: 15000, maxRetries: 4 }
+    };
+    const payload = {
+      persona: "supportive" as const,
+      bias: "agree" as const,
+      emoteOnly: false,
+      viewerCount: 10,
+      requestedMessageCount: 1,
+      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+    };
+
+    await expect(provider.generate(payload, config)).rejects.toThrow(/503/);
+    expect(attemptCount).toBe(2);
+    await server.close();
+  });
+
   it("routes openai/groq cloud requests with runtime mode switching", async () => {
     process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
     const server = await withTestServer(async (req, res) => {

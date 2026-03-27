@@ -25,6 +25,12 @@ async function withRetry<T>(attempts: number, fn: () => Promise<T>, onRetryProgr
   throw lastError;
 }
 
+function effectiveRetryCount(maxRetries: number, requestTimeoutMs: number): number {
+  if (requestTimeoutMs >= 30000) return 0;
+  if (requestTimeoutMs >= 15000) return Math.min(maxRetries, 1);
+  return maxRetries;
+}
+
 async function parseProviderError(response: Response): Promise<string> {
   const retryAfter = response.headers.get("retry-after");
   const remaining = response.headers.get("x-ratelimit-remaining-requests") ?? response.headers.get("x-ratelimit-remaining");
@@ -164,9 +170,11 @@ export class HybridInferenceProvider implements InferenceProvider {
       return this.mockProvider.generate(payload, { ...config, inferenceMode: this.mode }, onRetryProgress);
     }
 
+    const retries = effectiveRetryCount(config.provider.maxRetries, config.provider.requestTimeoutMs);
+
     try {
       return await withRetry(
-        config.provider.maxRetries,
+        retries,
         async () => {
           if (this.mode === "ollama" || this.mode === "lmstudio") {
             return this.generateLocal(payload, config);
@@ -177,8 +185,8 @@ export class HybridInferenceProvider implements InferenceProvider {
       );
     } catch (primaryError) {
       if (this.mode === "ollama" || this.mode === "lmstudio") {
-        onRetryProgress?.(config.provider.maxRetries + 1, `Local failure: ${(primaryError as Error).message}; falling back to cloud.`);
-        return withRetry(config.provider.maxRetries, async () => this.generateCloud(payload, config), onRetryProgress);
+        onRetryProgress?.(retries + 1, `Local failure: ${(primaryError as Error).message}; falling back to cloud.`);
+        return withRetry(retries, async () => this.generateCloud(payload, config), onRetryProgress);
       }
       throw primaryError;
     }
