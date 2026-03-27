@@ -2,6 +2,7 @@ import { ChatMessage } from "../core/types.js";
 
 export type MalformedOutputClass = "empty" | "no_json_object" | "json_syntax" | "missing_messages" | "invalid_message_schema";
 export type RecoveryAction = "repair" | "regenerate" | "drop";
+const MAX_INFERENCE_OUTPUT_CHARS = 250_000;
 
 function coerceMessage(raw: unknown): ChatMessage | null {
   if (typeof raw !== "object" || raw === null) return null;
@@ -33,6 +34,12 @@ export function repairInferenceOutput(raw: string): string {
   return raw.trim().replace(/^```json\s*/i, "").replace(/^###json\s*/i, "").replace(/\s*```$/i, "").replace(/\s*###$/i, "");
 }
 
+function sanitizeRawOutput(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  return trimmed.length > MAX_INFERENCE_OUTPUT_CHARS ? trimmed.slice(0, MAX_INFERENCE_OUTPUT_CHARS) : trimmed;
+}
+
 function extractLikelyJsonObject(raw: string): string {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
@@ -43,7 +50,7 @@ function extractLikelyJsonObject(raw: string): string {
 }
 
 export function classifyMalformedOutput(raw: string): MalformedOutputClass {
-  const trimmed = raw.trim();
+  const trimmed = sanitizeRawOutput(raw);
   if (!trimmed) return "empty";
 
   const repaired = repairInferenceOutput(trimmed);
@@ -64,11 +71,11 @@ export function classifyMalformedOutput(raw: string): MalformedOutputClass {
   const parsed = data.messages.map(coerceMessage).filter((message): message is ChatMessage => Boolean(message));
   if (!parsed.length) return "invalid_message_schema";
 
-  return "missing_messages";
+  return "json_syntax";
 }
 
 function parsePayload(raw: string): Record<string, unknown> {
-  const repaired = repairInferenceOutput(raw);
+  const repaired = repairInferenceOutput(sanitizeRawOutput(raw));
   try {
     return JSON.parse(repaired) as Record<string, unknown>;
   } catch {
