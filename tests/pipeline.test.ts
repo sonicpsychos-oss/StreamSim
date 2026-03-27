@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/runtimeConfig.js";
 import { mergeConfig, sanitizeConfig } from "../src/config/runtimeConfig.js";
-import { parseInferenceOutput, repairInferenceOutput } from "../src/pipeline/outputParser.js";
+import { classifyMalformedOutput, parseInferenceOutput, repairInferenceOutput } from "../src/pipeline/outputParser.js";
 
 describe("runtime config", () => {
   it("clamps invalid values and supports nested sections", () => {
@@ -45,5 +45,15 @@ describe("output parser", () => {
 
   it("throws when no valid messages are present", () => {
     expect(() => parseInferenceOutput('{"messages":[{"foo":1}]}')).toThrow(/No valid messages/);
+  });
+
+  it("classifies recoverable fenced JSON noise as syntax-repairable", () => {
+    const malformed = "noise ###json\n{\"messages\":[{\"text\":\"yo\",\"emotes\":[]}]}### trailing";
+    expect(classifyMalformedOutput(malformed)).toBe("json_syntax");
+  });
+
+  it("caps oversized payloads to avoid parser stalls and still throws cleanly", () => {
+    const huge = `${"x".repeat(300_000)}{"messages":[{"text":"ok","emotes":[]}]}`;
+    expect(() => parseInferenceOutput(huge)).toThrow();
   });
 });

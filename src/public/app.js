@@ -22,10 +22,14 @@ let micCheckStream = null;
 let micCheckAudioContext = null;
 let micCheckMeterInterval = null;
 let micCheckDataInterval = null;
+let micCheckSource = null;
+let micCheckAnalyser = null;
+let micCheckProcessor = null;
 let micCheckQueuedPcm = [];
 let micCheckProbeInFlight = false;
 let latestCaptionText = "";
 let latestStatusPayload = null;
+let simulationActionInFlight = false;
 let latestDeviceVerification = {
   micPermission: false,
   cameraPermission: false,
@@ -249,6 +253,19 @@ function stopMicVerificationCheck() {
     clearInterval(micCheckDataInterval);
     micCheckDataInterval = null;
   }
+  if (micCheckProcessor) {
+    micCheckProcessor.onaudioprocess = null;
+    micCheckProcessor.disconnect();
+    micCheckProcessor = null;
+  }
+  if (micCheckAnalyser) {
+    micCheckAnalyser.disconnect();
+    micCheckAnalyser = null;
+  }
+  if (micCheckSource) {
+    micCheckSource.disconnect();
+    micCheckSource = null;
+  }
   if (micCheckAudioContext) {
     void micCheckAudioContext.close();
     micCheckAudioContext = null;
@@ -281,10 +298,13 @@ async function startMicVerificationCheck() {
   const analyser = micCheckAudioContext.createAnalyser();
   analyser.fftSize = 256;
   source.connect(analyser);
+  micCheckSource = source;
+  micCheckAnalyser = analyser;
 
   const processor = micCheckAudioContext.createScriptProcessor(4096, 1, 1);
   source.connect(processor);
   processor.connect(micCheckAudioContext.destination);
+  micCheckProcessor = processor;
   processor.onaudioprocess = (event) => {
     const input = event.inputBuffer.getChannelData(0);
     micCheckQueuedPcm.push(...input);
@@ -372,6 +392,12 @@ async function startLiveMonitor() {
 function setPending(button, isPending) {
   if (!button) return;
   button.disabled = isPending;
+}
+
+function setSimulationActionPending(isPending) {
+  simulationActionInFlight = isPending;
+  if (startBtn) startBtn.disabled = isPending;
+  if (stopBtn) stopBtn.disabled = isPending;
 }
 
 async function runAction({ button, pendingText, successText, onRun }) {
@@ -793,6 +819,8 @@ saveBtn.addEventListener("click", async () => {
 });
 
 startBtn.addEventListener("click", async () => {
+  if (simulationActionInFlight) return;
+  setSimulationActionPending(true);
   await runAction({
     button: startBtn,
     pendingText: "Starting simulation...",
@@ -814,15 +842,19 @@ startBtn.addEventListener("click", async () => {
       return post("/api/start");
     }
   });
+  setSimulationActionPending(false);
 });
 
 stopBtn.addEventListener("click", async () => {
+  if (simulationActionInFlight) return;
+  setSimulationActionPending(true);
   await runAction({
     button: stopBtn,
     pendingText: "Stopping simulation...",
     successText: "Simulation stopped.",
     onRun: () => post("/api/stop")
   });
+  setSimulationActionPending(false);
 });
 
 rebindBtn.addEventListener("click", async () => {

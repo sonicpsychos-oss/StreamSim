@@ -11,6 +11,7 @@ import { SidecarManager } from "./sidecarManager.js";
 import { SpoolingEngine } from "./spoolingEngine.js";
 import { MockInferenceProvider } from "../llm/mockInferenceProvider.js";
 import { IdentityManager } from "./identityManager.js";
+import { sharedDeviceCapturePipeline } from "../capture/deviceCapturePipeline.js";
 
 export class SimulationOrchestrator {
   private readonly spooler = new SpoolingEngine();
@@ -62,6 +63,9 @@ export class SimulationOrchestrator {
       clearTimeout(this.ttsWatchdogTimer);
       this.ttsWatchdogTimer = null;
     }
+    this.audioState.stopTts();
+    sharedSttEngine.resume();
+    sharedDeviceCapturePipeline.reset();
   }
 
   public cancelSidecarPull(): void {
@@ -115,164 +119,177 @@ export class SimulationOrchestrator {
   private async loop(): Promise<void> {
     if (!this.running) return;
 
-    const config = this.getConfig();
-    const captureProvider = createCaptureProvider(config);
-    const provider = createInferenceProvider(config.inferenceMode);
-    const startedAt = Date.now();
+    let timing = this.spooler.nextDelayMs(this.getConfig(), { volumeRms: 0.2, paceWpm: 110 });
 
-    if (!config.compliance.eulaAccepted) {
-      this.emitMeta({ warning: "EULA must be accepted before simulation starts." });
-      this.running = false;
-      return;
-    }
+    try {
+      const config = this.getConfig();
+      const captureProvider = createCaptureProvider(config);
+      const provider = createInferenceProvider(config.inferenceMode);
+      const startedAt = Date.now();
 
-    const sidecarStatus = await this.sidecar.ensureReady(config);
-    if (!sidecarStatus.ready) {
-      this.emitMeta({ warning: sidecarStatus.details, fallbackSuggested: sidecarStatus.fallbackSuggested, blocked: false, recovery: sidecarStatus.uxAction });
-      this.obs.log("sidecar_status", { sidecarStatus: sidecarStatus.phase, progress: sidecarStatus.progress });
-    }
-
-    const validation = provider.validateConfig(config);
-    if (!validation.ok) {
-      this.emitMeta({ warnings: validation.errors, blocked: false });
-      this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: validation.errors.join(" | ") });
-    }
-
-    const health = await provider.healthCheck(config);
-    if (!health.ok) {
-      this.emitMeta({ warnings: [`Provider unhealthy: ${health.details}`], blocked: false });
-      this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: `Provider unhealthy: ${health.details}` });
-    } else {
-      this.setAiStatus({ providerHealth: "ok", detail: health.details });
-    }
-
-    const captureStarted = Date.now();
-    const context = await captureProvider.getContext(config);
-    const captureLatencyMs = Date.now() - captureStarted;
-
-    const timing = this.spooler.nextDelayMs(config, context.tone);
-
-    if (this.audioState.canListenToMic()) {
-      sharedSttEngine.resume();
-      const payload = buildPromptPayload(config, context);
-      let messages: ChatMessage[] = [];
-
-      const inferenceStarted = Date.now();
-      this.setAiStatus({ state: "running", fallbackMode: null, detail: `Generating via ${config.inferenceMode}.` });
-      try {
-        const rawOutput = await provider.generate(payload, config, (attempt, reason) => {
-          const recovery = this.cloudRecoveryMeta(attempt, config.provider.maxRetries, reason);
-          this.emitMeta({ warnings: [recovery.message], cloudRecovery: recovery.phase, blocked: recovery.blocking });
-        });
-        try {
-          messages = this.hydrateMessages(parseInferenceOutput(rawOutput), "real-inference");
-        } catch (parseError) {
-          const malformedClass = classifyMalformedOutput(rawOutput);
-          const action = recommendedRecoveryAction(malformedClass);
-          this.obs.log("malformed_json_counter", { malformedClass, action, stage: "first_pass" });
-
-          if ((action === "repair" || action === "regenerate") && config.safety.regenerateOnMalformedJson) {
-            const retryOutput = await provider.generate(payload, config);
-            messages = this.hydrateMessages(parseInferenceOutput(retryOutput), "real-inference");
-            this.emitMeta({ warnings: [`Malformed inference JSON recovered via ${action} fallback.`], blocked: false, malformedClass, action });
-            this.obs.log("malformed_json_counter", { malformedClass, action, stage: "recovered" });
-          } else {
-            this.emitMeta({ warning: `Dropped malformed output (${malformedClass}).`, blocked: false, malformedClass, action: "drop" });
-            this.obs.log("malformed_json_counter", { malformedClass, action: "drop", stage: "dropped" });
-            if (!config.safety.dropOnParseFailure) throw parseError;
-          }
-        }
-      } catch (error) {
-        const reason = (error as Error).message;
-        this.obs.log("reliability_recovery", { ok: false, reason });
-        this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: reason });
-
-        try {
-          const fallbackOutput = await this.mockProvider.generate(payload, { ...config, inferenceMode: "mock-local" });
-          messages = this.hydrateMessages(parseInferenceOutput(fallbackOutput), "fallback-mock");
-          this.setAiStatus({ state: "degraded", providerHealth: "degraded", fallbackMode: "mock-local", detail: `Primary inference failed; mock fallback active: ${reason}` });
-          this.emitMeta({
-            warnings: [reason, "Fallback engaged: mock-local"],
-            dropped: false,
-            blocked: false,
-            cloudRecovery: "degraded",
-            source: "fallback-mock",
-            provider: config.inferenceMode,
-            timeoutMs: config.provider.requestTimeoutMs,
-            retries: config.provider.maxRetries
-          });
-        } catch (fallbackError) {
-          const fallbackReason = (fallbackError as Error).message;
-          this.setAiStatus({ state: "error", providerHealth: "degraded", fallbackMode: null, detail: `Fallback failed: ${fallbackReason}` });
-          if (config.safety.dropOnParseFailure) {
-            this.emitMeta({ warning: `${reason} | fallback failed: ${fallbackReason}`, dropped: true, blocked: false, cloudRecovery: "degraded" });
-          }
-        }
+      if (!config.compliance.eulaAccepted) {
+        this.emitMeta({ warning: "EULA must be accepted before simulation starts." });
+        this.running = false;
+        return;
       }
-      const inferenceLatencyMs = Date.now() - inferenceStarted;
 
-      const safety = applySafetyPolicy(messages, config);
-      const safeMessages = safety.safeMessages;
+      const sidecarStatus = await this.sidecar.ensureReady(config);
+      if (!sidecarStatus.ready) {
+        this.emitMeta({ warning: sidecarStatus.details, fallbackSuggested: sidecarStatus.fallbackSuggested, blocked: false, recovery: sidecarStatus.uxAction });
+        this.obs.log("sidecar_status", { sidecarStatus: sidecarStatus.phase, progress: sidecarStatus.progress });
+      }
 
-      safeMessages.forEach((msg) => {
-        if (config.ttsEnabled && config.ttsMode !== "off" && msg.ttsText) {
-          this.audioState.startTts();
-          sharedSttEngine.pause();
-          setTimeout(() => {
-            this.audioState.stopTts();
-            sharedSttEngine.resume();
-          }, 1400);
-          if (this.ttsWatchdogTimer) clearTimeout(this.ttsWatchdogTimer);
-          this.ttsWatchdogTimer = setTimeout(() => {
-            const forced = this.audioState.forceResetIfStale(2800);
-            if (forced) {
-              sharedSttEngine.resume();
-              this.emitMeta({ warnings: ["TTS watchdog forced stale-state reset."], blocked: false });
+      const validation = provider.validateConfig(config);
+      if (!validation.ok) {
+        this.emitMeta({ warnings: validation.errors, blocked: false });
+        this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: validation.errors.join(" | ") });
+      }
+
+      const health = await provider.healthCheck(config);
+      if (!health.ok) {
+        this.emitMeta({ warnings: [`Provider unhealthy: ${health.details}`], blocked: false });
+        this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: `Provider unhealthy: ${health.details}` });
+      } else {
+        this.setAiStatus({ providerHealth: "ok", detail: health.details });
+      }
+
+      const captureStarted = Date.now();
+      const context = await captureProvider.getContext(config);
+      const captureLatencyMs = Date.now() - captureStarted;
+
+      timing = this.spooler.nextDelayMs(config, context.tone);
+
+      if (this.audioState.canListenToMic()) {
+        sharedSttEngine.resume();
+        const payload = buildPromptPayload(config, context);
+        let messages: ChatMessage[] = [];
+
+        const inferenceStarted = Date.now();
+        this.setAiStatus({ state: "running", fallbackMode: null, detail: `Generating via ${config.inferenceMode}.` });
+        try {
+          const rawOutput = await provider.generate(payload, config, (attempt, reason) => {
+            const recovery = this.cloudRecoveryMeta(attempt, config.provider.maxRetries, reason);
+            this.emitMeta({ warnings: [recovery.message], cloudRecovery: recovery.phase, blocked: recovery.blocking });
+          });
+          try {
+            messages = this.hydrateMessages(parseInferenceOutput(rawOutput), "real-inference");
+          } catch (parseError) {
+            const malformedClass = classifyMalformedOutput(rawOutput);
+            const action = recommendedRecoveryAction(malformedClass);
+            this.obs.log("malformed_json_counter", { malformedClass, action, stage: "first_pass" });
+
+            if ((action === "repair" || action === "regenerate") && config.safety.regenerateOnMalformedJson) {
+              const retryOutput = await provider.generate(payload, config);
+              messages = this.hydrateMessages(parseInferenceOutput(retryOutput), "real-inference");
+              this.emitMeta({ warnings: [`Malformed inference JSON recovered via ${action} fallback.`], blocked: false, malformedClass, action });
+              this.obs.log("malformed_json_counter", { malformedClass, action, stage: "recovered" });
+            } else {
+              this.emitMeta({ warning: `Dropped malformed output (${malformedClass}).`, blocked: false, malformedClass, action: "drop" });
+              this.obs.log("malformed_json_counter", { malformedClass, action: "drop", stage: "dropped" });
+              if (!config.safety.dropOnParseFailure) throw parseError;
             }
-          }, 3200);
-        }
-      });
+          }
+        } catch (error) {
+          const reason = (error as Error).message;
+          this.obs.log("reliability_recovery", { ok: false, reason });
+          this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: reason });
 
-      this.emitMessages(safeMessages);
-      const latencyMs = Date.now() - startedAt;
-      this.obs.log("pipeline_tick", {
-        inferenceMode: config.inferenceMode,
-        requestedMessageCount: payload.requestedMessageCount,
-        emittedCount: safeMessages.length,
-        latencyMs,
-        captureLatencyMs,
-        inferenceLatencyMs,
-        targetDelayMs: timing.actualDelayMs,
-        jankMs: Math.max(0, latencyMs - timing.actualDelayMs)
-      });
-
-      this.emitMeta({
-        context,
-        timing,
-        audioState: this.getAudioState(),
-        inferenceMode: config.inferenceMode,
-        providerSource: safeMessages[0]?.source ?? "unknown",
-        requestedMessageCount: payload.requestedMessageCount,
-        latencyMs,
-        captureLatencyMs,
-        inferenceLatencyMs,
-        safety: {
-          dropPolicy: config.safety.dropPolicy,
-          droppedCount: safety.droppedCount,
-          queueSize: safety.queueMessages.length
-        },
-        queueMessages: safety.queueMessages,
-        slo: {
-          targetMs: 3000,
-          withinTarget: latencyMs <= 3000
-        },
-        ai: this.getAiStatus(),
-        providerDiagnostics: {
-          timeoutMs: config.provider.requestTimeoutMs,
-          retries: config.provider.maxRetries,
-          fallbackActive: this.aiStatus.fallbackMode !== null
+          try {
+            const fallbackOutput = await this.mockProvider.generate(payload, { ...config, inferenceMode: "mock-local" });
+            messages = this.hydrateMessages(parseInferenceOutput(fallbackOutput), "fallback-mock");
+            this.setAiStatus({ state: "degraded", providerHealth: "degraded", fallbackMode: "mock-local", detail: `Primary inference failed; mock fallback active: ${reason}` });
+            this.emitMeta({
+              warnings: [reason, "Fallback engaged: mock-local"],
+              dropped: false,
+              blocked: false,
+              cloudRecovery: "degraded",
+              source: "fallback-mock",
+              provider: config.inferenceMode,
+              timeoutMs: config.provider.requestTimeoutMs,
+              retries: config.provider.maxRetries
+            });
+          } catch (fallbackError) {
+            const fallbackReason = (fallbackError as Error).message;
+            this.setAiStatus({ state: "error", providerHealth: "degraded", fallbackMode: null, detail: `Fallback failed: ${fallbackReason}` });
+            if (config.safety.dropOnParseFailure) {
+              this.emitMeta({ warning: `${reason} | fallback failed: ${fallbackReason}`, dropped: true, blocked: false, cloudRecovery: "degraded" });
+            }
+          }
         }
-      });
+        const inferenceLatencyMs = Date.now() - inferenceStarted;
+
+        const safety = applySafetyPolicy(messages, config);
+        const safeMessages = safety.safeMessages;
+
+        safeMessages.forEach((msg) => {
+          if (config.ttsEnabled && config.ttsMode !== "off" && msg.ttsText) {
+            this.audioState.startTts();
+            sharedSttEngine.pause();
+            setTimeout(() => {
+              this.audioState.stopTts();
+              sharedSttEngine.resume();
+            }, 1400);
+            if (this.ttsWatchdogTimer) clearTimeout(this.ttsWatchdogTimer);
+            this.ttsWatchdogTimer = setTimeout(() => {
+              const forced = this.audioState.forceResetIfStale(2800);
+              if (forced) {
+                sharedSttEngine.resume();
+                this.emitMeta({ warnings: ["TTS watchdog forced stale-state reset."], blocked: false });
+              }
+            }, 3200);
+          }
+        });
+
+        this.emitMessages(safeMessages);
+        const latencyMs = Date.now() - startedAt;
+        this.obs.log("pipeline_tick", {
+          inferenceMode: config.inferenceMode,
+          requestedMessageCount: payload.requestedMessageCount,
+          emittedCount: safeMessages.length,
+          latencyMs,
+          captureLatencyMs,
+          inferenceLatencyMs,
+          targetDelayMs: timing.actualDelayMs,
+          jankMs: Math.max(0, latencyMs - timing.actualDelayMs)
+        });
+
+        this.emitMeta({
+          context,
+          timing,
+          audioState: this.getAudioState(),
+          inferenceMode: config.inferenceMode,
+          providerSource: safeMessages[0]?.source ?? "unknown",
+          requestedMessageCount: payload.requestedMessageCount,
+          latencyMs,
+          captureLatencyMs,
+          inferenceLatencyMs,
+          safety: {
+            dropPolicy: config.safety.dropPolicy,
+            droppedCount: safety.droppedCount,
+            queueSize: safety.queueMessages.length
+          },
+          queueMessages: safety.queueMessages,
+          slo: {
+            targetMs: 3000,
+            withinTarget: latencyMs <= 3000
+          },
+          ai: this.getAiStatus(),
+          providerDiagnostics: {
+            timeoutMs: config.provider.requestTimeoutMs,
+            retries: config.provider.maxRetries,
+            fallbackActive: this.aiStatus.fallbackMode !== null
+          }
+        });
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.obs.log("pipeline_loop_crash", { reason });
+      this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: `Loop recovered after error: ${reason}` });
+      this.emitMeta({ warning: `Simulation loop error recovered: ${reason}`, blocked: false, recovery: "next_tick" });
+    }
+
+    if (!this.running) {
+      return;
     }
 
     this.timer = setTimeout(() => {
