@@ -214,6 +214,11 @@ async function probeSttFromMicChunk() {
 
     const transcript = (result?.transcript ?? "").trim();
     if (transcript) {
+      const rms = Math.min(1, Math.max(0.05, Math.sqrt(clip.reduce((sum, sample) => sum + sample * sample, 0) / Math.max(1, clip.length))));
+      const words = transcript.split(/\s+/).filter(Boolean).length;
+      const clipDurationSec = Math.max(1, clip.length / Math.max(1, sampleRate));
+      const wordsPerMinute = Math.max(70, Math.min(220, Math.round((words / clipDurationSec) * 60)));
+      await post("/api/capture/mic-frame", { transcriptChunk: transcript, rms, wordsPerMinute });
       latestCaptionText = transcript;
       setCaptionPreview(transcript);
     }
