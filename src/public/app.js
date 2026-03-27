@@ -38,6 +38,7 @@ let latestDeviceVerification = {
 const MIC_CHECK_PROBE_SECONDS = 0.6;
 const MIC_CHECK_BUFFER_SECONDS = 1.8;
 const MIC_CHECK_MIN_SAMPLES = 2000;
+const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 1500;
 
 const controls = {
   viewerCount: document.getElementById("viewerCount"),
@@ -135,6 +136,34 @@ function arrayBufferToBase64(buffer) {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
   return btoa(binary);
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function confirmCameraFrames(stream) {
+  const probeVideo = document.createElement("video");
+  probeVideo.autoplay = true;
+  probeVideo.muted = true;
+  probeVideo.playsInline = true;
+  probeVideo.srcObject = stream;
+
+  try {
+    await probeVideo.play();
+    await Promise.race([
+      new Promise((resolve) => {
+        probeVideo.onloadeddata = () => resolve(true);
+      }),
+      (async () => {
+        await wait(CAMERA_FRAME_CONFIRM_TIMEOUT_MS);
+        throw new Error("Camera stream opened but did not produce frames in time.");
+      })()
+    ]);
+  } finally {
+    probeVideo.pause();
+    probeVideo.srcObject = null;
+  }
 }
 
 async function probeSttFromMicChunk() {
@@ -593,6 +622,9 @@ function updateMonitorAvailability(verification) {
 }
 
 async function getDeviceInventory() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    return { hasMicDevice: false, hasCameraDevice: false };
+  }
   const devices = await navigator.mediaDevices.enumerateDevices();
   return {
     hasMicDevice: devices.some((device) => device.kind === "audioinput"),
@@ -601,14 +633,16 @@ async function getDeviceInventory() {
 }
 
 async function verifyMicrophoneOnly() {
-  if (!navigator.mediaDevices?.enumerateDevices) {
-    throw new Error("Browser does not support media device enumeration.");
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Browser does not support microphone capture.");
   }
 
   let micPermission = false;
+  let inferredHasMicDevice = false;
   try {
     const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
     micPermission = true;
+    inferredHasMicDevice = audioOnly.getAudioTracks().length > 0;
     audioOnly.getTracks().forEach((track) => track.stop());
   } catch {}
 
@@ -616,7 +650,8 @@ async function verifyMicrophoneOnly() {
   return {
     ...latestDeviceVerification,
     micPermission,
-    ...inventory
+    hasMicDevice: inventory.hasMicDevice || inferredHasMicDevice,
+    hasCameraDevice: inventory.hasCameraDevice
   };
 }
 
@@ -631,21 +666,29 @@ async function getMediaPermissionState(name) {
 }
 
 async function verifyCameraOnly() {
-  if (!navigator.mediaDevices?.enumerateDevices) {
-    throw new Error("Browser does not support media device enumeration.");
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Browser does not support camera capture.");
   }
 
   let cameraPermission = false;
   let cameraFailureReason = null;
+  let inferredHasCameraDevice = false;
+  let videoOnly = null;
 
   try {
-    const videoOnly = await navigator.mediaDevices.getUserMedia({ video: true });
+    videoOnly = await navigator.mediaDevices.getUserMedia({ video: true });
+    inferredHasCameraDevice = videoOnly.getVideoTracks().length > 0;
+    if (!inferredHasCameraDevice) {
+      throw new Error("Camera permission granted, but browser returned no video tracks.");
+    }
+    await confirmCameraFrames(videoOnly);
     cameraPermission = true;
-    videoOnly.getTracks().forEach((track) => track.stop());
   } catch (error) {
     const name = error && typeof error === "object" && "name" in error ? String(error.name) : "Error";
     const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Unable to access camera";
     cameraFailureReason = `${name}: ${message}`;
+  } finally {
+    videoOnly?.getTracks().forEach((track) => track.stop());
   }
 
   const cameraPermissionState = await getMediaPermissionState("camera");
@@ -656,7 +699,8 @@ async function verifyCameraOnly() {
     cameraPermission,
     cameraPermissionState,
     cameraFailureReason,
-    ...inventory
+    hasMicDevice: inventory.hasMicDevice,
+    hasCameraDevice: inventory.hasCameraDevice || inferredHasCameraDevice
   };
 }
 
@@ -854,17 +898,21 @@ verifyCameraBtn?.addEventListener("click", async () => {
   renderDeviceChecks(verification);
   updateMonitorAvailability(verification);
 
-  if (!verification.hasCameraDevice) {
-    setStatus("No camera device detected. Connect a camera and try Verify Camera again.", "error");
-    return;
-  }
-
   if (!verification.cameraPermission) {
     if (verification.cameraPermissionState === "denied") {
       setStatus("Camera permission is denied in browser site settings. Change it to Allow and retry.", "error");
       return;
     }
+    if (!verification.hasCameraDevice) {
+      setStatus("No camera device detected. Connect a camera and try Verify Camera again.", "error");
+      return;
+    }
     setStatus(`Camera did not start (${verification.cameraFailureReason ?? "unknown reason"}). Close other apps using the camera and retry.`, "error");
+    return;
+  }
+
+  if (!verification.hasCameraDevice) {
+    setStatus("Camera stream opened, but device inventory is unavailable in this browser. Camera verification complete.", "warn");
     return;
   }
 
