@@ -713,7 +713,7 @@ async function verifyCameraOnly() {
     cameraPermission,
     cameraPermissionState,
     cameraFailureReason,
-    hasMicDevice: inventory.hasMicDevice,
+    hasMicDevice: inventory.hasMicDevice || latestDeviceVerification.hasMicDevice,
     hasCameraDevice: inventory.hasCameraDevice || inferredHasCameraDevice
   };
 }
