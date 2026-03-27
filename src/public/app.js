@@ -38,7 +38,7 @@ let latestDeviceVerification = {
 const MIC_CHECK_PROBE_SECONDS = 0.6;
 const MIC_CHECK_BUFFER_SECONDS = 1.8;
 const MIC_CHECK_MIN_SAMPLES = 2000;
-const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 1500;
+const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
 
 const controls = {
   viewerCount: document.getElementById("viewerCount"),
@@ -143,6 +143,11 @@ function wait(ms) {
 }
 
 async function confirmCameraFrames(stream) {
+  const primaryTrack = stream.getVideoTracks()[0];
+  if (!primaryTrack) {
+    throw new Error("Camera stream did not include a video track.");
+  }
+
   const probeVideo = document.createElement("video");
   probeVideo.autoplay = true;
   probeVideo.muted = true;
@@ -150,16 +155,25 @@ async function confirmCameraFrames(stream) {
   probeVideo.srcObject = stream;
 
   try {
-    await probeVideo.play();
-    await Promise.race([
+    await probeVideo.play().catch(() => {});
+    const frameObserved = await Promise.race([
       new Promise((resolve) => {
         probeVideo.onloadeddata = () => resolve(true);
+        probeVideo.oncanplay = () => resolve(true);
+        probeVideo.onplaying = () => resolve(true);
+        if (typeof probeVideo.requestVideoFrameCallback === "function") {
+          probeVideo.requestVideoFrameCallback(() => resolve(true));
+        }
       }),
       (async () => {
         await wait(CAMERA_FRAME_CONFIRM_TIMEOUT_MS);
-        throw new Error("Camera stream opened but did not produce frames in time.");
+        return false;
       })()
     ]);
+
+    if (frameObserved) return;
+    if (primaryTrack.readyState === "live") return;
+    throw new Error("Camera stream became inactive before frame confirmation.");
   } finally {
     probeVideo.pause();
     probeVideo.srcObject = null;
