@@ -39,8 +39,12 @@ function checkDevice(config: SimulationConfig, hasCloudKey: boolean): ReadinessC
     errors.push("Deepgram STT selected but STREAMSIM_DEEPGRAM_API_KEY is missing.");
   }
 
-  if (config.capture.useRealCapture && config.capture.sttProvider === "openai-whisper" && !hasCloudKey) {
-    errors.push("OpenAI Whisper STT selected but no cloud API key is stored.");
+  if (
+    config.capture.useRealCapture &&
+    (config.capture.sttProvider === "openai-whisper" || config.capture.sttProvider === "gpt-4o-mini-transcribe") &&
+    !hasCloudKey
+  ) {
+    errors.push("Cloud OpenAI STT selected but no cloud API key is stored.");
   }
 
   if (config.capture.useRealCapture && (config.capture.sttProvider === "whispercpp" || config.capture.sttProvider === "local-whisper") && !config.capture.sttEndpoint.startsWith("http")) {

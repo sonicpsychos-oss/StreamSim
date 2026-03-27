@@ -21,7 +21,8 @@ function migrateV1toV2(input: Record<string, unknown>): Record<string, unknown> 
         capture.sttProvider === "local-whisper" ||
         capture.sttProvider === "whispercpp" ||
         capture.sttProvider === "deepgram" ||
-        capture.sttProvider === "openai-whisper"
+        capture.sttProvider === "openai-whisper" ||
+        capture.sttProvider === "gpt-4o-mini-transcribe"
           ? capture.sttProvider
           : defaultConfig.capture.sttProvider
     }

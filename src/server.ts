@@ -126,7 +126,9 @@ app.post("/api/start", (_req, res) => {
 
   const cloudInference = config.inferenceMode === "openai" || config.inferenceMode === "groq" || config.inferenceMode === "mock-cloud";
   const cloudTts = config.ttsEnabled && config.ttsMode === "cloud";
-  const cloudStt = config.capture.useRealCapture && config.capture.sttProvider === "openai-whisper";
+  const cloudStt =
+    config.capture.useRealCapture &&
+    (config.capture.sttProvider === "openai-whisper" || config.capture.sttProvider === "gpt-4o-mini-transcribe");
   const hasCloudKey = secretStore.diagnostics().hasCloudKey;
 
   if ((cloudInference || cloudTts || cloudStt) && !hasCloudKey) {
@@ -258,7 +260,8 @@ app.get("/api/status", (_req, res) => {
       cloudKeyPresent: secretStore.diagnostics().hasCloudKey,
       endpoint: config.capture.sttEndpoint,
       localConfigured: config.capture.sttProvider === "local-whisper",
-      openAiWhisperConfigured: config.capture.sttProvider === "openai-whisper"
+      openAiWhisperConfigured: config.capture.sttProvider === "openai-whisper",
+      gpt4oMiniTranscribeConfigured: config.capture.sttProvider === "gpt-4o-mini-transcribe"
     },
     onboardingComplete,
     bootDiagnostics: {
