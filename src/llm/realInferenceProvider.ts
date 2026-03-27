@@ -97,6 +97,21 @@ function extractProviderText(data: ProviderResponseShape): string {
   return "";
 }
 
+function systemPromptForPayload(payload: PromptPayload): string {
+  const transcript = payload.context.transcript.trim();
+  const transcriptDirective = transcript
+    ? `Highest priority: react directly to the streamer's latest words from context.transcript ("${transcript.slice(0, 220)}").`
+    : "No transcript text is available right now; infer likely chat reactions from tone + vision tags without inventing quoted speech.";
+
+  return [
+    'Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number?,"ttsText":"string?"}]}. Never include usernames.',
+    "You are simulating a live audience reacting to the streamer in real time (not a generic standalone chat).",
+    transcriptDirective,
+    "Treat context.transcript as more important than persona flavor text when they conflict.",
+    "Reference concrete details from context (transcript/tone/vision) in at least half of the messages."
+  ].join(" ");
+}
+
 export class HybridInferenceProvider implements InferenceProvider {
   private readonly mockProvider = new MockInferenceProvider();
   private readonly secretStore = new SecretStore();
@@ -172,7 +187,7 @@ export class HybridInferenceProvider implements InferenceProvider {
           model: config.provider.localModel,
           temperature: 0.8,
           messages: [
-            { role: "system", content: 'Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number?,"ttsText":"string?"}]}. Never include usernames.' },
+            { role: "system", content: systemPromptForPayload(payload) },
             { role: "user", content: JSON.stringify(payload) }
           ]
         }
@@ -216,7 +231,7 @@ export class HybridInferenceProvider implements InferenceProvider {
           model: config.provider.cloudModel,
           temperature: 0.8,
           messages: [
-            { role: "system", content: 'Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number?,"ttsText":"string?"}]}. Never include usernames.' },
+            { role: "system", content: systemPromptForPayload(payload) },
             { role: "user", content: JSON.stringify(payload) }
           ]
         })
