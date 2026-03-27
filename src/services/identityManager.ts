@@ -1,106 +1,127 @@
 import { ChatMessage } from "../core/types.js";
+import { loadBanlist } from "../security/banlistRegistry.js";
 
 const ADJECTIVES = [
-  "Salty",
-  "Epic",
-  "Sneaky",
-  "Chill",
-  "Turbo",
-  "Cracked",
-  "Lucky",
-  "Spicy",
-  "Fuzzy",
-  "Nova",
-  "Hyper",
-  "Mellow",
-  "Savage",
-  "Shadow",
-  "Swift",
-  "Cosmic",
-  "Jolly",
-  "Rogue",
-  "Zesty",
-  "Pixel"
-];
+  "Salty", "Sleepy", "Turbo", "Pixel", "Glitch", "Cyber", "Stealth", "Macro", "Laggy", "Sweaty", "Cracked", "Hardcore", "Legendary",
+  "Hype", "Sus", "Pog", "Cursed", "Random", "Spicy", "Yeet", "Maximum", "Absolute", "Chill", "Golden", "Radiant", "Gloom", "Mellow",
+  "Cozy", "Lunar", "Velvet", "Honest", "Quiet", "Sneaky", "Savage", "Primal", "Ancient", "Hyper", "Neon", "Frozen", "Electric", "Shadow",
+  "Iron", "Toxic", "Mega", "Ultra", "Infinite", "Bitter", "Fluffy", "Grumpy", "Wild", "Calm", "Brave", "Fancy", "Clumsy", "Dorky",
+  "Funky", "Jolly", "Lucky", "Misty", "Nerdy", "Odd", "Proud", "Shady", "Silly", "Tame", "Vast", "Witty", "Young", "Zesty", "Astral",
+  "Blazing", "Cobalt", "Dusty", "Eerie", "Fierce", "Gilded", "Hollow", "Icy", "Jaded", "Keen", "Lucid", "Mystic", "Noble", "Opal",
+  "Pale", "Quartz", "Rustic", "Solar", "Tidal", "Urban", "Vivid", "Worn", "Xenon", "Amber", "Bold", "Crisp", "Dire", "Elite", "Faded", "Grand"
+] as const;
 
 const NOUNS = [
-  "Wizard",
-  "Gamer",
-  "Cat",
-  "Otter",
-  "Ninja",
-  "Panda",
-  "Falcon",
-  "Ghost",
-  "Raptor",
-  "Viper",
-  "Knight",
-  "Mage",
-  "Fox",
-  "Wolf",
-  "Dragon",
-  "Dolphin",
-  "Titan",
-  "Bandit",
-  "Ranger",
-  "Sparrow"
-];
+  "Bot", "Frame", "Ping", "Keybind", "Console", "Controller", "Sprite", "Buff", "Nerf", "Carry", "Clutch", "Goblin", "Gremlin", "Meme",
+  "Troll", "Noob", "Whale", "Simp", "Main", "Alt", "Panda", "Sloth", "Wizard", "Tea", "Rain", "Vibe", "Cloud", "Moon", "Fern", "Slime",
+  "Ghost", "Rex", "Raptor", "Falcon", "Kraken", "Fox", "Badger", "Viper", "Knight", "Rogue", "Titan", "Wolf", "Scrub", "Pilot", "Captain",
+  "Legend", "Myth", "Hero", "Villain", "Scout", "Guard", "Beast", "Bird", "Cat", "Dog", "Dragon", "Fish", "Horse", "Lion", "Mouse",
+  "Shark", "Snake", "Tiger", "Zebra", "Bloom", "Blaze", "Bolt", "Core", "Dust", "Edge", "Flame", "Gear", "Heart", "Ink", "Jet", "Kite",
+  "Leaf", "Mist", "Night", "Orb", "Pulse", "Quill", "Reef", "Star", "Thorn", "Unit", "Void", "Wave", "Yard", "Zone", "Atom", "Beam",
+  "Chip", "Disk", "Echo", "Flux", "Grid", "Halo", "Icon", "Jolt"
+] as const;
 
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+const RARE_SINGLES = [
+  "Vesper", "Zenith", "Kael", "Echo", "Jinx", "Riot", "Flux", "Cipher", "Ghost", "Onyx", "Rogue", "Sola", "Nova", "Raven", "Ash", "Blade",
+  "Neon", "Frost", "Grimm", "Rune", "Lynx", "Nyx", "Pax", "Quill", "Rhys", "Sage", "Trix", "Vale", "Wren", "Xane", "Yuri", "Zane", "Aero",
+  "Bane", "Crux", "Dash", "Ezra", "Finn", "Glee", "Hawk", "Ion", "Jax", "Kite", "Lux", "Miro", "Nero", "Odin", "Pike", "Quinn", "Reed"
+] as const;
+
+const USERNAME_BLACKLIST = ["angrybannedword", "offensive", "slur"] as const;
+
+function pick<T>(items: readonly T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
 }
 
 export class IdentityManager {
-  private readonly activeChatters: string[] = [];
-  private readonly recentMessageHandles: string[] = [];
+  private readonly activeSessionPool: string[] = [];
+  private readonly maxMemory: number;
+  private readonly recurringChancePct: number;
+  private readonly banTerms: string[];
 
-  constructor(
-    private readonly maxActiveChatters = 8,
-    private readonly recentWindowSize = 10,
-    private readonly reuseWeight = 0.72
-  ) {}
+  constructor(options?: { maxMemory?: number; recurringChancePct?: number }) {
+    this.maxMemory = options?.maxMemory ?? 15;
+    this.recurringChancePct = options?.recurringChancePct ?? 20;
+    const banlistTerms = loadBanlist().terms.map((term) => term.toLowerCase());
+    this.banTerms = [...new Set([...banlistTerms, ...USERNAME_BLACKLIST])];
+  }
 
   public assignToMessages(messages: ChatMessage[]): ChatMessage[] {
-    return messages.map((message) => ({ ...message, username: this.nextIdentity() }));
+    return messages.map((message) => ({ ...message, username: this.getIdentity() }));
   }
 
-  public nextIdentity(): string {
-    const reuse = this.activeChatters.length > 0 && Math.random() < this.reuseWeight;
-    const username = reuse ? pick(this.activeChatters) : this.createAndTrackIdentity();
-    this.trackRecentHandle(username);
-    return username;
-  }
-
-  private createAndTrackIdentity(): string {
-    let candidate = this.composeIdentity();
-    let attempts = 0;
-    while (this.activeChatters.includes(candidate) && attempts < 8) {
-      candidate = this.composeIdentity();
-      attempts += 1;
+  public getIdentity(): string {
+    if (this.activeSessionPool.length > 0 && this.randomChance(this.recurringChancePct)) {
+      return pick(this.activeSessionPool);
     }
 
-    this.activeChatters.push(candidate);
-    if (this.activeChatters.length > this.maxActiveChatters) {
-      this.activeChatters.shift();
+    let candidate = "";
+    for (let i = 0; i < 24; i += 1) {
+      candidate = this.createNewIdentity();
+      if (this.passesSafetyFilter(candidate)) break;
+    }
+
+    if (!candidate || !this.passesSafetyFilter(candidate)) {
+      candidate = `viewer${Math.floor(Math.random() * 10000)}`;
+    }
+
+    this.activeSessionPool.push(candidate);
+    if (this.activeSessionPool.length > this.maxMemory) {
+      this.activeSessionPool.shift();
     }
 
     return candidate;
   }
 
-  private composeIdentity(): string {
-    const base = `${pick(ADJECTIVES)}${pick(NOUNS)}`;
-    if (Math.random() < 0.55) {
-      const number = Math.floor(Math.random() * 1000);
-      const separator = Math.random() < 0.28 ? "_" : "";
-      return `${base}${separator}${number}`;
-    }
-    return base;
+  private randomChance(percent: number): boolean {
+    return Math.random() * 100 < percent;
   }
 
-  private trackRecentHandle(username: string): void {
-    this.recentMessageHandles.push(username);
-    if (this.recentMessageHandles.length > this.recentWindowSize) {
-      this.recentMessageHandles.shift();
+  private generateNumberSuffix(): string {
+    if (this.randomChance(50)) {
+      const year = Math.floor(Math.random() * 25) + 80;
+      return year >= 100 ? `0${year - 100}` : `${year}`;
     }
+    return `${Math.floor(Math.random() * 99) + 1}`;
+  }
+
+  private passesSafetyFilter(username: string): boolean {
+    const normalized = username.toLowerCase();
+    return !this.banTerms.some((term) => normalized.includes(term));
+  }
+
+  private createNewIdentity(): string {
+    const tierRoll = Math.random() * 100;
+
+    // Tier 3: OG handles (5%)
+    if (tierRoll <= 5) {
+      return pick(RARE_SINGLES);
+    }
+
+    const adj = pick(ADJECTIVES);
+    const noun = pick(NOUNS);
+
+    // Tier 2: Established (25%)
+    if (tierRoll <= 30) {
+      return `${adj}${noun}`;
+    }
+
+    // Tier 1: Common (70%)
+    const separatorRoll = Math.random() * 100;
+    let separator = "";
+    if (separatorRoll > 40 && separatorRoll <= 80) separator = "_";
+    else if (separatorRoll > 80) separator = ".";
+
+    let base = `${adj}${separator}${noun}`;
+    if (this.randomChance(50)) {
+      base = base.toLowerCase();
+    }
+
+    let suffix = this.generateNumberSuffix();
+    if (separator !== "_" && this.randomChance(30)) {
+      suffix = `_${suffix}`;
+    }
+
+    return `${base}${suffix}`;
   }
 }

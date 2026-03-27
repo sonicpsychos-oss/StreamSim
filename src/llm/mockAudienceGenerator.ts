@@ -73,7 +73,7 @@ export function generateAudienceBatch(config: SimulationConfig, tone: ToneSnapsh
     const features = realismModel.extract(safeContext, config.persona);
     const message: ChatMessage = {
       id: `${Date.now()}-${idx}-${Math.random().toString(16).slice(2)}`,
-      username: mockIdentityManager.nextIdentity(),
+      username: mockIdentityManager.getIdentity(),
       text: withBias(text, config.bias === "split" && features.personaBiasScore < 0.45 ? "disagree" : config.bias, conditioning, personaCalibration.contrarianism),
       emotes: Math.random() > 0.45 ? [pick(emotePool)] : [],
       createdAt: new Date().toISOString(),
