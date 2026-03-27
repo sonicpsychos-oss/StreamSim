@@ -17,15 +17,8 @@ export class MockCaptureProvider implements CaptureProvider {
 }
 
 export class DeviceCaptureProvider implements CaptureProvider {
-  private readonly fallback = new MockCaptureProvider();
-
   public async getContext(config: SimulationConfig): Promise<StreamContext> {
-    const context = sharedDeviceCapturePipeline.getContext(config);
-    if (!context.transcript) {
-      return this.fallback.getContext(config);
-    }
-
-    return context;
+    return sharedDeviceCapturePipeline.getContext(config);
   }
 }
 
