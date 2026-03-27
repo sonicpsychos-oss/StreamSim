@@ -108,19 +108,40 @@ function systemPromptForPayload(payload: PromptPayload): string {
   const transcriptDirective = transcript
     ? `Highest priority: react directly to the streamer's latest words from context.transcript ("${transcript.slice(0, 220)}").`
     : "No transcript text is available right now; infer likely chat reactions from tone + vision tags without inventing quoted speech.";
+  const questionDirective = transcript && /\?/.test(transcript)
+    ? "The transcript includes a question; at least one message must directly answer or acknowledge that question."
+    : "If no question is present in the transcript, avoid inventing one.";
 
   return [
     'Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number?,"ttsText":"string?"}]}. Never include usernames.',
     "You are simulating a live audience reacting to the streamer in real time (not a generic standalone chat).",
     transcriptDirective,
+    questionDirective,
     "Treat context.transcript as more important than persona flavor text when they conflict.",
-    "Reference concrete details from context (transcript/tone/vision) in at least half of the messages."
+    "At least 70% of messages must reference specific transcript/tone/vision details.",
+    "Do not output generic filler like 'positive vibes', 'keep it up', or cheerleading with no context anchors.",
+    "Supportive persona means kind tone, not generic praise; keep every message situational and reactive."
   ].join(" ");
 }
 
 function cloudModelSupportsTemperature(model: string): boolean {
   const normalized = model.trim().toLowerCase();
-  return !/^gpt-5(?:$|[-:])/.test(normalized);
+  return !/^gpt-5(?:$|[.:-])/.test(normalized);
+}
+
+const CLOUD_MODEL_FALLBACKS: Record<string, string[]> = {
+  "gpt-5.4-nano-2026-03-17": ["gpt-5-mini", "gpt-4o-mini"],
+  "gpt-5-nano": ["gpt-5-mini", "gpt-4o-mini"]
+};
+
+function cloudModelCandidates(model: string): string[] {
+  const normalized = model.trim().toLowerCase();
+  const candidates = [model.trim(), ...(CLOUD_MODEL_FALLBACKS[normalized] ?? [])];
+  return candidates.filter((candidate, idx) => candidate.length > 0 && candidates.indexOf(candidate) === idx);
+}
+
+function isRetryableCloudFailure(message: string): boolean {
+  return /timeout|network failure|\(408\)|\(429\)|\(5\d\d\)/i.test(message);
 }
 
 export class HybridInferenceProvider implements InferenceProvider {
@@ -231,44 +252,58 @@ export class HybridInferenceProvider implements InferenceProvider {
       throw new Error("Missing cloud API key in keychain for cloud provider.");
     }
 
-    const body: {
-      model: string;
-      temperature?: number;
-      messages: Array<{ role: "system" | "user"; content: string }>;
-    } = {
-      model: config.provider.cloudModel,
-      messages: [
-        { role: "system", content: systemPromptForPayload(payload) },
-        { role: "user", content: JSON.stringify(payload) }
-      ]
-    };
-    if (cloudModelSupportsTemperature(config.provider.cloudModel)) {
-      body.temperature = 0.8;
+    const systemPrompt = systemPromptForPayload(payload);
+    const messages = [
+      { role: "system" as const, content: systemPrompt },
+      { role: "user" as const, content: JSON.stringify(payload) }
+    ];
+
+    let lastError: Error | null = null;
+    for (const model of cloudModelCandidates(config.provider.cloudModel)) {
+      const body: {
+        model: string;
+        temperature?: number;
+        messages: Array<{ role: "system" | "user"; content: string }>;
+      } = {
+        model,
+        messages
+      };
+      if (cloudModelSupportsTemperature(model)) {
+        body.temperature = 0.8;
+      }
+
+      let response: Response;
+      try {
+        response = await fetch(config.provider.cloudEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...this.cloudHeaders(apiKey)
+          },
+          signal: AbortSignal.timeout(config.provider.requestTimeoutMs),
+          body: JSON.stringify(body)
+        });
+      } catch (error) {
+        const message = (error as Error).message || "request failed";
+        lastError = new Error(`Cloud provider timeout/network failure for model ${model}: ${message}`);
+        if (model === config.provider.cloudModel && isRetryableCloudFailure(lastError.message)) continue;
+        throw lastError;
+      }
+
+      if (!response.ok) {
+        const detail = await parseProviderError(response);
+        lastError = new Error(`Cloud provider failed (${response.status}) for model ${model}${detail ? `: ${detail}` : ""}`);
+        if (model === config.provider.cloudModel && isRetryableCloudFailure(lastError.message)) {
+          continue;
+        }
+        throw lastError;
+      }
+
+      const data = (await response.json()) as ProviderResponseShape;
+      return extractProviderText(data);
     }
 
-    let response: Response;
-    try {
-      response = await fetch(config.provider.cloudEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...this.cloudHeaders(apiKey)
-        },
-        signal: AbortSignal.timeout(config.provider.requestTimeoutMs),
-        body: JSON.stringify(body)
-      });
-    } catch (error) {
-      const message = (error as Error).message || "request failed";
-      throw new Error(`Cloud provider timeout/network failure: ${message}`);
-    }
-
-    if (!response.ok) {
-      const detail = await parseProviderError(response);
-      throw new Error(`Cloud provider failed (${response.status})${detail ? `: ${detail}` : ""}`);
-    }
-
-    const data = (await response.json()) as ProviderResponseShape;
-    return extractProviderText(data);
+    throw lastError ?? new Error("Cloud provider failed before receiving a response.");
   }
 
   private healthEndpointForCloud(config: SimulationConfig): string {
