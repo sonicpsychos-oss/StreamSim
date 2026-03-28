@@ -146,7 +146,10 @@ function extractProviderText(data: ProviderResponseShape): string {
 
 function systemPromptForPayload(payload: PromptPayload): string {
   const transcript = payload.context.transcript.trim();
-  const transcriptTail = transcript.slice(-220);
+  const rawTranscriptTail = transcript.slice(-230);
+  const transcriptTail = rawTranscriptTail.includes(" ")
+    ? rawTranscriptTail.slice(rawTranscriptTail.indexOf(" ") + 1)
+    : rawTranscriptTail;
   const transcriptDirective = transcript
     ? `Highest priority: react directly to the streamer's latest words from context.transcript ("${transcriptTail}"). Prioritize the most recent ~10 seconds (the tail end of context.transcript) as the primary signal, and use earlier transcript lines only as background context.`
     : "No transcript text is available right now. Fall back to persona-led small talk and channel chatter topics without claiming missing feeds or missing tags. IDLE BEHAVIOR: do NOT spam that the stream is mid/boring/sleepy; instead start a random debate (pineapple on pizza, tacos vs burgers), ask streamer personal preference questions, or chat with other viewers naturally.";
