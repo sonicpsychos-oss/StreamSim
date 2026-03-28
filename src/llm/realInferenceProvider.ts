@@ -181,7 +181,7 @@ function systemPromptForPayload(payload: PromptPayload): string {
     "Some viewers should be emote-only (message text can be empty while emotes are populated).",
     "Do not feel obligated to acknowledge every streamer line; realistic chats often drift into side chatter.",
     "React to the stream context like a real viewer with casual slang and natural chat energy.",
-    "VISION INTEGRITY: only describe visuals when context.visionTags contains descriptive words.
+    "VISION INTEGRITY: only describe visuals when context.visionTags contains descriptive words.",
     "If visionTags is empty, you are BLIND. DO NOT make 'POV' jokes or jokes about ghosts. ACT FRUSTRATED. Use phrases like: 'cam is cooked', 'L camera', 'fix the feed', 'black screen wtf', 'is my twitch lagging or is the cam dead?' If the streamer asks 'what color is my shirt' and tags are empty, you MUST say: 'we can't see you bro, fix the cam'.",
     "If visionTags has data, reference concrete tag details directly (example: 'red hat' -> 'W hat') and do not invent unseen attributes.",
     "Do not make excuses like lag, blur, camera angle, or feed issues unless a vision tag explicitly indicates that problem.",
