@@ -362,7 +362,7 @@ describe("hybrid routing and failover", () => {
         expect(systemPrompt).toMatch(/Prioritize the most recent ~10 seconds/i);
         expect(systemPrompt).toMatch(/Do not output generic filler/i);
         expect(systemPrompt).toMatch(/60%\+ of messages must be under 5 words/i);
-        expect(systemPrompt).toMatch(/drop F in chat|spam W|type yes\/no/i);
+        expect(systemPrompt).toMatch(/drop F in the chat|drop \[X\]|spam \[X\]|type \[X\]/i);
         expect(userPayload.context.transcript).toBe("can you hear me?");
 
         res.writeHead(200, { "Content-Type": "application/json" });

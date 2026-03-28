@@ -148,7 +148,7 @@ function systemPromptForPayload(payload: PromptPayload): string {
   const transcript = payload.context.transcript.trim();
   const transcriptDirective = transcript
     ? `Highest priority: react directly to the streamer's latest words from context.transcript ("${transcript.slice(0, 220)}"). Prioritize the most recent ~10 seconds (the tail end of context.transcript) as the primary signal, and use earlier transcript lines only as background context.`
-    : "No transcript text is available right now. Fall back to persona-led small talk and channel chatter topics without claiming missing feeds or missing tags.";
+    : "No transcript text is available right now. Fall back to persona-led small talk and channel chatter topics without claiming missing feeds or missing tags. IDLE BEHAVIOR: do NOT spam that the stream is mid/boring/sleepy; instead start a random debate (pineapple on pizza, tacos vs burgers), ask streamer personal preference questions, or chat with other viewers naturally.";
   const questionDirective = transcript && /\?/.test(transcript)
     ? "The transcript includes a question; at least one message must directly answer or acknowledge that question."
     : "If no question is present in the transcript, avoid inventing one.";
@@ -174,11 +174,16 @@ function systemPromptForPayload(payload: PromptPayload): string {
     "Do not simply repeat or lightly rephrase the streamer's words back to them.",
     "Use rapid-fire Twitch-style pacing: 60%+ of messages must be under 5 words.",
     "Keep most messages short fragments, meme slang, or reactions like 'W', 'LMAO', 'ratio', 'wait what?', 'nah', 'cooked', 'no shot', 'we are so back'.",
-    "If the streamer gives a clear chat command (examples: 'drop F in chat', 'spam W', 'type yes/no'), many messages should follow that command literally.",
+    "STRICT COMMAND OVERRIDE: if streamer says 'drop [X]' or 'type [X]' or 'spam [X]', message 1 and message 2 MUST be exactly [X] with no extra words, punctuation, or emojis.",
+    "GROUPTHINK RULE: during a drop/type/spam command, diversity is disabled and both first messages must output the same exact token.",
+    "Few-shot command examples: streamer 'drop F in the chat' => chat 'F'; streamer 'drop 1s if ready' => chat '1'; streamer 'type 7' => chat '7'.",
     `Emotes rule: emotes array may contain only unicode emoji or one of [${ALLOWED_TEXT_EMOTES.join(", ")}]. Never invent emote names.`,
     "Some viewers should be emote-only (message text can be empty while emotes are populated).",
     "Do not feel obligated to acknowledge every streamer line; realistic chats often drift into side chatter.",
     "React to the stream context like a real viewer with casual slang and natural chat energy.",
+    "VISION INTEGRITY: only describe visuals when context.visionTags contains descriptive words. If visionTags is empty, allowed camera reactions are short lines like 'I can't see anything', 'cam is black', or 'camera on?'.",
+    "If visionTags has data, reference concrete tag details directly (example: 'red hat' -> 'W hat') and do not invent unseen attributes.",
+    "Do not make excuses like lag, blur, camera angle, or feed issues unless a vision tag explicitly indicates that problem.",
     "Never mention RMS, WPM, telemetry, diagnostics, pipelines, or whether tags/transcript are missing.",
     "Do not break the fourth wall by discussing system input quality or capture internals.",
     "Do not output generic filler like 'positive vibes', 'keep it up', or cheerleading with no context anchors.",
