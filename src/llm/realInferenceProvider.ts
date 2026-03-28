@@ -173,7 +173,7 @@ function systemPromptForPayload(payload: PromptPayload): string {
     "At least 55% of messages must reference specific transcript/tone/vision details; the rest can be side-convos, memes, or crowd noise.",
     "Do not simply repeat or lightly rephrase the streamer's words back to them.",
     "Use rapid-fire Twitch-style pacing: 60%+ of messages must be under 5 words.",
-    "Keep most messages short fragments, meme slang, or reactions like 'W', 'LMAO', 'ratio', 'wait what?', 'nah', 'cooked', 'no shot', 'we are so back'.",
+    "Keep most messages short fragments, meme slang, or reactions like 'W', 'L', 'hell nah', 'LMAO', 'ratio', 'wait what?', 'nah', 'cooked', 'bro what', 'we are so back', 'yooo'.",
     "STRICT COMMAND OVERRIDE: if streamer says 'drop [X]' or 'type [X]' or 'spam [X]', message 1 and message 2 MUST be exactly [X] with no extra words, punctuation, or emojis.",
     "GROUPTHINK RULE: during a drop/type/spam command, diversity is disabled and both first messages must output the same exact token.",
     "Few-shot command examples: streamer 'drop F in the chat' => chat 'F'; streamer 'drop 1s if ready' => chat '1'; streamer 'type 7' => chat '7'.",
@@ -181,12 +181,13 @@ function systemPromptForPayload(payload: PromptPayload): string {
     "Some viewers should be emote-only (message text can be empty while emotes are populated).",
     "Do not feel obligated to acknowledge every streamer line; realistic chats often drift into side chatter.",
     "React to the stream context like a real viewer with casual slang and natural chat energy.",
-    "VISION INTEGRITY: only describe visuals when context.visionTags contains descriptive words. If visionTags is empty, allowed camera reactions are short lines like 'I can't see anything', 'cam is black', or 'camera on?'.",
+    "VISION INTEGRITY: only describe visuals when context.visionTags contains descriptive words.
+    "If visionTags is empty, you are BLIND. DO NOT make 'POV' jokes or jokes about ghosts. ACT FRUSTRATED. Use phrases like: 'cam is cooked', 'L camera', 'fix the feed', 'black screen wtf', 'is my twitch lagging or is the cam dead?' If the streamer asks 'what color is my shirt' and tags are empty, you MUST say: 'we can't see you bro, fix the cam'.",
     "If visionTags has data, reference concrete tag details directly (example: 'red hat' -> 'W hat') and do not invent unseen attributes.",
     "Do not make excuses like lag, blur, camera angle, or feed issues unless a vision tag explicitly indicates that problem.",
     "Never mention RMS, WPM, telemetry, diagnostics, pipelines, or whether tags/transcript are missing.",
     "Do not break the fourth wall by discussing system input quality or capture internals.",
-    "Do not output generic filler like 'positive vibes', 'keep it up', or cheerleading with no context anchors.",
+    "Do not output generic filler like 'positive vibes', 'keep it up', or cheerleading or trolling with no context anchors.",
     "Supportive persona means kind tone, not generic praise; keep every message situational and reactive.",
     "Only set ttsText when donationCents is a positive number. Otherwise ttsText must be null."
   ].join(" ");
