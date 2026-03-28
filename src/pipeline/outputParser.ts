@@ -5,6 +5,17 @@ export type RecoveryAction = "repair" | "regenerate" | "drop";
 const MAX_INFERENCE_OUTPUT_CHARS = 250_000;
 const ALLOWED_TEXT_EMOTES = new Set(["Kappa", "LUL", "PogChamp", "OMEGALUL", "monkaS", "W", "L"]);
 const UNICODE_EMOJI_PATTERN = /\p{Extended_Pictographic}/u;
+const RADIO_CHECK_BANNED_PHRASE = /\bloud and clear\b/gi;
+
+function normalizeChatTextStyle(text: string): string {
+  let normalized = text.toLowerCase();
+  normalized = normalized.replace(/[—]/g, " ");
+  normalized = normalized.replace(/\.{3,}/g, " ");
+  normalized = normalized.replace(RADIO_CHECK_BANNED_PHRASE, "we hear u");
+  normalized = normalized.replace(/\s+/g, " ").trim();
+  normalized = normalized.replace(/\.$/, "");
+  return normalized;
+}
 
 function isAllowedEmote(value: string): boolean {
   const trimmed = value.trim();
@@ -33,10 +44,12 @@ function coerceMessage(raw: unknown): ChatMessage | null {
   const donationCents = typeof candidate.donationCents === "number" && candidate.donationCents > 0 ? Math.floor(candidate.donationCents) : null;
   const emotes = candidate.emotes.map((emote) => emote.trim()).filter((emote) => isAllowedEmote(emote));
 
+  const text = normalizeChatTextStyle(candidate.text);
+
   return {
     id: typeof candidate.id === "string" ? candidate.id : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     username: typeof candidate.username === "string" ? candidate.username : "",
-    text: candidate.text,
+    text,
     emotes,
     createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : new Date().toISOString(),
     donationCents: donationCents ?? undefined,

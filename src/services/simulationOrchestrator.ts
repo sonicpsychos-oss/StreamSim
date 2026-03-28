@@ -188,6 +188,43 @@ export class SimulationOrchestrator {
     return [this.antiEchoFallback(seed?.id ?? `${Date.now()}-anti-echo`, seed?.createdAt ?? new Date().toISOString())];
   }
 
+  private enforceDiversityRules(messages: ChatMessage[]): ChatMessage[] {
+    const slangCooldownWords = ["lowkey", "bet", "cooked", "fr"];
+    const slangAlternatives: Record<string, string[]> = {
+      lowkey: ["ngl", "tbh", "honestly"],
+      bet: ["aight", "say less", "ok then"],
+      cooked: ["chalked", "donezo", "gg"],
+      fr: ["facts", "real", "deadass"]
+    };
+    const recentUsage = new Map<string, number>();
+
+    const remapped = messages.map((message, index) => {
+      let text = message.text;
+      for (const word of slangCooldownWords) {
+        const pattern = new RegExp(`\\b${word}\\b`, "i");
+        if (!pattern.test(text)) continue;
+        const lastIndex = recentUsage.get(word);
+        if (lastIndex !== undefined && index - lastIndex <= 10) {
+          const alternatives = slangAlternatives[word];
+          text = text.replace(pattern, alternatives[(index + word.length) % alternatives.length]);
+        } else {
+          recentUsage.set(word, index);
+        }
+      }
+      return { ...message, text };
+    });
+
+    if (remapped.length < 2) return remapped;
+
+    const supportiveSignal = /\b(yes|yup|we hear u|w audio|mic w|facts|same|true|good)\b/i;
+    if (supportiveSignal.test(remapped[0].text) && supportiveSignal.test(remapped[1].text)) {
+      const contrastReplies = ["nah chat trolling today", "bro that take is wild", "off topic but who ate my snacks", "skill issue detected 🤨"];
+      remapped[1] = { ...remapped[1], text: contrastReplies[Math.floor(Math.random() * contrastReplies.length)] };
+    }
+
+    return remapped;
+  }
+
   private verbosePipelineLog(
     route: "primary" | "fallback",
     providerMode: string,
@@ -329,7 +366,8 @@ export class SimulationOrchestrator {
         const inferenceLatencyMs = Date.now() - inferenceStarted;
 
         const deEchoedMessages = this.applyAntiEchoConstraint(messages, context.transcript);
-        const safety = applySafetyPolicy(deEchoedMessages, config);
+        const diverseMessages = this.enforceDiversityRules(deEchoedMessages);
+        const safety = applySafetyPolicy(diverseMessages, config);
         const safeMessages = safety.safeMessages;
 
         safeMessages.forEach((msg) => {

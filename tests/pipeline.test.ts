@@ -64,4 +64,11 @@ describe("output parser", () => {
     expect(result[0].emotes).toEqual(["W", "🔥"]);
     expect(result[0].ttsText).toBeUndefined();
   });
+
+  it("normalizes chat style and blocks radio-check phrase", () => {
+    const result = parseInferenceOutput(
+      '{"messages":[{"text":"LOUD AND CLEAR... We got you—yes.","emotes":[],"donationCents":null,"ttsText":null}]}'
+    );
+    expect(result[0].text).toBe("we hear u we got you yes");
+  });
 });
