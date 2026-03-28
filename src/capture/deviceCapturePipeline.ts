@@ -15,7 +15,7 @@ interface VisionSample {
 
 export class DeviceCapturePipeline {
   private readonly micFrames: MicFrame[] = [];
-  private readonly transcriptWindowMs = 20_000;
+  private readonly transcriptWindowMs = 30_000;
   private lastVisionSample: VisionSample | null = null;
   private micPaused = false;
 
