@@ -3,6 +3,21 @@ import { ChatMessage } from "../core/types.js";
 export type MalformedOutputClass = "empty" | "no_json_object" | "json_syntax" | "missing_messages" | "invalid_message_schema";
 export type RecoveryAction = "repair" | "regenerate" | "drop";
 const MAX_INFERENCE_OUTPUT_CHARS = 250_000;
+const ALLOWED_TEXT_EMOTES = new Set(["Kappa", "LUL", "PogChamp", "OMEGALUL", "monkaS", "W", "L"]);
+const UNICODE_EMOJI_PATTERN = /\p{Extended_Pictographic}/u;
+
+function isAllowedEmote(value: string): boolean {
+  const trimmed = value.trim();
+  return ALLOWED_TEXT_EMOTES.has(trimmed) || UNICODE_EMOJI_PATTERN.test(trimmed);
+}
+
+function normalizeTtsText(candidate: Record<string, unknown>, donationCents: number | null): string | undefined {
+  if (candidate.ttsText === null) return undefined;
+  if (typeof candidate.ttsText !== "string") return undefined;
+  const trimmed = candidate.ttsText.trim();
+  if (!trimmed) return undefined;
+  return donationCents && donationCents > 0 ? trimmed : undefined;
+}
 
 function coerceMessage(raw: unknown): ChatMessage | null {
   if (typeof raw !== "object" || raw === null) return null;
@@ -10,15 +25,22 @@ function coerceMessage(raw: unknown): ChatMessage | null {
 
   if (typeof candidate.text !== "string") return null;
   if (!Array.isArray(candidate.emotes) || !candidate.emotes.every((item) => typeof item === "string")) return null;
+  if (!Object.prototype.hasOwnProperty.call(candidate, "donationCents")) return null;
+  if (!Object.prototype.hasOwnProperty.call(candidate, "ttsText")) return null;
+  if (!(candidate.donationCents === null || typeof candidate.donationCents === "number")) return null;
+  if (!(candidate.ttsText === null || typeof candidate.ttsText === "string")) return null;
+
+  const donationCents = typeof candidate.donationCents === "number" && candidate.donationCents > 0 ? Math.floor(candidate.donationCents) : null;
+  const emotes = candidate.emotes.map((emote) => emote.trim()).filter((emote) => isAllowedEmote(emote));
 
   return {
     id: typeof candidate.id === "string" ? candidate.id : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     username: typeof candidate.username === "string" ? candidate.username : "",
     text: candidate.text,
-    emotes: candidate.emotes,
+    emotes,
     createdAt: typeof candidate.createdAt === "string" ? candidate.createdAt : new Date().toISOString(),
-    donationCents: typeof candidate.donationCents === "number" ? candidate.donationCents : undefined,
-    ttsText: typeof candidate.ttsText === "string" ? candidate.ttsText : undefined,
+    donationCents: donationCents ?? undefined,
+    ttsText: normalizeTtsText(candidate, donationCents),
     source:
       candidate.source === "real-inference" ||
       candidate.source === "mock-inference" ||
