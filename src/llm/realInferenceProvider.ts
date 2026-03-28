@@ -106,7 +106,7 @@ function extractProviderText(data: ProviderResponseShape): string {
 function systemPromptForPayload(payload: PromptPayload): string {
   const transcript = payload.context.transcript.trim();
   const transcriptDirective = transcript
-    ? `Highest priority: react directly to the streamer's latest words from context.transcript ("${transcript.slice(0, 220)}").`
+    ? `Highest priority: react directly to the streamer's latest words from context.transcript ("${transcript.slice(0, 220)}"). Prioritize the most recent ~10 seconds (the tail end of context.transcript) as the primary signal, and use earlier transcript lines only as background context.`
     : "No transcript text is available right now. Fall back to persona-led small talk and channel chatter topics without claiming missing feeds or missing tags.";
   const questionDirective = transcript && /\?/.test(transcript)
     ? "The transcript includes a question; at least one message must directly answer or acknowledge that question."
