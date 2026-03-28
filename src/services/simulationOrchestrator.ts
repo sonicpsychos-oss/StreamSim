@@ -131,6 +131,63 @@ export class SimulationOrchestrator {
     return config.provider.localModel;
   }
 
+  private transcriptAnchorTerms(transcript: string): string[] {
+    const stopwords = new Set([
+      "the", "and", "for", "with", "that", "this", "from", "your", "you", "are", "was", "were", "what", "when", "where", "why", "how",
+      "can", "hear", "check", "mic", "camera", "chat", "just", "like", "have", "has", "had", "got", "its", "it's", "but", "not", "now",
+      "then", "than", "they", "them", "their", "there", "about", "into", "out", "all", "any", "too", "very", "really", "okay", "ok"
+    ]);
+
+    return Array.from(
+      new Set(
+        transcript
+          .toLowerCase()
+          .replace(/[^a-z0-9\s'-]/g, " ")
+          .split(/\s+/)
+          .map((token) => token.replace(/^'+|'+$/g, "").trim())
+          .filter((token) => token.length >= 5 && !stopwords.has(token))
+      )
+    ).slice(0, 16);
+  }
+
+  private antiEchoFallback(id: string, createdAt: string): ChatMessage {
+    const reactions = [
+      "nah that's wild 💀",
+      "bro is cooking fr",
+      "no shot LMAO",
+      "chat we are so back",
+      "ayo?? W",
+      "lowkey cursed",
+      "W hat gang",
+      "this is peak chaos"
+    ];
+    return {
+      id,
+      username: "",
+      text: reactions[Math.floor(Math.random() * reactions.length)],
+      emotes: [],
+      donationCents: null,
+      ttsText: null,
+      createdAt
+    };
+  }
+
+  private applyAntiEchoConstraint(messages: ChatMessage[], transcript: string): ChatMessage[] {
+    const anchors = this.transcriptAnchorTerms(transcript);
+    if (!anchors.length) return messages;
+
+    const filtered = messages.filter((message) => {
+      const lowered = message.text.toLowerCase();
+      if (!lowered.trim()) return true;
+      const overlap = anchors.filter((token) => lowered.includes(token));
+      return overlap.length === 0;
+    });
+
+    if (filtered.length > 0) return filtered;
+    const seed = messages[0];
+    return [this.antiEchoFallback(seed?.id ?? `${Date.now()}-anti-echo`, seed?.createdAt ?? new Date().toISOString())];
+  }
+
   private verbosePipelineLog(
     route: "primary" | "fallback",
     providerMode: string,
@@ -271,7 +328,8 @@ export class SimulationOrchestrator {
         }
         const inferenceLatencyMs = Date.now() - inferenceStarted;
 
-        const safety = applySafetyPolicy(messages, config);
+        const deEchoedMessages = this.applyAntiEchoConstraint(messages, context.transcript);
+        const safety = applySafetyPolicy(deEchoedMessages, config);
         const safeMessages = safety.safeMessages;
 
         safeMessages.forEach((msg) => {

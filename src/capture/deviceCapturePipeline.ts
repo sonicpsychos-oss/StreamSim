@@ -15,7 +15,7 @@ interface VisionSample {
 
 export class DeviceCapturePipeline {
   private readonly micFrames: MicFrame[] = [];
-  private readonly transcriptWindowMs = 90_000;
+  private readonly transcriptWindowMs = 20_000;
   private lastVisionSample: VisionSample | null = null;
   private micPaused = false;
 
@@ -46,6 +46,7 @@ export class DeviceCapturePipeline {
     this.pruneOldMicFrames();
 
     const transcript = this.micFrames
+      .filter((frame) => Date.now() - frame.capturedAt <= 10_000)
       .map((frame) => frame.transcriptChunk)
       .filter(Boolean)
       .join(" ")

@@ -30,7 +30,7 @@ describe("runtime config", () => {
 
 describe("output parser", () => {
   it("repairs fenced JSON payload and returns messages", () => {
-    const repaired = repairInferenceOutput(`###json\n{"messages":[{"username":"a","text":"hi","emotes":[]}]}\n###`);
+    const repaired = repairInferenceOutput(`###json\n{"messages":[{"username":"a","text":"hi","emotes":[],"donationCents":null,"ttsText":null}]}\n###`);
     const result = parseInferenceOutput(repaired);
     expect(result).toHaveLength(1);
     expect(result[0].username).toBe("a");
@@ -38,7 +38,7 @@ describe("output parser", () => {
 
 
   it("accepts messages without username for local identity assignment", () => {
-    const result = parseInferenceOutput('{"messages":[{"text":"hi","emotes":[]}]}');
+    const result = parseInferenceOutput('{"messages":[{"text":"hi","emotes":[],"donationCents":null,"ttsText":null}]}');
     expect(result).toHaveLength(1);
     expect(result[0].username).toBe("");
   });
@@ -48,12 +48,20 @@ describe("output parser", () => {
   });
 
   it("classifies recoverable fenced JSON noise as syntax-repairable", () => {
-    const malformed = "noise ###json\n{\"messages\":[{\"text\":\"yo\",\"emotes\":[]}]}### trailing";
+    const malformed = "noise ###json\n{\"messages\":[{\"text\":\"yo\",\"emotes\":[],\"donationCents\":null,\"ttsText\":null}]}### trailing";
     expect(classifyMalformedOutput(malformed)).toBe("json_syntax");
   });
 
   it("caps oversized payloads to avoid parser stalls and still throws cleanly", () => {
-    const huge = `${"x".repeat(300_000)}{"messages":[{"text":"ok","emotes":[]}]}`;
+    const huge = `${"x".repeat(300_000)}{"messages":[{"text":"ok","emotes":[],"donationCents":null,"ttsText":null}]}`;
     expect(() => parseInferenceOutput(huge)).toThrow();
+  });
+
+  it("filters unsupported emote strings and suppresses ttsText without donation", () => {
+    const result = parseInferenceOutput(
+      '{"messages":[{"text":"yo","emotes":["W","LetMeCook","🔥"],"donationCents":null,"ttsText":"read this"}]}'
+    );
+    expect(result[0].emotes).toEqual(["W", "🔥"]);
+    expect(result[0].ttsText).toBeUndefined();
   });
 });
