@@ -66,6 +66,47 @@ type ProviderResponseShape = {
   }>;
 };
 
+const ALLOWED_TEXT_EMOTES = ["Kappa", "LUL", "PogChamp", "OMEGALUL", "monkaS", "W", "L"] as const;
+
+function openAiResponseSchema() {
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: "streamsim_chat_batch",
+      strict: true,
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          messages: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                text: { type: "string" },
+                emotes: {
+                  type: "array",
+                  items: { type: "string" }
+                },
+                donationCents: {
+                  anyOf: [{ type: "integer", minimum: 1 }, { type: "null" }]
+                },
+                ttsText: {
+                  anyOf: [{ type: "string" }, { type: "null" }]
+                }
+              },
+              required: ["text", "emotes", "donationCents", "ttsText"]
+            }
+          }
+        },
+        required: ["messages"]
+      }
+    }
+  } as const;
+}
+
 function extractTextFromContentParts(
   parts: Array<{ type?: string; text?: string | { value?: string } }> | undefined
 ): string | null {
@@ -113,23 +154,36 @@ function systemPromptForPayload(payload: PromptPayload): string {
     : "If no question is present in the transcript, avoid inventing one.";
 
   return [
-    'Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number?,"ttsText":"string?"}]}. Never include usernames.',
+    'Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number|null,"ttsText":string|null}]}. Never include usernames.',
     "You are simulating a live audience reacting to the streamer in real time (not a generic standalone chat).",
     transcriptDirective,
     questionDirective,
+    "ROLE: you are the audience. The transcript is what you heard from the streamer, not what you should say.",
+    "CRITICAL: never mirror the streamer's exact question text back to chat. If streamer asks 'can you hear me?', answer it as audience (example: 'yep loud and clear').",
+    "SKIP confirmation framing: do not begin by repeating topic as a question such as 'pizza?? W' or '[topic]??'. Jump straight to reaction or joke.",
+    "Do not quote the streamer's exact wording unless you are intentionally making a joke/meme about it.",
+    "Hard anti-echo constraint: do not reuse distinctive nouns/adjectives from the streamer's latest sentence; react with fresh wording instead.",
+    "Example anti-echo: if streamer says they wear a purple sombrero, react with paraphrase like 'bro what is on your head 💀' instead of repeating those exact words.",
+    "Strict diversity: rotate slang and avoid repeating the same slang token in nearby messages.",
+    "Emoji diversity: avoid spamming one emoji, especially avoid overusing 👀 and 😭; mix in text-only lines and varied emojis.",
+    "Force contrast: message 1 and message 2 must not flatly agree with each other; make one of them contrarian, trolling, or off-topic.",
+    "Style lock: no em-dash, no ellipses, no final period, minimal capitalization, fast phone-typed fragments.",
+    "Radio-check ban: never use the exact phrase 'loud and clear'; use alternatives like 'mic W', 'we hear u', 'W audio', or 'yup'.",
     "Treat context.transcript as more important than persona flavor text when they conflict.",
     "At least 55% of messages must reference specific transcript/tone/vision details; the rest can be side-convos, memes, or crowd noise.",
     "Do not simply repeat or lightly rephrase the streamer's words back to them.",
     "Use rapid-fire Twitch-style pacing: 60%+ of messages must be under 5 words.",
-    "Keep most messages short fragments, meme slang, or reactions like 'W', 'LMAO', 'ratio', 'wait what?', 'nah', 'cooked'.",
+    "Keep most messages short fragments, meme slang, or reactions like 'W', 'LMAO', 'ratio', 'wait what?', 'nah', 'cooked', 'no shot', 'we are so back'.",
     "If the streamer gives a clear chat command (examples: 'drop F in chat', 'spam W', 'type yes/no'), many messages should follow that command literally.",
+    `Emotes rule: emotes array may contain only unicode emoji or one of [${ALLOWED_TEXT_EMOTES.join(", ")}]. Never invent emote names.`,
     "Some viewers should be emote-only (message text can be empty while emotes are populated).",
     "Do not feel obligated to acknowledge every streamer line; realistic chats often drift into side chatter.",
     "React to the stream context like a real viewer with casual slang and natural chat energy.",
     "Never mention RMS, WPM, telemetry, diagnostics, pipelines, or whether tags/transcript are missing.",
     "Do not break the fourth wall by discussing system input quality or capture internals.",
     "Do not output generic filler like 'positive vibes', 'keep it up', or cheerleading with no context anchors.",
-    "Supportive persona means kind tone, not generic praise; keep every message situational and reactive."
+    "Supportive persona means kind tone, not generic praise; keep every message situational and reactive.",
+    "Only set ttsText when donationCents is a positive number. Otherwise ttsText must be null."
   ].join(" ");
 }
 
@@ -308,12 +362,16 @@ export class HybridInferenceProvider implements InferenceProvider {
         model: string;
         temperature?: number;
         messages: Array<{ role: "system" | "user"; content: string }>;
+        response_format?: ReturnType<typeof openAiResponseSchema>;
       } = {
         model,
         messages
       };
       if (cloudModelSupportsTemperature(model)) {
         body.temperature = 0.8;
+      }
+      if (this.mode === "openai") {
+        body.response_format = openAiResponseSchema();
       }
 
       let response: Response;

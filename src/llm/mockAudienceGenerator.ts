@@ -6,7 +6,7 @@ const supportive = ["Let's go!", "Huge improvement today", "W gameplay", "You're
 const trolls = ["That was rough", "Skill issue", "Chat is carrying", "No way you missed that"];
 const neutral = ["What build is this?", "Any tips for new players?", "What's next?", "Clean reset"];
 const memes = ["PogChamp", "W stream", "clip it", "we're so back"];
-const emotePool = ["🔥", "😂", "👏", "Pog", "W", "LUL", "Kappa"];
+const emotePool = ["🔥", "😂", "👏", "W", "LUL", "Kappa", "PogChamp", "monkaS", "OMEGALUL", "L"];
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -41,12 +41,17 @@ function engagementFromSignals(config: SimulationConfig, context: StreamContext,
   return Math.min(1.7, 0.55 + features.excitementScore * 0.72 + features.personaBiasScore * 0.2 + conditioning.expressiveness * 0.15);
 }
 
-function realisticDonation(config: SimulationConfig, tone: ToneSnapshot, conditioning: ProviderConditioning, context?: StreamContext): { donationCents?: number; ttsText?: string } {
+function realisticDonation(
+  config: SimulationConfig,
+  tone: ToneSnapshot,
+  conditioning: ProviderConditioning,
+  context?: StreamContext
+): { donationCents: number | null; ttsText: string | null } {
   const safeContext = context ?? { transcript: "", tone, visionTags: [], timestamp: new Date().toISOString() };
   const features = realismModel.extract(safeContext, config.persona);
   const engagement = engagementFromSignals(config, safeContext, conditioning);
   const effectiveRate = Math.min(0.85, config.donationFrequency * engagement * (0.42 + features.donationPropensity) * (0.7 + conditioning.expressiveness * 0.4));
-  if (Math.random() >= effectiveRate) return {};
+  if (Math.random() >= effectiveRate) return { donationCents: null, ttsText: null };
 
   const base = 100 + Math.floor(Math.random() * 900);
   const hypeMultiplier = features.excitementScore > 0.75 || tone.paceWpm > 170 ? 3 : features.excitementScore > 0.55 ? 2 : 1;
@@ -55,7 +60,7 @@ function realisticDonation(config: SimulationConfig, tone: ToneSnapshot, conditi
   const ttsPrefix = tone.volumeRms > 0.5 ? "YO" : "hey";
   return {
     donationCents,
-    ttsText: config.ttsEnabled && config.ttsMode !== "off" ? `${ttsPrefix} streamer this is fire. ${context?.transcript.slice(0, 60) ?? "great run"}` : undefined
+    ttsText: config.ttsEnabled && config.ttsMode !== "off" ? `${ttsPrefix} streamer this is fire. ${context?.transcript.slice(0, 60) ?? "great run"}` : null
   };
 }
 
@@ -76,6 +81,8 @@ export function generateAudienceBatch(config: SimulationConfig, tone: ToneSnapsh
       username: mockIdentityManager.getIdentity(),
       text: withBias(text, config.bias === "split" && features.personaBiasScore < 0.45 ? "disagree" : config.bias, conditioning, personaCalibration.contrarianism),
       emotes: Math.random() > 0.45 ? [pick(emotePool)] : [],
+      donationCents: null,
+      ttsText: null,
       createdAt: new Date().toISOString(),
       source: "mock-audience"
     };

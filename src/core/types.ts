@@ -99,8 +99,8 @@ export interface ChatMessage {
   username: string;
   text: string;
   emotes: string[];
-  donationCents?: number;
-  ttsText?: string;
+  donationCents?: number | null;
+  ttsText?: string | null;
   createdAt: string;
   source?: MessageSource;
 }
@@ -118,8 +118,8 @@ export interface QueueMessage {
   payload: {
     text: string;
     emotes: string[];
-    donationCents?: number;
-    ttsText?: string;
+    donationCents?: number | null;
+    ttsText?: string | null;
   };
   moderation: {
     safetyAction: "pass" | "drop" | "censor";
