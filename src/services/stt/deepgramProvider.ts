@@ -26,7 +26,8 @@ export class DeepgramNova3Provider {
       smart_format: String(this.options.smartFormat ?? true),
       sentiment: String(this.options.sentiment ?? true),
       intents: String(this.options.intents ?? true),
-      topics: String(this.options.topics ?? true)
+      topics: String(this.options.topics ?? true),
+      keywords: "up stream:3,what's up stream:2.5,stream sim:2,chat:1.5"
     } as any);
   }
 }

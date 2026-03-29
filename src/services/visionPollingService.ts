@@ -48,6 +48,16 @@ function normalizeVisionTags(payload: VisionEndpointPayload): string[] {
     .slice(0, 8);
 }
 
+function parseVisionTagsFromText(rawText: string): string[] {
+  return rawText
+    .split(/[,\n;|]/g)
+    .map((chunk) => chunk.trim())
+    .map((chunk) => chunk.replace(/^[-*•\d.)\s]+/, "").trim())
+    .map((chunk) => chunk.replace(/^["'`]+|["'`]+$/g, "").trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
 export class VisionPollingService {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
@@ -101,6 +111,8 @@ export class VisionPollingService {
         config.capture.visionProvider === "openai"
           ? await this.fetchOpenAiVisionTags(config, endpointPayload)
           : { tags: normalizeVisionTags(endpointPayload), providerResponse: endpointPayload };
+      // eslint-disable-next-line no-console
+      console.log("[VisionService] Raw response from provider:", providerResult.providerResponse);
       const tags = providerResult.tags;
 
       if (tags.length) {
@@ -180,7 +192,7 @@ export class VisionPollingService {
       output_text?: string;
     };
     // eslint-disable-next-line no-console
-    console.log("[VisionPollingService] openai vision response", data);
+    console.log("[VisionService] Raw response from provider:", data);
 
     const content = data.choices?.[0]?.message?.content;
     const text =
@@ -192,11 +204,7 @@ export class VisionPollingService {
 
     return {
       providerResponse: data,
-      tags: text
-      .split(",")
-      .map((tag) => tag.trim().toLowerCase())
-      .filter(Boolean)
-      .slice(0, 8)
+      tags: parseVisionTagsFromText(text)
     };
   }
 }

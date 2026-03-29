@@ -12,6 +12,14 @@ interface SttBackend {
 const DEFAULT_LOCAL_STT_ENDPOINT = "http://127.0.0.1:7778/stt";
 const DEFAULT_DEEPGRAM_ENDPOINT = "https://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&filler_words=true&punctuate=true&sentiment=true&intents=true&topics=true&utterance_end_ms=3000";
 const DEFAULT_OPENAI_STT_ENDPOINT = "https://api.openai.com/v1/audio/transcriptions";
+const DEEPGRAM_STREAMER_BIAS_KEYWORDS = [
+  "up stream:3",
+  "stream sim:2",
+  "what's up stream:2.5",
+  "what is up stream:2.5",
+  "chat:1.5",
+  "gg:1.5"
+];
 
 class MockSttBackend implements SttBackend {
   public async transcribe(frame: Buffer): Promise<string> {
@@ -65,8 +73,9 @@ class DeepgramBackend implements SttBackend {
         punctuate: true,
         sentiment: true,
         intents: true,
-        topics: true
-      });
+        topics: true,
+        keywords: DEEPGRAM_STREAMER_BIAS_KEYWORDS
+      } as any);
       const payload = response as unknown as {
         results?: { channels?: Array<{ alternatives?: Array<{ transcript?: string }> }> };
         result?: { results?: { channels?: Array<{ alternatives?: Array<{ transcript?: string }> }> } };

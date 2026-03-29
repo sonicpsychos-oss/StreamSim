@@ -37,6 +37,7 @@ describe("VisionPollingService", () => {
   beforeEach(() => {
     sharedDeviceCapturePipeline.reset();
     vi.restoreAllMocks();
+    process.env.STREAMSIM_CLOUD_API_KEY = "test-cloud-key";
   });
 
   it("ingests local vision tags asynchronously", async () => {
@@ -100,5 +101,41 @@ describe("VisionPollingService", () => {
         })
       })
     );
+  });
+
+  it("maps OpenAI vision output text back into context.visionTags", async () => {
+    const config = {
+      ...defaultConfig,
+      provider: { ...defaultConfig.provider, cloudEndpoint: "https://api.openai.com/v1/chat/completions", cloudModel: "gpt-4o-mini" },
+      capture: {
+        ...defaultConfig.capture,
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "openai" as const,
+        visionIntervalSec: 5,
+        visionEndpoint: "http://127.0.0.1:7778/vision-tags"
+      }
+    };
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/vision-tags")) {
+        return {
+          ok: true,
+          json: async () => ({ imageBase64: "abcd1234==" })
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: "green hoodie, gaming headset, ring light" } }] })
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const service = new VisionPollingService(() => config, () => undefined);
+    await (service as any).tick();
+
+    const context = sharedDeviceCapturePipeline.getContext(config);
+    expect(context.visionTags).toEqual(["green hoodie", "gaming headset", "ring light"]);
   });
 });
