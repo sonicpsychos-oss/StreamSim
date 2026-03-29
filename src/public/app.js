@@ -75,6 +75,7 @@ const controls = {
   ttsMode: document.getElementById("ttsMode"),
   ttsProvider: document.getElementById("ttsProvider"),
   visionEnabled: document.getElementById("visionEnabled"),
+  visionProvider: document.getElementById("visionProvider"),
   useRealCapture: document.getElementById("useRealCapture"),
   visionIntervalSec: document.getElementById("visionIntervalSec"),
   sttProvider: document.getElementById("sttProvider"),
@@ -442,6 +443,7 @@ function getPayload() {
     ttsProvider: controls.ttsProvider.value,
     capture: {
       visionEnabled: controls.visionEnabled.checked,
+      visionProvider: controls.visionProvider.value,
       useRealCapture: controls.useRealCapture.checked,
       visionIntervalSec: Number(controls.visionIntervalSec.value),
       sttProvider: controls.sttProvider.value,
@@ -492,6 +494,7 @@ function hydrateControls(config) {
   controls.ttsMode.value = config.ttsMode ?? "local";
   controls.ttsProvider.value = config.ttsProvider ?? "local";
   controls.visionEnabled.checked = config.capture.visionEnabled;
+  controls.visionProvider.value = config.capture.visionProvider ?? "local";
   controls.useRealCapture.checked = config.capture.useRealCapture;
   controls.visionIntervalSec.value = config.capture.visionIntervalSec;
   controls.sttProvider.value = config.capture.sttProvider ?? "local-whisper";

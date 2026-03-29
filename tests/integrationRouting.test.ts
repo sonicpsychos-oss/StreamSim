@@ -403,8 +403,8 @@ describe("hybrid routing and failover", () => {
         expect(systemPrompt).toMatch(/Prioritize the most recent ~10 seconds/i);
         expect(systemPrompt).toMatch(/Current Stream Topic:/i);
         expect(systemPrompt).toMatch(/Do not output generic filler/i);
-        expect(systemPrompt).toMatch(/60%\+ of messages must be under 5 words/i);
-        expect(systemPrompt).toMatch(/drop F in the chat|drop \[X\]|spam \[X\]|type \[X\]/i);
+        expect(systemPrompt).toMatch(/80% of messages must be under 4 words|at least 80% of messages must be under 4 words/i);
+        expect(systemPrompt).toMatch(/drop F now|drop \[X\]|spam \[X\]|type \[X\]/i);
         expect(userPayload.context.transcript).toBe("can you hear me?");
 
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -505,7 +505,7 @@ describe("device capture pipeline + security + observability schema", () => {
     expect(isValidObservabilityEvent({ event: 1, at: "x" })).toBe(false);
   });
 
-  it("normalizes endpoint STT/vision response shapes into capture context", async () => {
+  it("normalizes endpoint STT response while vision state is decoupled", async () => {
     const stt = await withTestServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ text: "hello from endpoint", tone: { volumeRms: 0.7, paceWpm: 150 } }));
@@ -529,7 +529,7 @@ describe("device capture pipeline + security + observability schema", () => {
     });
 
     expect(ctx.transcript).toContain("hello from endpoint");
-    expect(ctx.visionTags).toEqual(["desk", "camera"]);
+    expect(ctx.visionTags).toEqual([]);
     await stt.close();
     await vision.close();
   });

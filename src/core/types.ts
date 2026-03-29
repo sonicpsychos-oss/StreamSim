@@ -9,6 +9,7 @@ export type FishingState = "OFF" | "STANDARD_CONTRARIAN" | "AGGRESSIVE_SUBVERSIO
 export interface CaptureConfig {
   visionEnabled: boolean;
   visionIntervalSec: number;
+  visionProvider: "local" | "openai";
   useRealCapture: boolean;
   sttEndpoint: string;
   sttProvider: "mock" | "local-whisper" | "whispercpp" | "deepgram" | "openai-whisper" | "gpt-4o-mini-transcribe";

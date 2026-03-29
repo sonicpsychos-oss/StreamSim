@@ -34,7 +34,7 @@ export function checkFishingState(transcript: string, vibe?: string, intent?: st
   const isBragging = BRAGGING_PATTERNS.some((regex) => regex.test(normalized));
   const isPityBait = PITY_BAIT_PATTERNS.some((regex) => regex.test(normalized));
   const isBenignSelfTalk = BENIGN_SELF_TALK_PATTERNS.some((regex) => regex.test(normalized));
-  const confidentOrArrogant = vibe === "arrogant" || vibe === "confident";
+  const isArrogant = vibe === "arrogant";
   const inquiryIntent = intent === "inquiry";
   const hasValidationSignal = isAskingLeadingQ || isBragging || isPityBait;
 
@@ -42,11 +42,18 @@ export function checkFishingState(transcript: string, vibe?: string, intent?: st
     return "OFF";
   }
 
+  if (!isArrogant && !hasValidationSignal) {
+    return "OFF";
+  }
+  if (isArrogant && !hasValidationSignal) {
+    return "STANDARD_CONTRARIAN";
+  }
+
   let confidenceScore = 0;
   if (isAskingLeadingQ) confidenceScore += 2;
   if (isBragging || isPityBait) confidenceScore += 1;
   if (inquiryIntent) confidenceScore += 1;
-  if (confidentOrArrogant) confidenceScore += 1;
+  if (isArrogant) confidenceScore += 2;
 
   if ((isAskingLeadingQ || isPityBait) && confidenceScore >= 4) {
     return "AGGRESSIVE_SUBVERSION";

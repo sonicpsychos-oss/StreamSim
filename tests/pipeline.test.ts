@@ -113,6 +113,11 @@ describe("prompt payload", () => {
     expect(checkFishingState("chat i'm so bad i should just quit right?", "confident", "inquiry")).toBe("AGGRESSIVE_SUBVERSION");
   });
 
+  it("keeps neutral inquiries out of fishing mode without explicit validation signals", () => {
+    expect(checkFishingState("what settings should i try next", "questioning", "inquiry")).toBe("OFF");
+    expect(checkFishingState("we queue now", "arrogant", "statement")).toBe("STANDARD_CONTRARIAN");
+  });
+
   it("injects fishingState metadata into payload context", () => {
     const payload = buildPromptPayload(defaultConfig, {
       transcript: "yo chat be honest this run was clean right?",
