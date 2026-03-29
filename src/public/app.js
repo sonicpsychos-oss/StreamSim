@@ -693,6 +693,9 @@ function summarizeVisionHealth(payload) {
       ? "latest sample present"
       : "waiting for first sample"
     : "not collecting";
+  const detailWithHint = sampleStatus === "waiting for first sample" && enabled && useRealCapture
+    ? `${detail}; run Start Simulation and confirm the vision endpoint is producing tags (webcam permission alone does not populate visionTags).`
+    : detail;
 
   visionHealthSummary.textContent = [
     `Vision enabled: ${enabled ? "yes" : "no"}`,
@@ -700,7 +703,7 @@ function summarizeVisionHealth(payload) {
     `Capture mode: ${useRealCapture ? "real" : "simulated"}`,
     `Vision ready: ${ready ? "yes" : "no"}`,
     `Sample state: ${sampleStatus}`,
-    `Detail: ${detail}`
+    `Detail: ${detailWithHint}`
   ].join("\n");
 }
 

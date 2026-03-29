@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultConfig } from "../src/config/runtimeConfig.js";
 import { EndpointCaptureProvider } from "../src/capture/captureProviders.js";
 import { sharedDeviceCapturePipeline } from "../src/capture/deviceCapturePipeline.js";
-import { VisionPollingService } from "../src/services/visionPollingService.js";
+import { VisionPollingService, explainVisionPollingError } from "../src/services/visionPollingService.js";
 
 describe("EndpointCaptureProvider", () => {
   beforeEach(() => {
@@ -137,5 +137,44 @@ describe("VisionPollingService", () => {
 
     const context = sharedDeviceCapturePipeline.getContext(config);
     expect(context.visionTags).toEqual(["green hoodie", "gaming headset", "ring light"]);
+  });
+
+  it("maps truncated JSON polling errors to a clearer warning", async () => {
+    const config = {
+      ...defaultConfig,
+      capture: {
+        ...defaultConfig.capture,
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "local" as const,
+        visionIntervalSec: 5,
+        visionEndpoint: "http://127.0.0.1:7778/vision-tags"
+      }
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => {
+          throw new SyntaxError("Unexpected end of JSON input");
+        }
+      }))
+    );
+
+    const emitMeta = vi.fn();
+    const service = new VisionPollingService(() => config, emitMeta);
+    await (service as any).tick();
+
+    expect(emitMeta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        warnings: ["Vision poll failed: Vision endpoint returned truncated JSON (broken package)."]
+      })
+    );
+  });
+});
+
+describe("explainVisionPollingError", () => {
+  it("rewrites truncated JSON parser failures", () => {
+    expect(explainVisionPollingError("Unexpected end of JSON input")).toBe("Vision endpoint returned truncated JSON (broken package).");
   });
 });

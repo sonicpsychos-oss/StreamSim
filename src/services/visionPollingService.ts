@@ -22,6 +22,13 @@ interface VisionProviderResult {
   providerResponse: unknown;
 }
 
+export function explainVisionPollingError(reason: string): string {
+  if (reason.includes("Unexpected end of JSON input")) {
+    return "Vision endpoint returned truncated JSON (broken package).";
+  }
+  return reason;
+}
+
 function normalizeVisionTags(payload: VisionEndpointPayload): string[] {
   const listCandidates = [
     payload.visionTags,
@@ -131,7 +138,7 @@ export class VisionPollingService {
         }
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = explainVisionPollingError(error instanceof Error ? error.message : String(error));
       this.emitMeta({ warnings: [`Vision poll failed: ${message}`], blocked: false, vision: { provider: config.capture.visionProvider, ok: false } });
     }
 
