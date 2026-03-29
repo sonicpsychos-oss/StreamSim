@@ -68,7 +68,7 @@ type ProviderResponseShape = {
 
 const ALLOWED_TEXT_EMOTES = ["Kappa", "LUL", "PogChamp", "OMEGALUL", "monkaS", "W", "L"] as const;
 
-function openAiResponseSchema() {
+function openAiResponseSchema(requestedMessageCount: number) {
   return {
     type: "json_schema",
     json_schema: {
@@ -80,7 +80,8 @@ function openAiResponseSchema() {
         properties: {
           messages: {
             type: "array",
-            minItems: 1,
+            minItems: requestedMessageCount,
+            maxItems: requestedMessageCount,
             items: {
               type: "object",
               additionalProperties: false,
@@ -168,7 +169,8 @@ function systemPromptForPayload(payload: PromptPayload): string {
 
   return [
     // Primacy zone: engine rules
-    'Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number|null,"ttsText":string|null}]}. Never include usernames.',
+    `Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number|null,"ttsText":string|null}]}. Never include usernames.`,
+    `messages must be an array with exactly ${payload.requestedMessageCount} items (valid batch range is 2 to 8 based on viewerCount).`,
     "STRICT COMMAND OVERRIDE (highest priority): if streamer says 'drop [X]' or 'type [X]' or 'spam [X]', message 1 and message 2 MUST be exactly [X] with no extra words, punctuation, or emojis.",
     "COMMAND PRECEDENCE: when command override triggers, it cancels contrast, question-answer, anti-echo, and diversity constraints for message 1/message 2.",
     "GROUPTHINK RULE: during a drop/type/spam command, diversity is disabled and both first messages must output the same exact token.",
@@ -420,7 +422,7 @@ export class HybridInferenceProvider implements InferenceProvider {
         body.temperature = 0.8;
       }
       if (this.mode === "openai") {
-        body.response_format = openAiResponseSchema();
+        body.response_format = openAiResponseSchema(payload.requestedMessageCount);
       }
 
       let response: Response;
