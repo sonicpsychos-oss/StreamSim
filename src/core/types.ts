@@ -4,6 +4,7 @@ export type InferenceMode = "mock-local" | "mock-cloud" | "ollama" | "lmstudio" 
 export type TtsMode = "off" | "local" | "cloud";
 export type TtsProvider = "local" | "openai" | "deepgram_aura";
 export type SimulatedVibe = "chill" | "nuclear_drama" | "hyped" | "questioning";
+export type FishingState = "OFF" | "STANDARD_CONTRARIAN" | "AGGRESSIVE_SUBVERSION";
 
 export interface CaptureConfig {
   visionEnabled: boolean;
@@ -99,6 +100,7 @@ export interface StreamContext {
   intent?: string;
   isCommand?: boolean;
   intentScore?: number;
+  fishingState?: FishingState;
   recentChatHistory: string[];
   timestamp: string;
 }

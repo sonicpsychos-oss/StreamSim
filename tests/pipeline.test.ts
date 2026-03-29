@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { defaultConfig } from "../src/config/runtimeConfig.js";
 import { mergeConfig, sanitizeConfig } from "../src/config/runtimeConfig.js";
 import { classifyMalformedOutput, parseInferenceOutput, repairInferenceOutput } from "../src/pipeline/outputParser.js";
-import { buildPromptPayload } from "../src/pipeline/promptBuilder.js";
+import { buildPromptPayload, checkFishingState } from "../src/pipeline/promptBuilder.js";
 
 describe("runtime config", () => {
   it("clamps invalid values and supports nested sections", () => {
@@ -95,5 +95,35 @@ describe("prompt payload", () => {
     expect(low.requestedMessageCount).toBeGreaterThanOrEqual(2);
     expect(low.requestedMessageCount).toBeLessThanOrEqual(8);
     expect(high.requestedMessageCount).toBe(8);
+  });
+
+  it("detects aggressive fishing only when vibe + inquiry + leading keywords align", () => {
+    expect(checkFishingState("be real this fit is fire right?", "arrogant", "inquiry")).toBe("AGGRESSIVE_SUBVERSION");
+    expect(checkFishingState("be real this fit is fire right?", "chill", "inquiry")).toBe("STANDARD_CONTRARIAN");
+    expect(checkFishingState("i am locking in", "confident", "inquiry")).toBe("OFF");
+  });
+
+  it("keeps benign self-talk out of contrarian mode", () => {
+    expect(checkFishingState("good job", "chill", "statement")).toBe("OFF");
+    expect(checkFishingState("nice job to me", "confident", "statement")).toBe("OFF");
+  });
+
+  it("recognizes pity-bait validation fishing", () => {
+    expect(checkFishingState("man i'm so bad i should just quit", "questioning", "inquiry")).toBe("STANDARD_CONTRARIAN");
+    expect(checkFishingState("chat i'm so bad i should just quit right?", "confident", "inquiry")).toBe("AGGRESSIVE_SUBVERSION");
+  });
+
+  it("injects fishingState metadata into payload context", () => {
+    const payload = buildPromptPayload(defaultConfig, {
+      transcript: "yo chat be honest this run was clean right?",
+      tone: { volumeRms: 0.4, paceWpm: 125 },
+      visionTags: [],
+      vibe: "hyped",
+      intent: "inquiry",
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    });
+
+    expect(payload.context.fishingState).toBe("STANDARD_CONTRARIAN");
   });
 });
