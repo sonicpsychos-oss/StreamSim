@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultConfig } from "../src/config/runtimeConfig.js";
 import { EndpointCaptureProvider } from "../src/capture/captureProviders.js";
 import { sharedDeviceCapturePipeline } from "../src/capture/deviceCapturePipeline.js";
+import { sharedVisionFrameStore } from "../src/capture/visionFrameStore.js";
 import { VisionPollingService, explainVisionPollingError } from "../src/services/visionPollingService.js";
 
 describe("EndpointCaptureProvider", () => {
@@ -36,6 +37,7 @@ describe("EndpointCaptureProvider", () => {
 describe("VisionPollingService", () => {
   beforeEach(() => {
     sharedDeviceCapturePipeline.reset();
+    sharedVisionFrameStore.reset();
     vi.restoreAllMocks();
     process.env.STREAMSIM_CLOUD_API_KEY = "test-cloud-key";
   });
@@ -137,6 +139,34 @@ describe("VisionPollingService", () => {
 
     const context = sharedDeviceCapturePipeline.getContext(config);
     expect(context.visionTags).toEqual(["green hoodie", "gaming headset", "ring light"]);
+  });
+
+  it("uses live-monitor uploaded frame for OpenAI provider when vision endpoint is blank", async () => {
+    const config = {
+      ...defaultConfig,
+      provider: { ...defaultConfig.provider, cloudEndpoint: "https://api.openai.com/v1/chat/completions", cloudModel: "gpt-4o-mini" },
+      capture: {
+        ...defaultConfig.capture,
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "openai" as const,
+        visionEndpoint: ""
+      }
+    };
+    sharedVisionFrameStore.setFrame("data:image/jpeg;base64,abcd1234==");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: "ring light, keyboard" } }] })
+      }))
+    );
+
+    const service = new VisionPollingService(() => config, () => undefined);
+    await (service as any).tick();
+    const context = sharedDeviceCapturePipeline.getContext(config);
+    expect(context.visionTags).toEqual(["ring light", "keyboard"]);
   });
 
   it("maps truncated JSON polling errors to a clearer warning", async () => {
