@@ -66,4 +66,39 @@ describe("VisionPollingService", () => {
     const context = sharedDeviceCapturePipeline.getContext(config);
     expect(context.visionTags).toEqual(["green hoodie", "gaming headset"]);
   });
+
+  it("emits provider response details for vision diagnostics", async () => {
+    const config = {
+      ...defaultConfig,
+      capture: {
+        ...defaultConfig.capture,
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "local" as const,
+        visionIntervalSec: 5,
+        visionEndpoint: "http://127.0.0.1:7778/vision-tags"
+      }
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ visionTags: ["ring light"] })
+      }))
+    );
+
+    const emitMeta = vi.fn();
+    const service = new VisionPollingService(() => config, emitMeta);
+    await (service as any).tick();
+
+    expect(emitMeta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vision: expect.objectContaining({
+          providerResponse: { visionTags: ["ring light"] },
+          tags: ["ring light"]
+        })
+      })
+    );
+  });
 });

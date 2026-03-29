@@ -234,24 +234,7 @@ export class SimulationOrchestrator {
       next = next.replace(/\s+/g, " ").trim();
       return next;
     };
-    const trimmedWordCap = (text: string): string => {
-      const words = text.split(/\s+/).filter(Boolean);
-      return words.length > 3 ? words.slice(0, 3).join(" ") : text;
-    };
-
-    const normalized = messages.map((message) => ({ ...message, text: sanitize(message.text) }));
-    const shortTarget = Math.ceil(normalized.length * 0.8);
-    let shortCount = normalized.filter((message) => message.text.split(/\s+/).filter(Boolean).length <= 3).length;
-
-    if (shortCount >= shortTarget) return normalized;
-    return normalized.map((message) => {
-      if (shortCount >= shortTarget) return message;
-      const shortened = trimmedWordCap(message.text);
-      if (shortened !== message.text) {
-        shortCount += 1;
-      }
-      return { ...message, text: shortened };
-    });
+    return messages.map((message) => ({ ...message, text: sanitize(message.text) }));
   }
 
   private enforceDiversityRules(messages: ChatMessage[], behavioralModes: string[]): ChatMessage[] {
@@ -294,7 +277,25 @@ export class SimulationOrchestrator {
       remapped[1] = { ...remapped[1], text: contrastReplies[Math.floor(Math.random() * contrastReplies.length)] };
     }
 
-    return remapped;
+    const deduped = remapped.map((message) => ({ ...message }));
+    const seen = new Set<string>();
+    const fallbackReplies = [
+      "new take pls",
+      "same line again??",
+      "switch it up bro",
+      "different angle pls"
+    ];
+    deduped.forEach((message, index) => {
+      const key = message.text.toLowerCase().replace(/\s+/g, " ").trim();
+      if (!key) return;
+      if (seen.has(key)) {
+        message.text = fallbackReplies[index % fallbackReplies.length];
+        return;
+      }
+      seen.add(key);
+    });
+
+    return deduped;
   }
 
   private verbosePipelineLog(
