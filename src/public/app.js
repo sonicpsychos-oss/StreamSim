@@ -47,7 +47,7 @@ const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
 const STT_DEFAULT_ENDPOINTS = {
   "local-whisper": "http://127.0.0.1:7778/stt",
   whispercpp: "http://127.0.0.1:7778/stt",
-  deepgram: "https://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&filler_words=true&punctuate=true&sentiment=true&topics=true&intents=true",
+  deepgram: "https://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&filler_words=true&punctuate=true&sentiment=true&topics=true&intents=true&utterance_end_ms=3000",
   "openai-whisper": "https://api.openai.com/v1/audio/transcriptions",
   "gpt-4o-mini-transcribe": "https://api.openai.com/v1/audio/transcriptions",
   mock: "http://127.0.0.1:7778/stt"

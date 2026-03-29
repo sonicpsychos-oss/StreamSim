@@ -148,4 +148,47 @@ describe("anti-echo constraint", () => {
     expect(diverse[0].text).toContain("gyatt");
     expect(diverse[1].text).toContain("simps");
   });
+
+  it("keeps full phrases instead of force-trimming most messages to 3 words", () => {
+    const orchestrator = makeOrchestrator();
+    const input: ChatMessage[] = [
+      {
+        id: "1",
+        username: "user1",
+        text: "this sentence should stay fully readable and not be cut",
+        emotes: [],
+        donationCents: null,
+        ttsText: null,
+        createdAt: new Date().toISOString()
+      }
+    ];
+    const normalized = (orchestrator as any).enforcePersonaSyntax(input);
+    expect(normalized[0].text.split(/\s+/).length).toBeGreaterThan(3);
+  });
+
+  it("rewrites duplicate nearby messages to improve diversity", () => {
+    const orchestrator = makeOrchestrator();
+    const input: ChatMessage[] = [
+      {
+        id: "1",
+        username: "user1",
+        text: "mic check passed",
+        emotes: [],
+        donationCents: null,
+        ttsText: null,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "2",
+        username: "user2",
+        text: "mic check passed",
+        emotes: [],
+        donationCents: null,
+        ttsText: null,
+        createdAt: new Date().toISOString()
+      }
+    ];
+    const diverse = (orchestrator as any).enforceDiversityRules(input, ["default"]);
+    expect(diverse[1].text.toLowerCase()).not.toBe("mic check passed");
+  });
 });

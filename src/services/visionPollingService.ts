@@ -17,6 +17,11 @@ interface VisionEndpointPayload {
   dataUrl?: string;
 }
 
+interface VisionProviderResult {
+  tags: string[];
+  providerResponse: unknown;
+}
+
 function normalizeVisionTags(payload: VisionEndpointPayload): string[] {
   const listCandidates = [
     payload.visionTags,
@@ -89,20 +94,26 @@ export class VisionPollingService {
         throw new Error(`vision endpoint failed (${endpointResponse.status})`);
       }
       const endpointPayload = ((await endpointResponse.json()) ?? {}) as VisionEndpointPayload;
+      // eslint-disable-next-line no-console
+      console.log("[VisionPollingService] vision endpoint payload", endpointPayload);
 
-      const tags =
+      const providerResult: VisionProviderResult =
         config.capture.visionProvider === "openai"
           ? await this.fetchOpenAiVisionTags(config, endpointPayload)
-          : normalizeVisionTags(endpointPayload);
+          : { tags: normalizeVisionTags(endpointPayload), providerResponse: endpointPayload };
+      const tags = providerResult.tags;
 
       if (tags.length) {
         sharedDeviceCapturePipeline.ingestVisionSample({ tags });
       }
 
+      // eslint-disable-next-line no-console
+      console.log("[VisionPollingService] normalized vision tags", { tags, provider: config.capture.visionProvider });
       this.emitMeta({
         vision: {
           provider: config.capture.visionProvider,
           endpoint: config.capture.visionEndpoint,
+          providerResponse: providerResult.providerResponse,
           tags,
           updatedAt: new Date().toISOString()
         }
@@ -115,7 +126,7 @@ export class VisionPollingService {
     this.scheduleNext(delayMs);
   }
 
-  private async fetchOpenAiVisionTags(config: SimulationConfig, payload: VisionEndpointPayload): Promise<string[]> {
+  private async fetchOpenAiVisionTags(config: SimulationConfig, payload: VisionEndpointPayload): Promise<VisionProviderResult> {
     const cloudApiKey = this.secretStore.getCloudApiKey();
     if (!cloudApiKey) {
       throw new Error("Cloud API key missing for OpenAI vision provider.");
@@ -129,7 +140,7 @@ export class VisionPollingService {
       "";
 
     if (!imageInput) {
-      return normalizeVisionTags(payload);
+      return { tags: normalizeVisionTags(payload), providerResponse: payload };
     }
 
     const response = await fetch(config.provider.cloudEndpoint, {
@@ -168,6 +179,8 @@ export class VisionPollingService {
       choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>;
       output_text?: string;
     };
+    // eslint-disable-next-line no-console
+    console.log("[VisionPollingService] openai vision response", data);
 
     const content = data.choices?.[0]?.message?.content;
     const text =
@@ -177,10 +190,13 @@ export class VisionPollingService {
           ? content.map((part) => part.text ?? "").join(" ")
           : data.output_text ?? "";
 
-    return text
+    return {
+      providerResponse: data,
+      tags: text
       .split(",")
       .map((tag) => tag.trim().toLowerCase())
       .filter(Boolean)
-      .slice(0, 8);
+      .slice(0, 8)
+    };
   }
 }
