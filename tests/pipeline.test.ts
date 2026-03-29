@@ -46,6 +46,13 @@ describe("output parser", () => {
     expect(result[0].username).toBe("");
   });
 
+  it("accepts messages when donation fields are omitted", () => {
+    const result = parseInferenceOutput('{"messages":[{"text":"hi","emotes":[]},{"text":"yo","emotes":["🔥"]}]}');
+    expect(result).toHaveLength(2);
+    expect(result[0].donationCents).toBeUndefined();
+    expect(result[0].ttsText).toBeUndefined();
+  });
+
   it("throws when no valid messages are present", () => {
     expect(() => parseInferenceOutput('{"messages":[{"foo":1}]}')).toThrow(/Expected at least 2 valid messages/);
   });

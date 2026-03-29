@@ -21,6 +21,8 @@ interface VisionEndpointPayload {
 interface VisionProviderResult {
   tags: string[];
   providerResponse: unknown;
+  rawText?: string;
+  model?: string;
 }
 
 const DEFAULT_OPENAI_CHAT_COMPLETIONS_ENDPOINT = "https://api.openai.com/v1/chat/completions";
@@ -71,6 +73,41 @@ function parseVisionTagsFromText(rawText: string): string[] {
     .map((chunk) => chunk.replace(/^["'`]+|["'`]+$/g, "").trim().toLowerCase())
     .filter(Boolean)
     .slice(0, 8);
+}
+
+function tryParseJsonTags(rawText: string): string[] {
+  const trimmed = rawText.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed) as { tags?: unknown };
+    if (!Array.isArray(parsed.tags)) return [];
+    return parsed.tags
+      .filter((tag): tag is string => typeof tag === "string")
+      .map((tag) => tag.trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
+function extractVisionText(data: {
+  choices?: Array<{ message?: { content?: string | Array<{ text?: string | { value?: string } }> } }>;
+  output_text?: string;
+}): string {
+  const content = data.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part?.text === "string") return part.text;
+        if (part?.text && typeof part.text === "object" && typeof part.text.value === "string") return part.text.value;
+        return "";
+      })
+      .join(" ")
+      .trim();
+  }
+  return data.output_text ?? "";
 }
 
 function visionModelCandidates(primaryModel: string): string[] {
@@ -167,6 +204,19 @@ export class VisionPollingService {
 
       if (tags.length) {
         sharedDeviceCapturePipeline.ingestVisionSample({ tags });
+      } else {
+        this.emitMeta({
+          warnings: [
+            `Vision provider returned empty tags${providerResult.model ? ` (model=${providerResult.model})` : ""}. Check providerResponse/rawText in metadata for diagnosis.`
+          ],
+          vision: {
+            provider: config.capture.visionProvider,
+            endpoint: config.capture.visionEndpoint,
+            rawText: providerResult.rawText ?? "",
+            providerResponse: providerResult.providerResponse,
+            tags
+          }
+        });
       }
 
       // eslint-disable-next-line no-console
@@ -207,6 +257,7 @@ export class VisionPollingService {
 
     const endpoint = resolveOpenAiVisionEndpoint(config);
     let lastError: Error | null = null;
+    let lastEmptyResult: VisionProviderResult | null = null;
     for (const model of visionModelCandidates(config.provider.cloudModel)) {
       const response = await fetch(endpoint, {
         method: "POST",
@@ -222,7 +273,7 @@ export class VisionPollingService {
               content: [
                 {
                   type: "text",
-                  text: "List what you see in 5 words."
+                  text: 'Return strict JSON: {"tags":["tag1","tag2","tag3"]}. Keep tags short concrete nouns/adjectives from the frame.'
                 },
                 {
                   type: "image_url",
@@ -249,24 +300,25 @@ export class VisionPollingService {
       // eslint-disable-next-line no-console
       console.log("[VisionService] Raw response from provider:", data);
 
-      const content = data.choices?.[0]?.message?.content;
-      const text =
-        typeof content === "string"
-          ? content
-          : Array.isArray(content)
-            ? content.map((part) => part.text ?? "").join(" ")
-            : data.output_text ?? "";
-
-      const tags = parseVisionTagsFromText(text);
+      const text = extractVisionText(data);
+      const tags = tryParseJsonTags(text).length ? tryParseJsonTags(text) : parseVisionTagsFromText(text);
       if (tags.length > 0) {
         return {
           providerResponse: { model, data },
-          tags
+          tags,
+          rawText: text,
+          model
         };
       }
-      lastError = new Error(`OpenAI vision response for model ${model} returned no usable tags.`);
+      lastEmptyResult = {
+        providerResponse: { model, data },
+        tags: [],
+        rawText: text,
+        model
+      };
     }
 
+    if (lastEmptyResult) return lastEmptyResult;
     throw lastError ?? new Error("OpenAI vision request failed before any provider response.");
   }
 }

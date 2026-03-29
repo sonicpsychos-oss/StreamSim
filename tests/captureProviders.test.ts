@@ -141,6 +141,40 @@ describe("VisionPollingService", () => {
     expect(context.visionTags).toEqual(["green hoodie", "gaming headset", "ring light"]);
   });
 
+  it("parses JSON-tagged OpenAI vision responses", async () => {
+    const config = {
+      ...defaultConfig,
+      provider: { ...defaultConfig.provider, cloudEndpoint: "https://api.openai.com/v1/chat/completions", cloudModel: "gpt-4o-mini" },
+      capture: {
+        ...defaultConfig.capture,
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "openai" as const,
+        visionEndpoint: "http://127.0.0.1:7778/vision-tags"
+      }
+    };
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/vision-tags")) {
+        return {
+          ok: true,
+          json: async () => ({ imageBase64: "abcd1234==" })
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '{"tags":["ring light","keyboard"]}' } }] })
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const service = new VisionPollingService(() => config, () => undefined);
+    await (service as any).tick();
+    const context = sharedDeviceCapturePipeline.getContext(config);
+    expect(context.visionTags).toEqual(["ring light", "keyboard"]);
+  });
+
   it("uses live-monitor uploaded frame for OpenAI provider when vision endpoint is blank", async () => {
     const config = {
       ...defaultConfig,
@@ -227,6 +261,36 @@ describe("VisionPollingService", () => {
     const service = new VisionPollingService(() => config, () => undefined);
     await (service as any).tick();
     expect(String(fetchMock.mock.calls[0][0])).toBe("https://api.openai.com/v1/chat/completions");
+  });
+
+  it("emits warning metadata when provider responds but produces empty tags", async () => {
+    const config = {
+      ...defaultConfig,
+      provider: { ...defaultConfig.provider, cloudEndpoint: "https://api.openai.com/v1/chat/completions", cloudModel: "gpt-4o-mini" },
+      capture: {
+        ...defaultConfig.capture,
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "openai" as const,
+        visionEndpoint: ""
+      }
+    };
+    sharedVisionFrameStore.setFrame("data:image/jpeg;base64,abcd1234==");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: "" } }] })
+      }))
+    );
+    const emitMeta = vi.fn();
+    const service = new VisionPollingService(() => config, emitMeta);
+    await (service as any).tick();
+    expect(emitMeta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        warnings: expect.arrayContaining([expect.stringContaining("Vision provider returned empty tags")])
+      })
+    );
   });
 
   it("maps truncated JSON polling errors to a clearer warning", async () => {

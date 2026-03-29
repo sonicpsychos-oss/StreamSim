@@ -31,6 +31,7 @@ function isAllowedEmote(value: string): boolean {
 }
 
 function normalizeTtsText(candidate: Record<string, unknown>, donationCents: number | null): string | undefined {
+  if (!Object.prototype.hasOwnProperty.call(candidate, "ttsText")) return undefined;
   if (candidate.ttsText === null) return undefined;
   if (typeof candidate.ttsText !== "string") return undefined;
   const trimmed = candidate.ttsText.trim();
@@ -44,10 +45,13 @@ function coerceMessage(raw: unknown): ChatMessage | null {
 
   if (typeof candidate.text !== "string") return null;
   if (!Array.isArray(candidate.emotes) || !candidate.emotes.every((item) => typeof item === "string")) return null;
-  if (!Object.prototype.hasOwnProperty.call(candidate, "donationCents")) return null;
-  if (!Object.prototype.hasOwnProperty.call(candidate, "ttsText")) return null;
-  if (!(candidate.donationCents === null || typeof candidate.donationCents === "number")) return null;
-  if (!(candidate.ttsText === null || typeof candidate.ttsText === "string")) return null;
+  if (
+    Object.prototype.hasOwnProperty.call(candidate, "donationCents") &&
+    !(candidate.donationCents === null || typeof candidate.donationCents === "number")
+  ) {
+    return null;
+  }
+  if (Object.prototype.hasOwnProperty.call(candidate, "ttsText") && !(candidate.ttsText === null || typeof candidate.ttsText === "string")) return null;
 
   const donationCents = typeof candidate.donationCents === "number" && candidate.donationCents > 0 ? Math.floor(candidate.donationCents) : null;
   const emotes = candidate.emotes.map((emote) => emote.trim()).filter((emote) => isAllowedEmote(emote));
