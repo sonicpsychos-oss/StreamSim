@@ -192,7 +192,39 @@ describe("anti-echo constraint", () => {
     expect(diverse[1].text.toLowerCase()).not.toBe("mic check passed");
   });
 
-  it("applies transcript decay after the same transcript is seen three times", () => {
+  it("prevents viewer messages from mirroring streamer-style leading 'we' phrasing", () => {
+    const orchestrator = makeOrchestrator();
+    const input: ChatMessage[] = [
+      {
+        id: "1",
+        username: "user1",
+        text: "We are live now",
+        emotes: [],
+        donationCents: null,
+        ttsText: null,
+        createdAt: new Date().toISOString()
+      }
+    ];
+    const normalized = (orchestrator as any).enforcePersonaSyntax(input);
+    expect(normalized[0].text).toBe("you live now");
+  });
+
+  it("enforces starter diversity and brevity ratio across batches", () => {
+    const orchestrator = makeOrchestrator();
+    const input: ChatMessage[] = [
+      { id: "1", username: "u1", text: "ngl this is kinda too long for chat pace", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() },
+      { id: "2", username: "u2", text: "ngl we are still talking way too much here", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() },
+      { id: "3", username: "u3", text: "lowkey another sentence that should be shorter", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() },
+      { id: "4", username: "u4", text: "lowkey one more heavy sentence for test", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() },
+      { id: "5", username: "u5", text: "bro this one stays long too", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() }
+    ];
+    const diverse = (orchestrator as any).enforceDiversityRules(input, ["default"]);
+    expect(diverse[1].text.split(/\s+/)[0]).not.toBe("ngl");
+    const shortCount = diverse.filter((message: ChatMessage) => message.text.trim().split(/\s+/).length <= 4).length;
+    expect(shortCount).toBeGreaterThanOrEqual(4);
+  });
+
+  it("keeps transcript context stable even after repeated identical lines", () => {
     const orchestrator = makeOrchestrator();
     const baseContext = {
       transcript: "same line from streamer",
@@ -210,6 +242,6 @@ describe("anti-echo constraint", () => {
     expect(first.transcript).toBe("same line from streamer");
     expect(second.transcript).toBe("same line from streamer");
     expect(third.transcript).toBe("same line from streamer");
-    expect(fourth.transcript).toBe("");
+    expect(fourth.transcript).toBe("same line from streamer");
   });
 });
