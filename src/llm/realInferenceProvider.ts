@@ -98,7 +98,7 @@ function openAiResponseSchema(requestedMessageCount: number) {
                   anyOf: [{ type: "string" }, { type: "null" }]
                 }
               },
-              required: ["text", "emotes", "donationCents", "ttsText"]
+              required: ["text", "emotes"]
             }
           }
         },
@@ -185,7 +185,7 @@ function systemPromptForPayload(payload: PromptPayload): string {
 
   return [
     // Primacy zone: engine rules
-    `Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number|null,"ttsText":string|null}]}. Never include usernames.`,
+    `Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents"?:number|null,"ttsText"?:string|null}]}. Never include usernames.`,
     fishingDirective,
     `messages must be an array with exactly ${payload.requestedMessageCount} items (valid batch range is 2 to 8 based on viewerCount).`,
     "STRICT COMMAND OVERRIDE (highest priority): if streamer says 'drop [X]' or 'type [X]' or 'spam [X]', message 1 and message 2 MUST be exactly [X] with no extra words, punctuation, or emojis.",
