@@ -21,7 +21,16 @@ interface VisionEndpointPayload {
 interface VisionProviderResult {
   tags: string[];
   providerResponse: unknown;
+  rawText?: string;
+  model?: string;
 }
+
+const DEFAULT_OPENAI_CHAT_COMPLETIONS_ENDPOINT = "https://api.openai.com/v1/chat/completions";
+const VISION_MODEL_FALLBACKS: Record<string, string[]> = {
+  "gpt-5.4-nano-2026-03-17": ["gpt-5-mini", "gpt-4o-mini"],
+  "gpt-5-nano": ["gpt-5-mini", "gpt-4o-mini"],
+  "gpt-5-mini": ["gpt-4o-mini"]
+};
 
 export function explainVisionPollingError(reason: string): string {
   if (reason.includes("Unexpected end of JSON input")) {
@@ -64,6 +73,53 @@ function parseVisionTagsFromText(rawText: string): string[] {
     .map((chunk) => chunk.replace(/^["'`]+|["'`]+$/g, "").trim().toLowerCase())
     .filter(Boolean)
     .slice(0, 8);
+}
+
+function tryParseJsonTags(rawText: string): string[] {
+  const trimmed = rawText.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed) as { tags?: unknown };
+    if (!Array.isArray(parsed.tags)) return [];
+    return parsed.tags
+      .filter((tag): tag is string => typeof tag === "string")
+      .map((tag) => tag.trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
+function extractVisionText(data: {
+  choices?: Array<{ message?: { content?: string | Array<{ text?: string | { value?: string } }> } }>;
+  output_text?: string;
+}): string {
+  const content = data.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part?.text === "string") return part.text;
+        if (part?.text && typeof part.text === "object" && typeof part.text.value === "string") return part.text.value;
+        return "";
+      })
+      .join(" ")
+      .trim();
+  }
+  return data.output_text ?? "";
+}
+
+function visionModelCandidates(primaryModel: string): string[] {
+  const normalized = primaryModel.trim().toLowerCase();
+  const candidates = [primaryModel.trim(), ...(VISION_MODEL_FALLBACKS[normalized] ?? []), "gpt-4o-mini"];
+  return candidates.filter((candidate, index) => candidate && candidates.indexOf(candidate) === index);
+}
+
+function resolveOpenAiVisionEndpoint(config: SimulationConfig): string {
+  const endpoint = String(config.provider.cloudEndpoint ?? "").trim();
+  if (/^https:\/\/api\.openai\.com\/v1\/chat\/completions\/?$/i.test(endpoint)) return endpoint;
+  return DEFAULT_OPENAI_CHAT_COMPLETIONS_ENDPOINT;
 }
 
 export class VisionPollingService {
@@ -148,6 +204,19 @@ export class VisionPollingService {
 
       if (tags.length) {
         sharedDeviceCapturePipeline.ingestVisionSample({ tags });
+      } else {
+        this.emitMeta({
+          warnings: [
+            `Vision provider returned empty tags${providerResult.model ? ` (model=${providerResult.model})` : ""}. Check providerResponse/rawText in metadata for diagnosis.`
+          ],
+          vision: {
+            provider: config.capture.visionProvider,
+            endpoint: config.capture.visionEndpoint,
+            rawText: providerResult.rawText ?? "",
+            providerResponse: providerResult.providerResponse,
+            tags
+          }
+        });
       }
 
       // eslint-disable-next-line no-console
@@ -186,56 +255,70 @@ export class VisionPollingService {
       return { tags: normalizeVisionTags(payload), providerResponse: payload };
     }
 
-    const response = await fetch(config.provider.cloudEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${cloudApiKey}`
-      },
-      body: JSON.stringify({
-        model: config.provider.cloudModel,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "List what you see in 5 words."
-              },
-              {
-                type: "image_url",
-                image_url: { url: imageInput }
-              }
-            ]
-          }
-        ],
-        max_completion_tokens: 120
-      }),
-      signal: AbortSignal.timeout(Math.max(5000, Math.min(config.provider.requestTimeoutMs, 15000)))
-    });
+    const endpoint = resolveOpenAiVisionEndpoint(config);
+    let lastError: Error | null = null;
+    let lastEmptyResult: VisionProviderResult | null = null;
+    for (const model of visionModelCandidates(config.provider.cloudModel)) {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${cloudApiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: 'Return strict JSON: {"tags":["tag1","tag2","tag3"]}. Keep tags short concrete nouns/adjectives from the frame.'
+                },
+                {
+                  type: "image_url",
+                  image_url: { url: imageInput }
+                }
+              ]
+            }
+          ],
+          max_completion_tokens: 120
+        }),
+        signal: AbortSignal.timeout(Math.max(5000, Math.min(config.provider.requestTimeoutMs, 15000)))
+      });
 
-    if (!response.ok) {
-      throw new Error(`OpenAI vision request failed (${response.status})`);
+      if (!response.ok) {
+        lastError = new Error(`OpenAI vision request failed (${response.status}) for model ${model}`);
+        if (response.status === 408 || response.status === 429 || response.status >= 500) continue;
+        throw lastError;
+      }
+
+      const data = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>;
+        output_text?: string;
+      };
+      // eslint-disable-next-line no-console
+      console.log("[VisionService] Raw response from provider:", data);
+
+      const text = extractVisionText(data);
+      const tags = tryParseJsonTags(text).length ? tryParseJsonTags(text) : parseVisionTagsFromText(text);
+      if (tags.length > 0) {
+        return {
+          providerResponse: { model, data },
+          tags,
+          rawText: text,
+          model
+        };
+      }
+      lastEmptyResult = {
+        providerResponse: { model, data },
+        tags: [],
+        rawText: text,
+        model
+      };
     }
 
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>;
-      output_text?: string;
-    };
-    // eslint-disable-next-line no-console
-    console.log("[VisionService] Raw response from provider:", data);
-
-    const content = data.choices?.[0]?.message?.content;
-    const text =
-      typeof content === "string"
-        ? content
-        : Array.isArray(content)
-          ? content.map((part) => part.text ?? "").join(" ")
-          : data.output_text ?? "";
-
-    return {
-      providerResponse: data,
-      tags: parseVisionTagsFromText(text)
-    };
+    if (lastEmptyResult) return lastEmptyResult;
+    throw lastError ?? new Error("OpenAI vision request failed before any provider response.");
   }
 }

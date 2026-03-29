@@ -80,12 +80,16 @@ describe("sidecar lifecycle orchestration", () => {
 
 describe("malformed json fallback + stt pause", () => {
   it("parses valid JSON object even when prefixed/suffixed with junk", () => {
-    const parsed = parseInferenceOutput(`junk before {"messages":[{"username":"u","text":"hi","emotes":[],"donationCents":null,"ttsText":null}]} junk after`);
-    expect(parsed).toHaveLength(1);
+    const parsed = parseInferenceOutput(
+      `junk before {"messages":[{"username":"u","text":"hi","emotes":[],"donationCents":null,"ttsText":null},{"username":"v","text":"yo","emotes":[],"donationCents":null,"ttsText":null}]} junk after`
+    );
+    expect(parsed).toHaveLength(2);
   });
 
   it("preserves source tags from inference payload", () => {
-    const parsed = parseInferenceOutput('{"messages":[{"username":"u","text":"hi","emotes":[],"donationCents":null,"ttsText":null,"source":"fallback-mock"}]}');
+    const parsed = parseInferenceOutput(
+      '{"messages":[{"username":"u","text":"hi","emotes":[],"donationCents":null,"ttsText":null,"source":"fallback-mock"},{"username":"v","text":"yo","emotes":[],"donationCents":null,"ttsText":null,"source":"fallback-mock"}]}'
+    );
     expect(parsed[0]?.source).toBe("fallback-mock");
   });
 
