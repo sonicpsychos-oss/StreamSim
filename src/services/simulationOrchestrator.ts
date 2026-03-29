@@ -13,6 +13,7 @@ import { MockInferenceProvider } from "../llm/mockInferenceProvider.js";
 import { IdentityManager } from "./identityManager.js";
 import { sharedDeviceCapturePipeline } from "../capture/deviceCapturePipeline.js";
 import { sharedTextToSpeechService } from "./tts/textToSpeechService.js";
+import { VisionPollingService } from "./visionPollingService.js";
 
 export class SimulationOrchestrator {
   private readonly spooler = new SpoolingEngine();
@@ -24,6 +25,10 @@ export class SimulationOrchestrator {
   private readonly sidecar = new SidecarManager();
   private readonly mockProvider = new MockInferenceProvider();
   private readonly identityManager = new IdentityManager();
+  private readonly visionService = new VisionPollingService(
+    () => this.getConfig(),
+    (meta) => this.emitMeta(meta)
+  );
   private recentChatHistory: string[] = [];
   private aiStatus: {
     state: "idle" | "running" | "degraded" | "error";
@@ -52,12 +57,14 @@ export class SimulationOrchestrator {
   public start(): void {
     if (this.running) return;
     this.running = true;
+    this.visionService.start();
     this.setAiStatus({ state: "running", detail: "Simulation loop started.", fallbackMode: null });
     void this.loop();
   }
 
   public stop(): void {
     this.running = false;
+    this.visionService.stop();
     this.setAiStatus({ state: "idle", detail: "Simulation stopped." });
     if (this.timer) {
       clearTimeout(this.timer);
@@ -214,6 +221,37 @@ export class SimulationOrchestrator {
     if (filtered.length > 0) return filtered;
     const seed = messages[0];
     return [this.antiEchoFallback(seed?.id ?? `${Date.now()}-anti-echo`, seed?.createdAt ?? new Date().toISOString())];
+  }
+
+  private enforcePersonaSyntax(messages: ChatMessage[]): ChatMessage[] {
+    const bannedPhrases = [/\bthe chat\b/gi, /\bchatters\b/gi, /\bthe audience\b/gi];
+    const sanitize = (text: string): string => {
+      let next = text.toLowerCase().replace(/[—]/g, " ").replace(/\.{2,}/g, " ");
+      bannedPhrases.forEach((pattern) => {
+        next = next.replace(pattern, "we");
+      });
+      next = next.replace(/[!?.,;:)\]]+$/g, "");
+      next = next.replace(/\s+/g, " ").trim();
+      return next;
+    };
+    const trimmedWordCap = (text: string): string => {
+      const words = text.split(/\s+/).filter(Boolean);
+      return words.length > 3 ? words.slice(0, 3).join(" ") : text;
+    };
+
+    const normalized = messages.map((message) => ({ ...message, text: sanitize(message.text) }));
+    const shortTarget = Math.ceil(normalized.length * 0.8);
+    let shortCount = normalized.filter((message) => message.text.split(/\s+/).filter(Boolean).length <= 3).length;
+
+    if (shortCount >= shortTarget) return normalized;
+    return normalized.map((message) => {
+      if (shortCount >= shortTarget) return message;
+      const shortened = trimmedWordCap(message.text);
+      if (shortened !== message.text) {
+        shortCount += 1;
+      }
+      return { ...message, text: shortened };
+    });
   }
 
   private enforceDiversityRules(messages: ChatMessage[], behavioralModes: string[]): ChatMessage[] {
@@ -410,7 +448,8 @@ export class SimulationOrchestrator {
           ? this.rewriteForReadingChat(messages)
           : this.applyAntiEchoConstraint(messages, context.transcript);
         const diverseMessages = this.enforceDiversityRules(deEchoedMessages, payload.behavioralModes);
-        const safety = applySafetyPolicy(diverseMessages, config);
+        const personaLocked = this.enforcePersonaSyntax(diverseMessages);
+        const safety = applySafetyPolicy(personaLocked, config);
         const safeMessages = safety.safeMessages;
         this.recentChatHistory = [...safeMessages.map((message) => message.text), ...this.recentChatHistory].slice(0, 40);
 

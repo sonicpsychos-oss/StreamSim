@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultConfig } from "../src/config/runtimeConfig.js";
 import { EndpointCaptureProvider } from "../src/capture/captureProviders.js";
 import { sharedDeviceCapturePipeline } from "../src/capture/deviceCapturePipeline.js";
+import { VisionPollingService } from "../src/services/visionPollingService.js";
 
 describe("EndpointCaptureProvider", () => {
   beforeEach(() => {
@@ -9,79 +10,60 @@ describe("EndpointCaptureProvider", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps ingesting vision tags even when STT endpoint fails", async () => {
+  it("does not block context retrieval on vision endpoint latency", async () => {
     const provider = new EndpointCaptureProvider();
     const config = {
       ...defaultConfig,
       capture: {
         ...defaultConfig.capture,
-        visionIntervalSec: 5
+        sttEndpoint: "http://127.0.0.1:7778/stt"
       }
     };
 
-    const fetchMock = vi.fn(async (url: string) => {
-      if (url.includes("/stt")) throw new Error("stt offline");
-      return {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
         ok: true,
-        json: async () => ({ visionTags: ["boss fight", "health bar"] })
-      } as Response;
-    });
-    vi.stubGlobal("fetch", fetchMock);
+        json: async () => ({ transcript: "audio is good" })
+      }))
+    );
 
     const context = await provider.getContext(config);
+    expect(context.transcript).toContain("audio is good");
+  });
+});
 
-    expect(context.visionTags).toEqual(["boss fight", "health bar"]);
+describe("VisionPollingService", () => {
+  beforeEach(() => {
+    sharedDeviceCapturePipeline.reset();
+    vi.restoreAllMocks();
   });
 
-  it("extracts fallback tags from caption-style vision payloads", async () => {
-    const provider = new EndpointCaptureProvider();
+  it("ingests local vision tags asynchronously", async () => {
     const config = {
       ...defaultConfig,
       capture: {
         ...defaultConfig.capture,
-        visionIntervalSec: 5
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "local" as const,
+        visionIntervalSec: 5,
+        visionEndpoint: "http://127.0.0.1:7778/vision-tags"
       }
     };
 
-    const fetchMock = vi.fn(async (url: string) => {
-      if (url.includes("/stt")) {
-        return { ok: true, json: async () => ({ transcript: "sup chat" }) } as Response;
-      }
-      return {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
         ok: true,
-        json: async () => ({ description: "game HUD, red warning light, inventory panel" })
-      } as Response;
-    });
-    vi.stubGlobal("fetch", fetchMock);
+        json: async () => ({ visionTags: ["green hoodie", "gaming headset"] })
+      }))
+    );
 
-    const context = await provider.getContext(config);
+    const service = new VisionPollingService(() => config, () => undefined);
+    await (service as any).tick();
 
-    expect(context.visionTags).toEqual(["game HUD", "red warning light", "inventory panel"]);
-  });
-
-  it("parses plain-language vision descriptions into descriptor arrays", async () => {
-    const provider = new EndpointCaptureProvider();
-    const config = {
-      ...defaultConfig,
-      capture: {
-        ...defaultConfig.capture,
-        visionIntervalSec: 5
-      }
-    };
-
-    const fetchMock = vi.fn(async (url: string) => {
-      if (url.includes("/stt")) {
-        return { ok: true, json: async () => ({ transcript: "sup chat" }) } as Response;
-      }
-      return {
-        ok: true,
-        json: async () => ({ description: "A man in a red shirt sitting in a chair and a bright ring light behind him." })
-      } as Response;
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const context = await provider.getContext(config);
-
-    expect(context.visionTags).toEqual(["man in a red shirt sitting in a chair", "bright ring light behind him"]);
+    const context = sharedDeviceCapturePipeline.getContext(config);
+    expect(context.visionTags).toEqual(["green hoodie", "gaming headset"]);
   });
 });
