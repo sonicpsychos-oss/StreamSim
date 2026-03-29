@@ -12,7 +12,7 @@ export class TextToSpeechService {
     if (config.ttsProvider === "deepgram_aura") {
       const key = this.secretStore.getDeepgramApiKey();
       if (!key) throw new Error("Deepgram TTS selected but DEEPGRAM_API_KEY is missing.");
-      const deepgram = new DeepgramAuraTtsService({ apiKey: key, model: "aura-luna-en", encoding: "linear16", container: "wav" });
+      const deepgram = new DeepgramAuraTtsService({ apiKey: key, model: "aura-2-thalia-en", encoding: "linear16", container: "wav" });
       const audio = await deepgram.generateTTS(text);
       return { provider: "deepgram_aura", bytes: audio.byteLength };
     }

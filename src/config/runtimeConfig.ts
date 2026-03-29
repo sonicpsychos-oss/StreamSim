@@ -17,7 +17,7 @@ export const defaultConfig: SimulationConfig = {
     visionEnabled: true,
     visionIntervalSec: 25,
     useRealCapture: true,
-    sttEndpoint: process.env.STREAMSIM_DEEPGRAM_ENDPOINT ?? "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&filler_words=true&punctuate=true",
+    sttEndpoint: process.env.STREAMSIM_DEEPGRAM_ENDPOINT ?? "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&filler_words=true&punctuate=true&sentiment=true&topics=true&intents=true",
     sttProvider: process.env.SIM_DEFAULT_STT === "deepgram_nova_2" ? "deepgram" : "local-whisper",
     visionEndpoint: "http://127.0.0.1:7778/vision-tags"
   },

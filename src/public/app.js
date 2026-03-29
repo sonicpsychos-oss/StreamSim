@@ -47,7 +47,7 @@ const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
 const STT_DEFAULT_ENDPOINTS = {
   "local-whisper": "http://127.0.0.1:7778/stt",
   whispercpp: "http://127.0.0.1:7778/stt",
-  deepgram: "https://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true&filler_words=true&punctuate=true",
+  deepgram: "https://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&filler_words=true&punctuate=true&sentiment=true&topics=true&intents=true",
   "openai-whisper": "https://api.openai.com/v1/audio/transcriptions",
   "gpt-4o-mini-transcribe": "https://api.openai.com/v1/audio/transcriptions",
   mock: "http://127.0.0.1:7778/stt"
@@ -932,37 +932,33 @@ runReadinessBtn.addEventListener("click", async () => {
 });
 
 saveCloudKeyBtn.addEventListener("click", async () => {
-  await runAction({
+  const saved = await runAction({
     button: saveCloudKeyBtn,
     pendingText: "Saving cloud API key...",
     successText: "Cloud API key saved to keychain.",
     onRun: () => post("/api/secrets/cloud-key", { key: controls.cloudApiKey.value })
   });
+  if (!saved) return;
   controls.cloudApiKey.value = "";
+  await refreshStatus();
 });
 
 saveDeepgramKeyBtn.addEventListener("click", async () => {
-  await runAction({
+  const saved = await runAction({
     button: saveDeepgramKeyBtn,
     pendingText: "Saving Deepgram API key...",
     successText: "Deepgram API key saved to keychain.",
     onRun: () => post("/api/secrets/deepgram-key", { key: controls.deepgramApiKey.value })
   });
+  if (!saved) return;
   controls.deepgramApiKey.value = "";
+  await refreshStatus();
 });
 
-refreshStatusBtn.addEventListener("click", async () => {
-  const payload = await runAction({
-    button: refreshStatusBtn,
-    pendingText: "Refreshing status...",
-    successText: "Status refreshed.",
-    onRun: async () => {
-      const response = await fetch("/api/status");
-      if (!response.ok) throw new Error(`Status request failed (${response.status})`);
-      return response.json();
-    }
-  });
-  if (!payload) return;
+async function refreshStatus() {
+  const response = await fetch("/api/status");
+  if (!response.ok) throw new Error(`Status request failed (${response.status})`);
+  const payload = await response.json();
   latestStatusPayload = payload;
   renderReadiness(payload.readiness);
   renderDiagnostics(payload);
@@ -972,6 +968,16 @@ refreshStatusBtn.addEventListener("click", async () => {
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
   summarizeSttHealth(payload);
+  return payload;
+}
+
+refreshStatusBtn.addEventListener("click", async () => {
+  await runAction({
+    button: refreshStatusBtn,
+    pendingText: "Refreshing status...",
+    successText: "Status refreshed.",
+    onRun: () => refreshStatus()
+  });
 });
 
 verifyMicBtn?.addEventListener("click", async () => {

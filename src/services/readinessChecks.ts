@@ -1,6 +1,10 @@
 import { SimulationConfig } from "../core/types.js";
 import { SidecarManager } from "./sidecarManager.js";
+import { SecretStore } from "../security/secretStore.js";
 
+
+
+const secretStore = new SecretStore();
 export interface ReadinessCheck {
   id: "device" | "network" | "sidecar" | "credentials";
   ok: boolean;
@@ -83,13 +87,16 @@ function checkCredentials(config: SimulationConfig, credentials: { hasCloudKey: 
       message: "Cloud mode selected without a stored API key. Save a cloud key or switch to local mode."
     };
   }
-  if ((config.capture.sttProvider === "deepgram" || deepgramTts) && !credentials.hasDeepgramKey) {
-    return {
-      id: "credentials",
-      ok: false,
-      severity: "blocking",
-      message: "Deepgram mode selected without a stored Deepgram key. Save DEEPGRAM_API_KEY in Secrets."
-    };
+  if (config.capture.sttProvider === "deepgram" || deepgramTts) {
+    const hasKey = credentials.hasDeepgramKey || secretStore.hasKey("DEEPGRAM_API_KEY");
+    if (!hasKey) {
+      return {
+        id: "credentials",
+        ok: false,
+        severity: "blocking",
+        message: "Missing Deepgram API Key"
+      };
+    }
   }
 
   return {

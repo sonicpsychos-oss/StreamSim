@@ -1,3 +1,5 @@
+import { DeepgramClient } from "@deepgram/sdk";
+
 export interface DeepgramSttOptions {
   apiKey: string;
   model?: string;
@@ -7,26 +9,22 @@ export interface DeepgramSttOptions {
   intents?: boolean;
   topics?: boolean;
   sentiment?: boolean;
-  endpoint?: string;
 }
 
-export class DeepgramNova2Provider {
+export class DeepgramNova3Provider {
   constructor(private readonly options: DeepgramSttOptions) {}
 
-  public buildRealtimeUrl(): string {
-    const endpoint = this.options.endpoint ?? "wss://api.deepgram.com/v1/listen";
-    const url = new URL(endpoint);
-    url.searchParams.set("model", this.options.model ?? "nova-2");
-    url.searchParams.set("language", this.options.language ?? "en-US");
-    url.searchParams.set("smart_format", String(this.options.smartFormat ?? true));
-    url.searchParams.set("filler_words", String(this.options.fillerWords ?? true));
-    url.searchParams.set("sentiment", String(this.options.sentiment ?? false));
-    url.searchParams.set("intents", String(this.options.intents ?? false));
-    url.searchParams.set("topics", String(this.options.topics ?? false));
-    return url.toString();
-  }
-
-  public authorizationHeader(): string {
-    return `Token ${this.options.apiKey}`;
+  public async connectRealtime() {
+    const client = new DeepgramClient({ apiKey: this.options.apiKey });
+    return client.listen.v1.connect({
+      model: this.options.model ?? "nova-3",
+      language: this.options.language ?? "en-US",
+      punctuate: "true",
+      interim_results: "true",
+      smart_format: String(this.options.smartFormat ?? true),
+      sentiment: String(this.options.sentiment ?? true),
+      intents: String(this.options.intents ?? true),
+      topics: String(this.options.topics ?? true)
+    } as any);
   }
 }
