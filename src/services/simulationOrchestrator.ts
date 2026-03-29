@@ -237,13 +237,16 @@ export class SimulationOrchestrator {
       `[SimulationOrchestrator][VerbosePipelineLog] route=${route} provider=${providerMode} model=${activeModel} transcript/visionTags + raw InferenceResult`
     );
     // eslint-disable-next-line no-console
+    console.log("[SimulationOrchestrator] currentVisionTags before inferencePayload build", payload.context.visionTags);
+    const currentVisionTags = payload.context.visionTags;
+    // eslint-disable-next-line no-console
     console.log({
       route,
       providerMode,
       activeModel,
       inferencePayload: {
         transcript: payload.context.transcript,
-        visionTags: payload.context.visionTags
+        visionTags: currentVisionTags
       },
       rawInferenceResult
     });

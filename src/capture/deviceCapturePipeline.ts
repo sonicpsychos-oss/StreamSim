@@ -40,6 +40,8 @@ export class DeviceCapturePipeline {
   public ingestVisionSample(sample: { tags?: string[] }): void {
     const tags = Array.isArray(sample.tags) ? sample.tags.filter((tag) => typeof tag === "string" && tag.trim().length > 0).slice(0, 8) : [];
     this.lastVisionSample = { tags, capturedAt: Date.now() };
+    // eslint-disable-next-line no-console
+    console.log("[DeviceCapturePipeline] Saved latest vision tags", { tags, capturedAt: this.lastVisionSample.capturedAt });
   }
 
   public getContext(config: SimulationConfig): StreamContext {
@@ -54,6 +56,12 @@ export class DeviceCapturePipeline {
     const tone = this.computeTone();
     const now = Date.now();
     const visionTags = config.capture.visionEnabled && this.lastVisionSample ? this.lastVisionSample.tags : [];
+    // eslint-disable-next-line no-console
+    console.log("[DeviceCapturePipeline] Returning context with latest saved vision tags", {
+      visionEnabled: config.capture.visionEnabled,
+      hasVisionSample: Boolean(this.lastVisionSample),
+      visionTags
+    });
 
     return {
       transcript,

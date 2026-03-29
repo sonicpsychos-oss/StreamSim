@@ -41,11 +41,29 @@ function normalizeVisionTags(payload: JsonCaptureResponse): string[] {
   const caption = captionCandidates.find((value): value is string => typeof value === "string" && value.trim().length > 0);
   if (!caption) return [];
 
-  return caption
+  const commaDelimited = caption
     .split(/[|,;\n]/g)
     .map((part) => part.trim())
     .filter(Boolean)
     .slice(0, 8);
+  if (commaDelimited.length > 1) return commaDelimited;
+
+  const phraseSeed = caption
+    .toLowerCase()
+    .replace(/\b(i can see|looks like|there is|there's|showing|appears to be)\b/g, "")
+    .replace(/[.!?]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!phraseSeed) return [];
+
+  const descriptorCandidates = phraseSeed
+    .split(/\b(?:and|with|while|near|next to|in front of|beside|on top of|over)\b/gi)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 3)
+    .map((part) => part.replace(/^(a|an|the)\s+/i, "").trim())
+    .slice(0, 8);
+
+  return descriptorCandidates.length > 1 ? descriptorCandidates : [caption.trim()].filter(Boolean);
 }
 
 export class MockCaptureProvider implements CaptureProvider {
@@ -84,6 +102,13 @@ export class EndpointCaptureProvider implements CaptureProvider {
 
     const sttData = ((sttRes && sttRes.ok ? await sttRes.json() : {}) ?? {}) as JsonCaptureResponse;
     const visionData = ((visionRes && visionRes.ok ? await visionRes.json() : {}) ?? {}) as JsonCaptureResponse;
+    // eslint-disable-next-line no-console
+    console.log("[VisionCapture] Vision API call resolved", {
+      endpoint: config.capture.visionEndpoint,
+      ok: Boolean(visionRes?.ok),
+      status: visionRes?.status ?? null,
+      hasPayload: Object.keys(visionData).length > 0
+    });
 
     const transcript = normalizeTranscript(sttData);
     if (transcript) {
@@ -94,6 +119,8 @@ export class EndpointCaptureProvider implements CaptureProvider {
       });
     }
     const visionTags = normalizeVisionTags(visionData);
+    // eslint-disable-next-line no-console
+    console.log("[VisionCapture] Parsed vision tags array", { visionTags });
     if (visionTags.length) {
       sharedDeviceCapturePipeline.ingestVisionSample({ tags: visionTags });
     }

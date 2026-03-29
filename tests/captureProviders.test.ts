@@ -58,4 +58,30 @@ describe("EndpointCaptureProvider", () => {
 
     expect(context.visionTags).toEqual(["game HUD", "red warning light", "inventory panel"]);
   });
+
+  it("parses plain-language vision descriptions into descriptor arrays", async () => {
+    const provider = new EndpointCaptureProvider();
+    const config = {
+      ...defaultConfig,
+      capture: {
+        ...defaultConfig.capture,
+        visionIntervalSec: 5
+      }
+    };
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/stt")) {
+        return { ok: true, json: async () => ({ transcript: "sup chat" }) } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({ description: "A man in a red shirt sitting in a chair and a bright ring light behind him." })
+      } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const context = await provider.getContext(config);
+
+    expect(context.visionTags).toEqual(["man in a red shirt sitting in a chair", "bright ring light behind him"]);
+  });
 });
