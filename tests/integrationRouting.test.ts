@@ -239,8 +239,8 @@ describe("hybrid routing and failover", () => {
       req.on("end", () => {
         const parsed = JSON.parse(body);
         expect(parsed.messages[1].role).toBe("user");
-        expect(parsed.max_tokens).toBe(12);
-        expect(parsed.max_completion_tokens).toBe(15);
+        expect(parsed.max_tokens).toBeUndefined();
+        expect(parsed.max_completion_tokens).toBe(35);
         expect(parsed.temperature).toBeUndefined();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
@@ -319,8 +319,8 @@ describe("hybrid routing and failover", () => {
       req.on("end", () => {
         const parsed = JSON.parse(body);
         expect(parsed.model).toBe("gpt-5-mini");
-        expect(parsed.max_tokens).toBe(12);
-        expect(parsed.max_completion_tokens).toBe(15);
+        expect(parsed.max_tokens).toBeUndefined();
+        expect(parsed.max_completion_tokens).toBe(35);
         expect(parsed.temperature).toBeUndefined();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
