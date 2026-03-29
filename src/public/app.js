@@ -48,7 +48,7 @@ const MIC_CHECK_PROBE_SECONDS = 3.5;
 const MIC_CHECK_BUFFER_SECONDS = 8;
 const MIC_CHECK_MIN_SAMPLES = 12000;
 const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
-const LIVE_MONITOR_VISION_SAMPLE_MS = 4000;
+const LIVE_MONITOR_VISION_SAMPLE_MS = 8000;
 const STT_DEFAULT_ENDPOINTS = {
   "local-whisper": "http://127.0.0.1:7778/stt",
   whispercpp: "http://127.0.0.1:7778/stt",
@@ -375,8 +375,8 @@ function stopLiveMonitor() {
 
 async function pushLiveVisionSample() {
   if (!liveVideo || !liveMonitorStream) return;
-  const width = Math.max(320, liveVideo.videoWidth || 640);
-  const height = Math.max(180, liveVideo.videoHeight || 360);
+  const width = Math.max(256, Math.min(320, liveVideo.videoWidth || 640));
+  const height = Math.max(144, Math.min(180, liveVideo.videoHeight || 360));
   if (!liveMonitorVisionCanvas) {
     liveMonitorVisionCanvas = document.createElement("canvas");
   }
@@ -385,7 +385,7 @@ async function pushLiveVisionSample() {
   const ctx = liveMonitorVisionCanvas.getContext("2d");
   if (!ctx) return;
   ctx.drawImage(liveVideo, 0, 0, width, height);
-  const dataUrl = liveMonitorVisionCanvas.toDataURL("image/jpeg", 0.72);
+  const dataUrl = liveMonitorVisionCanvas.toDataURL("image/jpeg", 0.55);
   await post("/api/capture/vision-sample", { dataUrl });
 }
 
@@ -426,7 +426,7 @@ async function startLiveMonitor() {
   }, LIVE_MONITOR_VISION_SAMPLE_MS);
   void pushLiveVisionSample();
 
-  setLiveMonitorStatus("Camera and microphone active for live monitor.", "ok");
+  setLiveMonitorStatus("Camera and microphone active for live monitor (vision snapshots every 8s).", "ok");
   return true;
 }
 

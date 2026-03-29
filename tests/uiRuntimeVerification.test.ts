@@ -39,6 +39,8 @@ describe("runtime verification + monitoring UI wiring", () => {
     expect(appJs).toContain("msg.username ? `${msg.username}:` : \"\"");
     expect(appJs).toContain("function pushLiveVisionSample()");
     expect(appJs).toContain("await post(\"/api/capture/vision-sample\", { dataUrl })");
+    expect(appJs).toContain("LIVE_MONITOR_VISION_SAMPLE_MS = 8000");
+    expect(appJs).toContain("vision snapshots every 8s");
   });
 
   it("keeps runtime verification and live monitor markup IDs in index.html", () => {
