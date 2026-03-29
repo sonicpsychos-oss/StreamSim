@@ -15,6 +15,13 @@ import { sharedDeviceCapturePipeline } from "../capture/deviceCapturePipeline.js
 import { sharedTextToSpeechService } from "./tts/textToSpeechService.js";
 import { VisionPollingService } from "./visionPollingService.js";
 
+export function explainInferenceFailure(reason: string): string {
+  if (reason.includes("Unexpected end of JSON input")) {
+    return "OpenAI cloud response was truncated (broken JSON package).";
+  }
+  return reason;
+}
+
 export class SimulationOrchestrator {
   private readonly spooler = new SpoolingEngine();
   private readonly audioState = new AudioStateManager();
@@ -433,7 +440,7 @@ export class SimulationOrchestrator {
             }
           }
         } catch (error) {
-          const reason = (error as Error).message;
+          const reason = explainInferenceFailure((error as Error).message);
           this.obs.log("reliability_recovery", { ok: false, reason });
           this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: reason });
 

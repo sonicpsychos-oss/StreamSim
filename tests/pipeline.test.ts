@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { defaultConfig } from "../src/config/runtimeConfig.js";
 import { mergeConfig, sanitizeConfig } from "../src/config/runtimeConfig.js";
 import { classifyMalformedOutput, parseInferenceOutput, repairInferenceOutput } from "../src/pipeline/outputParser.js";
 import { buildPromptPayload, checkFishingState } from "../src/pipeline/promptBuilder.js";
+import { explainInferenceFailure } from "../src/services/simulationOrchestrator.js";
+import { HybridInferenceProvider } from "../src/llm/realInferenceProvider.js";
 
 describe("runtime config", () => {
   it("clamps invalid values and supports nested sections", () => {
@@ -130,5 +132,55 @@ describe("prompt payload", () => {
     });
 
     expect(payload.context.fishingState).toBe("STANDARD_CONTRARIAN");
+  });
+});
+
+describe("inference failure explanation", () => {
+  it("maps truncated JSON parse errors to a user-friendly cloud detail", () => {
+    expect(explainInferenceFailure("Unexpected end of JSON input")).toBe("OpenAI cloud response was truncated (broken JSON package).");
+  });
+
+  it("preserves unrelated error details", () => {
+    expect(explainInferenceFailure("Cloud provider failed (429)")).toBe("Cloud provider failed (429)");
+  });
+});
+
+describe("cloud generation hardening", () => {
+  it("omits explicit max_completion_tokens for cloud generation compatibility", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "test-key";
+    const provider = new HybridInferenceProvider("openai");
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "{\"messages\":[{\"text\":\"a\",\"emotes\":[],\"donationCents\":null,\"ttsText\":null},{\"text\":\"b\",\"emotes\":[],\"donationCents\":null,\"ttsText\":null}]}" } }] })
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const payload = buildPromptPayload(defaultConfig, {
+      transcript: "yo",
+      tone: { volumeRms: 0.2, paceWpm: 110 },
+      visionTags: [],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    });
+
+    await provider.generate(payload, defaultConfig);
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.max_completion_tokens).toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+
+  it("throws explicit error when provider payload has no text field", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "test-key";
+    const provider = new HybridInferenceProvider("openai");
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ id: "abc123" }) })));
+    const payload = buildPromptPayload(defaultConfig, {
+      transcript: "yo",
+      tone: { volumeRms: 0.2, paceWpm: 110 },
+      visionTags: [],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    });
+
+    await expect(provider.generate(payload, defaultConfig)).rejects.toThrow(/Provider returned empty content/);
+    vi.unstubAllGlobals();
   });
 });

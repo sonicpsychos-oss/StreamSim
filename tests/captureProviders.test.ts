@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultConfig } from "../src/config/runtimeConfig.js";
 import { EndpointCaptureProvider } from "../src/capture/captureProviders.js";
 import { sharedDeviceCapturePipeline } from "../src/capture/deviceCapturePipeline.js";
-import { VisionPollingService } from "../src/services/visionPollingService.js";
+import { sharedVisionFrameStore } from "../src/capture/visionFrameStore.js";
+import { VisionPollingService, explainVisionPollingError } from "../src/services/visionPollingService.js";
 
 describe("EndpointCaptureProvider", () => {
   beforeEach(() => {
@@ -36,6 +37,7 @@ describe("EndpointCaptureProvider", () => {
 describe("VisionPollingService", () => {
   beforeEach(() => {
     sharedDeviceCapturePipeline.reset();
+    sharedVisionFrameStore.reset();
     vi.restoreAllMocks();
     process.env.STREAMSIM_CLOUD_API_KEY = "test-cloud-key";
   });
@@ -137,5 +139,72 @@ describe("VisionPollingService", () => {
 
     const context = sharedDeviceCapturePipeline.getContext(config);
     expect(context.visionTags).toEqual(["green hoodie", "gaming headset", "ring light"]);
+  });
+
+  it("uses live-monitor uploaded frame for OpenAI provider when vision endpoint is blank", async () => {
+    const config = {
+      ...defaultConfig,
+      provider: { ...defaultConfig.provider, cloudEndpoint: "https://api.openai.com/v1/chat/completions", cloudModel: "gpt-4o-mini" },
+      capture: {
+        ...defaultConfig.capture,
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "openai" as const,
+        visionEndpoint: ""
+      }
+    };
+    sharedVisionFrameStore.setFrame("data:image/jpeg;base64,abcd1234==");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: "ring light, keyboard" } }] })
+      }))
+    );
+
+    const service = new VisionPollingService(() => config, () => undefined);
+    await (service as any).tick();
+    const context = sharedDeviceCapturePipeline.getContext(config);
+    expect(context.visionTags).toEqual(["ring light", "keyboard"]);
+  });
+
+  it("maps truncated JSON polling errors to a clearer warning", async () => {
+    const config = {
+      ...defaultConfig,
+      capture: {
+        ...defaultConfig.capture,
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "local" as const,
+        visionIntervalSec: 5,
+        visionEndpoint: "http://127.0.0.1:7778/vision-tags"
+      }
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => {
+          throw new SyntaxError("Unexpected end of JSON input");
+        }
+      }))
+    );
+
+    const emitMeta = vi.fn();
+    const service = new VisionPollingService(() => config, emitMeta);
+    await (service as any).tick();
+
+    expect(emitMeta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        warnings: ["Vision poll failed: Vision endpoint returned truncated JSON (broken package)."]
+      })
+    );
+  });
+});
+
+describe("explainVisionPollingError", () => {
+  it("rewrites truncated JSON parser failures", () => {
+    expect(explainVisionPollingError("Unexpected end of JSON input")).toBe("Vision endpoint returned truncated JSON (broken package).");
   });
 });

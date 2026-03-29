@@ -145,6 +145,16 @@ function extractProviderText(data: ProviderResponseShape): string {
   return "";
 }
 
+function extractProviderTextOrThrow(data: ProviderResponseShape, providerLabel: string): string {
+  const extracted = extractProviderText(data).trim();
+  if (extracted) return extracted;
+
+  const availableKeys = Object.keys(data ?? {}).join(", ") || "none";
+  // eslint-disable-next-line no-console
+  console.warn(`[HybridInferenceProvider] Empty text payload from ${providerLabel}. Keys present: ${availableKeys}`);
+  throw new Error(`Provider returned empty content (${providerLabel})`);
+}
+
 function systemPromptForPayload(payload: PromptPayload): string {
   const transcript = payload.context.transcript.trim();
   const rawTranscriptTail = transcript.slice(-230);
@@ -401,7 +411,7 @@ export class HybridInferenceProvider implements InferenceProvider {
     }
 
     const data = (await response.json()) as ProviderResponseShape;
-    return extractProviderText(data);
+    return extractProviderTextOrThrow(data, `${this.mode}:${config.provider.localModel}`);
   }
 
   private async generateCloud(payload: PromptPayload, config: SimulationConfig): Promise<string> {
@@ -423,11 +433,9 @@ export class HybridInferenceProvider implements InferenceProvider {
         model: string;
         messages: Array<{ role: "system" | "user"; content: string }>;
         response_format?: ReturnType<typeof openAiResponseSchema>;
-        max_completion_tokens: number;
       } = {
         model,
-        messages,
-        max_completion_tokens: 35
+        messages
       };
       if (this.mode === "openai") {
         body.response_format = openAiResponseSchema(payload.requestedMessageCount);
@@ -461,7 +469,7 @@ export class HybridInferenceProvider implements InferenceProvider {
       }
 
       const data = (await response.json()) as ProviderResponseShape;
-      return extractProviderText(data);
+      return extractProviderTextOrThrow(data, `${this.mode}:${model}`);
     }
 
     throw lastError ?? new Error("Cloud provider failed before receiving a response.");
