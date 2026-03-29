@@ -1,4 +1,5 @@
 import { Readable } from "node:stream";
+import { DeepgramClient } from "@deepgram/sdk";
 import { SecretStore } from "../security/secretStore.js";
 import { sharedDeviceCapturePipeline } from "./deviceCapturePipeline.js";
 
@@ -9,7 +10,7 @@ interface SttBackend {
 }
 
 const DEFAULT_LOCAL_STT_ENDPOINT = "http://127.0.0.1:7778/stt";
-const DEFAULT_DEEPGRAM_ENDPOINT = "https://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true&filler_words=true&punctuate=true";
+const DEFAULT_DEEPGRAM_ENDPOINT = "https://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&filler_words=true&punctuate=true&sentiment=true&intents=true&topics=true";
 const DEFAULT_OPENAI_STT_ENDPOINT = "https://api.openai.com/v1/audio/transcriptions";
 
 class MockSttBackend implements SttBackend {
@@ -48,23 +49,32 @@ class DeepgramBackend implements SttBackend {
   public async transcribe(frame: Buffer): Promise<string> {
     const token = this.apiKey ?? this.secretStore.getDeepgramApiKey();
     if (!token) throw new Error("Deepgram API key missing.");
-    let response: Response;
+
+    const endpoint = new URL(this.endpoint);
+    const model = endpoint.searchParams.get("model") ?? "nova-3";
+    const language = endpoint.searchParams.get("language") ?? "en-US";
+
+    const client = new DeepgramClient({ apiKey: token });
+
     try {
-      response = await fetch(this.endpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Token ${token}`,
-          "Content-Type": "audio/wav"
-        },
-        body: new Uint8Array(frame),
-        signal: AbortSignal.timeout(2500)
+      const response = await client.listen.v1.media.transcribeFile(frame, {
+        model,
+        language,
+        smart_format: true,
+        filler_words: true,
+        punctuate: true,
+        sentiment: true,
+        intents: true,
+        topics: true
       });
+      const payload = response as unknown as {
+        results?: { channels?: Array<{ alternatives?: Array<{ transcript?: string }> }> };
+        result?: { results?: { channels?: Array<{ alternatives?: Array<{ transcript?: string }> }> } };
+      };
+      return payload.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() ?? payload.result?.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() ?? "";
     } catch (error) {
       throw new Error(`Deepgram STT request failed for ${this.endpoint}: ${(error as Error).message}`);
     }
-    if (!response.ok) throw new Error(`Deepgram STT failed (${response.status}).`);
-    const json = (await response.json()) as { transcript?: string; results?: { channels?: Array<{ alternatives?: Array<{ transcript?: string }> }> } };
-    return json.transcript?.trim() ?? json.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() ?? "";
   }
 }
 

@@ -1,8 +1,14 @@
 import { execFileSync } from "node:child_process";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import os from "node:os";
 
 const SERVICE_NAME = "streamsim";
 const CLOUD_ACCOUNT_NAME = "cloud-api-key";
 const DEEPGRAM_ACCOUNT_NAME = "deepgram-api-key";
+const SECRET_FILE_PATH = path.join(os.homedir(), ".streamsim", "secrets.json");
+
+type SecretKeyName = "STREAMSIM_CLOUD_API_KEY" | "DEEPGRAM_API_KEY";
 
 export interface SecretStoreDiagnostics {
   keychainBacked: boolean;
@@ -127,41 +133,91 @@ function createProvider(): SecretProvider {
   return new UnsupportedProvider();
 }
 
+function readFileSecrets(): Partial<Record<SecretKeyName, string>> {
+  try {
+    const raw = readFileSync(SECRET_FILE_PATH, "utf8");
+    const parsed = JSON.parse(raw) as Partial<Record<SecretKeyName, string>>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeFileSecrets(nextValues: Partial<Record<SecretKeyName, string>>): boolean {
+  try {
+    mkdirSync(path.dirname(SECRET_FILE_PATH), { recursive: true });
+    writeFileSync(SECRET_FILE_PATH, JSON.stringify(nextValues, null, 2), { mode: 0o600 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class SecretStore {
   private readonly provider = createProvider();
 
   public getCloudApiKey(): string {
-    const fromKeychain = this.getKeyFromKeychain(CLOUD_ACCOUNT_NAME);
-    if (fromKeychain) return fromKeychain;
-    return process.env.STREAMSIM_CLOUD_API_KEY ?? "";
+    return this.getSecretValue("STREAMSIM_CLOUD_API_KEY", CLOUD_ACCOUNT_NAME, ["STREAMSIM_CLOUD_API_KEY"]);
   }
 
   public setCloudApiKey(value: string): boolean {
-    return this.setKeyInKeychain(CLOUD_ACCOUNT_NAME, "StreamSim Cloud API Key", value);
+    return this.setSecretValue("STREAMSIM_CLOUD_API_KEY", CLOUD_ACCOUNT_NAME, "StreamSim Cloud API Key", value);
   }
 
   public getDeepgramApiKey(): string {
-    const fromKeychain = this.getKeyFromKeychain(DEEPGRAM_ACCOUNT_NAME);
-    if (fromKeychain) return fromKeychain;
-    return process.env.DEEPGRAM_API_KEY ?? process.env.STREAMSIM_DEEPGRAM_API_KEY ?? "";
+    return this.getSecretValue("DEEPGRAM_API_KEY", DEEPGRAM_ACCOUNT_NAME, ["DEEPGRAM_API_KEY", "STREAMSIM_DEEPGRAM_API_KEY"]);
   }
 
   public setDeepgramApiKey(value: string): boolean {
-    return this.setKeyInKeychain(DEEPGRAM_ACCOUNT_NAME, "StreamSim Deepgram API Key", value);
+    return this.setSecretValue("DEEPGRAM_API_KEY", DEEPGRAM_ACCOUNT_NAME, "StreamSim Deepgram API Key", value);
+  }
+
+  public hasKey(name: SecretKeyName): boolean {
+    if (name === "DEEPGRAM_API_KEY") return Boolean(this.getDeepgramApiKey());
+    return Boolean(this.getCloudApiKey());
   }
 
   public diagnostics(): SecretStoreDiagnostics {
     const availability = this.provider.isAvailable();
     const cloudKeychainValue = this.getKeyFromKeychain(CLOUD_ACCOUNT_NAME);
     const deepgramKeychainValue = this.getKeyFromKeychain(DEEPGRAM_ACCOUNT_NAME);
+    const fromFile = readFileSecrets();
     return {
       keychainBacked: Boolean(cloudKeychainValue || deepgramKeychainValue),
-      hasCloudKey: Boolean(cloudKeychainValue || process.env.STREAMSIM_CLOUD_API_KEY),
-      hasDeepgramKey: Boolean(deepgramKeychainValue || process.env.DEEPGRAM_API_KEY || process.env.STREAMSIM_DEEPGRAM_API_KEY),
-      provider: this.provider.name,
-      available: availability.ok,
+      hasCloudKey: Boolean(cloudKeychainValue || fromFile.STREAMSIM_CLOUD_API_KEY || process.env.STREAMSIM_CLOUD_API_KEY),
+      hasDeepgramKey: Boolean(deepgramKeychainValue || fromFile.DEEPGRAM_API_KEY || process.env.DEEPGRAM_API_KEY || process.env.STREAMSIM_DEEPGRAM_API_KEY),
+      provider: availability.ok ? this.provider.name : `${this.provider.name}+file-fallback`,
+      available: availability.ok || Boolean(fromFile.STREAMSIM_CLOUD_API_KEY || fromFile.DEEPGRAM_API_KEY),
       warning: availability.warning
     };
+  }
+
+  private getSecretValue(name: SecretKeyName, account: string, envFallbackNames: string[]): string {
+    const fromKeychain = this.getKeyFromKeychain(account);
+    if (fromKeychain) return fromKeychain;
+
+    const fromFile = readFileSecrets()[name];
+    if (fromFile) return fromFile;
+
+    for (const envName of envFallbackNames) {
+      const fromEnv = process.env[envName];
+      if (fromEnv) return fromEnv;
+    }
+    return "";
+  }
+
+  private setSecretValue(name: SecretKeyName, account: string, label: string, value: string): boolean {
+    const normalized = value.trim();
+    if (!normalized) return false;
+
+    const savedInKeychain = this.setKeyInKeychain(account, label, normalized);
+    if (!savedInKeychain) {
+      const existing = readFileSecrets();
+      if (!writeFileSecrets({ ...existing, [name]: normalized })) return false;
+    }
+
+    process.env[name] = normalized;
+    return true;
   }
 
   private getKeyFromKeychain(account: string): string {
