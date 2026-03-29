@@ -9,6 +9,7 @@ const aiHealthSummary = document.getElementById("aiHealthSummary");
 const aiActiveModelLabel = document.getElementById("aiActiveModelLabel");
 const ttsHealthSummary = document.getElementById("ttsHealthSummary");
 const sttHealthSummary = document.getElementById("sttHealthSummary");
+const apiKeyHealthSummary = document.getElementById("apiKeyHealthSummary");
 const visionHealthSummary = document.getElementById("visionHealthSummary");
 const liveMonitorEnabled = document.getElementById("liveMonitorEnabled");
 const liveMonitorStatus = document.getElementById("liveMonitorStatus");
@@ -703,6 +704,48 @@ function summarizeVisionHealth(payload) {
   ].join("\n");
 }
 
+function summarizeApiKeyHealth(payload) {
+  if (!apiKeyHealthSummary) return;
+  const config = payload?.config ?? {};
+  const capture = config.capture ?? {};
+  const secrets = payload?.secrets ?? {};
+
+  const hasCloudKey = Boolean(secrets.hasCloudKey);
+  const hasDeepgramKey = Boolean(secrets.hasDeepgramKey);
+  const ttsEnabled = Boolean(config.ttsEnabled) && (config.ttsMode ?? "local") !== "off";
+  const ttsProvider = config.ttsProvider ?? "local";
+  const sttProvider = capture.sttProvider ?? "mock";
+  const useRealCapture = Boolean(capture.useRealCapture);
+  const audioIntelligenceEnabled = Boolean(config.audioIntelligence?.enabled);
+
+  const ttsKeyRequired = ttsEnabled && (ttsProvider === "openai" || ttsProvider === "deepgram_aura");
+  const ttsKeyStatus = !ttsKeyRequired
+    ? "not required"
+    : ttsProvider === "deepgram_aura"
+      ? hasDeepgramKey ? "present (Deepgram)" : "missing (Deepgram)"
+      : hasCloudKey ? "present (cloud)" : "missing (cloud)";
+
+  const sttKeyRequired = useRealCapture && (sttProvider === "deepgram" || sttProvider === "openai-whisper" || sttProvider === "gpt-4o-mini-transcribe");
+  const sttKeyStatus = !sttKeyRequired
+    ? "not required"
+    : sttProvider === "deepgram"
+      ? hasDeepgramKey ? "present (Deepgram)" : "missing (Deepgram)"
+      : hasCloudKey ? "present (cloud)" : "missing (cloud)";
+
+  const audioIntelligenceKeyRequired = audioIntelligenceEnabled && useRealCapture && sttProvider === "deepgram";
+  const audioIntelligenceKeyStatus = !audioIntelligenceKeyRequired
+    ? "not required"
+    : hasDeepgramKey ? "present (Deepgram)" : "missing (Deepgram)";
+
+  apiKeyHealthSummary.textContent = [
+    `TTS API key: ${ttsKeyStatus}`,
+    `STT API key: ${sttKeyStatus}`,
+    `Audio intelligence API key: ${audioIntelligenceKeyStatus}`,
+    `Cloud key detected: ${hasCloudKey ? "yes" : "no"}`,
+    `Deepgram key detected: ${hasDeepgramKey ? "yes" : "no"}`
+  ].join("\n");
+}
+
 function renderDeviceChecks(result) {
   deviceChecks.innerHTML = "";
   const cameraPermissionDetail = result.cameraPermission
@@ -1012,6 +1055,7 @@ async function refreshStatus() {
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
   summarizeSttHealth(payload);
+  summarizeApiKeyHealth(payload);
   summarizeVisionHealth(payload);
   return payload;
 }
@@ -1123,6 +1167,7 @@ completeWizardBtn.addEventListener("click", async () => {
   summarizeAiHealth(status);
   summarizeTtsHealth(status);
   summarizeSttHealth(status);
+  summarizeApiKeyHealth(status);
   summarizeVisionHealth(status);
 });
 
@@ -1220,6 +1265,7 @@ async function boot() {
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
   summarizeSttHealth(payload);
+  summarizeApiKeyHealth(payload);
   summarizeVisionHealth(payload);
   latestDeviceVerification = { micPermission: false, cameraPermission: false, hasMicDevice: false, hasCameraDevice: false, cameraPermissionState: "unknown", cameraFailureReason: null };
   if (liveMonitorEnabled) {
