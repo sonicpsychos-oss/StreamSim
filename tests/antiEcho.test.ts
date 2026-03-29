@@ -191,4 +191,25 @@ describe("anti-echo constraint", () => {
     const diverse = (orchestrator as any).enforceDiversityRules(input, ["default"]);
     expect(diverse[1].text.toLowerCase()).not.toBe("mic check passed");
   });
+
+  it("applies transcript decay after the same transcript is seen three times", () => {
+    const orchestrator = makeOrchestrator();
+    const baseContext = {
+      transcript: "same line from streamer",
+      tone: { volumeRms: 0.4, paceWpm: 120 },
+      visionTags: [],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    };
+
+    const first = (orchestrator as any).applyTranscriptDecay(baseContext);
+    const second = (orchestrator as any).applyTranscriptDecay(baseContext);
+    const third = (orchestrator as any).applyTranscriptDecay(baseContext);
+    const fourth = (orchestrator as any).applyTranscriptDecay(baseContext);
+
+    expect(first.transcript).toBe("same line from streamer");
+    expect(second.transcript).toBe("same line from streamer");
+    expect(third.transcript).toBe("same line from streamer");
+    expect(fourth.transcript).toBe("");
+  });
 });

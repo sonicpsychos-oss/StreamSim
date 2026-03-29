@@ -234,7 +234,12 @@ function systemPromptForPayload(payload: PromptPayload): string {
     "Keep most messages short fragments, meme slang, or reactions like 'w', 'l', 'lmao', 'ratio', 'wait what', 'cap', 'trippin', 'idk', 'cooked', 'bro what', 'we are so back', 'yooo', 'glazing', 'fraud', 'delusional'.",
     `Emotes rule: emotes array may contain only unicode emoji or one of [${ALLOWED_TEXT_EMOTES.join(", ")}]. Never invent emote names.`,
     "Some viewers should be emote-only (message text can be empty while emotes are populated).",
-    "Only set ttsText when donationCents is a positive number. Otherwise ttsText must be null."
+    "Only set ttsText when donationCents is a positive number. Otherwise ttsText must be null.",
+    "DIVERSITY ANCHORS: vary sentence openers every message (examples: nah, bro, wait, yo, lowkey, fr, ngl, idk, tbh).",
+    "DIVERSITY ANCHORS: rotate message shape across the batch (question, short take, emote-only, roast, agreement).",
+    "Ignorance Clause: If streamer asks about a term you don't know, DO NOT invent a definition. React with: '??', 'who?', 'bro is yapping', or 'lmao what'.",
+    "Repetition Ban: You are forbidden from using the same adjective twice in a 4-message window. Rotate slang constantly.",
+    "No Explanations: NEVER drone on to explain anything. If asked a question, give a short opinion or a 1-word guess. Maybe one chatter answers seriously."
   ].join(" ");
 }
 
@@ -280,11 +285,6 @@ function buildModelFacingPayload(payload: PromptPayload): Record<string, unknown
     personaCalibration: payload.personaCalibration,
     providerConditioning: payload.providerConditioning
   };
-}
-
-function cloudModelSupportsTemperature(model: string): boolean {
-  const normalized = model.trim().toLowerCase();
-  return !/^gpt-5(?:$|[.:-])/.test(normalized);
 }
 
 const CLOUD_MODEL_FALLBACKS: Record<string, string[]> = {
@@ -421,16 +421,16 @@ export class HybridInferenceProvider implements InferenceProvider {
     for (const model of cloudModelCandidates(config.provider.cloudModel)) {
       const body: {
         model: string;
-        temperature?: number;
         messages: Array<{ role: "system" | "user"; content: string }>;
         response_format?: ReturnType<typeof openAiResponseSchema>;
+        max_tokens: number;
+        max_completion_tokens: number;
       } = {
         model,
-        messages
+        messages,
+        max_tokens: 12,
+        max_completion_tokens: 15
       };
-      if (cloudModelSupportsTemperature(model)) {
-        body.temperature = 0.8;
-      }
       if (this.mode === "openai") {
         body.response_format = openAiResponseSchema(payload.requestedMessageCount);
       }

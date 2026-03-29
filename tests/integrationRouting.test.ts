@@ -239,7 +239,9 @@ describe("hybrid routing and failover", () => {
       req.on("end", () => {
         const parsed = JSON.parse(body);
         expect(parsed.messages[1].role).toBe("user");
-        expect(parsed.temperature).toBe(0.8);
+        expect(parsed.max_tokens).toBe(12);
+        expect(parsed.max_completion_tokens).toBe(15);
+        expect(parsed.temperature).toBeUndefined();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
       });
@@ -303,7 +305,7 @@ describe("hybrid routing and failover", () => {
     await server.close();
   });
 
-  it("omits temperature for GPT-5 family cloud models", async () => {
+  it("applies hardware brevity token limits for GPT-5 family cloud models", async () => {
     process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
     const server = await withTestServer((req, res) => {
       if (req.method !== "POST") {
@@ -317,6 +319,8 @@ describe("hybrid routing and failover", () => {
       req.on("end", () => {
         const parsed = JSON.parse(body);
         expect(parsed.model).toBe("gpt-5-mini");
+        expect(parsed.max_tokens).toBe(12);
+        expect(parsed.max_completion_tokens).toBe(15);
         expect(parsed.temperature).toBeUndefined();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));

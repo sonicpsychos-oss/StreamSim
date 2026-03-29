@@ -29,6 +29,7 @@ export class SimulationOrchestrator {
     () => this.getConfig(),
     (meta) => this.emitMeta(meta)
   );
+  private readonly transcriptSeenCounter = new Map<string, { count: number; lastSeenAt: number }>();
   private recentChatHistory: string[] = [];
   private aiStatus: {
     state: "idle" | "running" | "degraded" | "error";
@@ -77,6 +78,7 @@ export class SimulationOrchestrator {
     this.audioState.stopTts();
     sharedSttEngine.resume();
     sharedDeviceCapturePipeline.reset();
+    this.transcriptSeenCounter.clear();
   }
 
   public cancelSidecarPull(): void {
@@ -298,6 +300,26 @@ export class SimulationOrchestrator {
     return deduped;
   }
 
+  private applyTranscriptDecay(context: PromptPayload["context"]): PromptPayload["context"] {
+    const normalized = context.transcript.trim().toLowerCase();
+    if (!normalized) return context;
+
+    const now = Date.now();
+    for (const [key, value] of this.transcriptSeenCounter.entries()) {
+      if (now - value.lastSeenAt > 90_000) {
+        this.transcriptSeenCounter.delete(key);
+      }
+    }
+
+    const existing = this.transcriptSeenCounter.get(normalized);
+    const seenCount = existing?.count ?? 0;
+    this.transcriptSeenCounter.set(normalized, { count: seenCount + 1, lastSeenAt: now });
+    if (seenCount >= 3) {
+      return { ...context, transcript: "" };
+    }
+    return context;
+  }
+
   private verbosePipelineLog(
     route: "primary" | "fallback",
     providerMode: string,
@@ -364,10 +386,11 @@ export class SimulationOrchestrator {
 
       const captureStarted = Date.now();
       const capturedContext = await captureProvider.getContext(config);
-      const context = {
+      const contextWithHistory = {
         ...capturedContext,
         recentChatHistory: this.recentChatHistory.slice(0, 20)
       };
+      const context = this.applyTranscriptDecay(contextWithHistory);
       const captureLatencyMs = Date.now() - captureStarted;
 
       timing = this.spooler.nextDelayMs(config, context.tone);
