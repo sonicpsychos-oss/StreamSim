@@ -1248,7 +1248,7 @@ events.addEventListener("messages", (event) => {
 
     const user = document.createElement("span");
     user.className = "user";
-    user.textContent = msg.username;
+    user.textContent = msg.username ? `${msg.username}:` : "";
 
     const messageText = document.createElement("span");
     messageText.textContent = msg.text || msg.emotes.join(" ");

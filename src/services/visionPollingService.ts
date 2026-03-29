@@ -200,7 +200,7 @@ export class VisionPollingService {
             content: [
               {
                 type: "text",
-                text: "List 5-8 descriptive visual tags for this frame (e.g., green hoodie, gaming headset, messy room, smiling). Output: comma-separated list only."
+                text: "List what you see in 5 words."
               },
               {
                 type: "image_url",
