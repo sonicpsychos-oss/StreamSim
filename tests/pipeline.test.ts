@@ -3,6 +3,7 @@ import { defaultConfig } from "../src/config/runtimeConfig.js";
 import { mergeConfig, sanitizeConfig } from "../src/config/runtimeConfig.js";
 import { classifyMalformedOutput, parseInferenceOutput, repairInferenceOutput } from "../src/pipeline/outputParser.js";
 import { buildPromptPayload, checkFishingState } from "../src/pipeline/promptBuilder.js";
+import { explainInferenceFailure } from "../src/services/simulationOrchestrator.js";
 
 describe("runtime config", () => {
   it("clamps invalid values and supports nested sections", () => {
@@ -130,5 +131,15 @@ describe("prompt payload", () => {
     });
 
     expect(payload.context.fishingState).toBe("STANDARD_CONTRARIAN");
+  });
+});
+
+describe("inference failure explanation", () => {
+  it("maps truncated JSON parse errors to a user-friendly cloud detail", () => {
+    expect(explainInferenceFailure("Unexpected end of JSON input")).toBe("OpenAI cloud response was truncated (broken JSON package).");
+  });
+
+  it("preserves unrelated error details", () => {
+    expect(explainInferenceFailure("Cloud provider failed (429)")).toBe("Cloud provider failed (429)");
   });
 });

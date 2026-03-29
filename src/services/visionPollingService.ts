@@ -1,5 +1,6 @@
 import { SimulationConfig } from "../core/types.js";
 import { sharedDeviceCapturePipeline } from "../capture/deviceCapturePipeline.js";
+import { sharedVisionFrameStore } from "../capture/visionFrameStore.js";
 import { SecretStore } from "../security/secretStore.js";
 
 interface VisionEndpointPayload {
@@ -20,6 +21,13 @@ interface VisionEndpointPayload {
 interface VisionProviderResult {
   tags: string[];
   providerResponse: unknown;
+}
+
+export function explainVisionPollingError(reason: string): string {
+  if (reason.includes("Unexpected end of JSON input")) {
+    return "Vision endpoint returned truncated JSON (broken package).";
+  }
+  return reason;
 }
 
 function normalizeVisionTags(payload: VisionEndpointPayload): string[] {
@@ -93,17 +101,40 @@ export class VisionPollingService {
     const config = this.getConfig();
     const delayMs = Math.max(5, config.capture.visionIntervalSec) * 1000;
 
-    if (!config.capture.visionEnabled || !config.capture.useRealCapture || !config.capture.visionEndpoint) {
+    if (!config.capture.visionEnabled || !config.capture.useRealCapture) {
       this.scheduleNext(delayMs);
       return;
     }
 
     try {
-      const endpointResponse = await fetch(config.capture.visionEndpoint, { signal: AbortSignal.timeout(3000) });
-      if (!endpointResponse.ok) {
-        throw new Error(`vision endpoint failed (${endpointResponse.status})`);
+      let endpointPayload: VisionEndpointPayload = {};
+      if (config.capture.visionEndpoint) {
+        const endpointResponse = await fetch(config.capture.visionEndpoint, { signal: AbortSignal.timeout(3000) });
+        if (!endpointResponse.ok) {
+          throw new Error(`vision endpoint failed (${endpointResponse.status})`);
+        }
+        endpointPayload = ((await endpointResponse.json()) ?? {}) as VisionEndpointPayload;
+      } else if (config.capture.visionProvider === "openai") {
+        const latestFrame = sharedVisionFrameStore.getLatestFrame();
+        if (!latestFrame) {
+          this.emitMeta({
+            warnings: ["Vision polling skipped: waiting for browser camera frame upload."],
+            blocked: false,
+            vision: { provider: config.capture.visionProvider, ok: false, source: "live-monitor" }
+          });
+          this.scheduleNext(delayMs);
+          return;
+        }
+        endpointPayload = { dataUrl: latestFrame.dataUrl };
+      } else {
+        this.emitMeta({
+          warnings: ["Vision polling skipped: local vision provider requires a vision endpoint URL."],
+          blocked: false,
+          vision: { provider: config.capture.visionProvider, ok: false }
+        });
+        this.scheduleNext(delayMs);
+        return;
       }
-      const endpointPayload = ((await endpointResponse.json()) ?? {}) as VisionEndpointPayload;
       // eslint-disable-next-line no-console
       console.log("[VisionPollingService] vision endpoint payload", endpointPayload);
 
@@ -131,7 +162,7 @@ export class VisionPollingService {
         }
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = explainVisionPollingError(error instanceof Error ? error.message : String(error));
       this.emitMeta({ warnings: [`Vision poll failed: ${message}`], blocked: false, vision: { provider: config.capture.visionProvider, ok: false } });
     }
 
