@@ -1,5 +1,23 @@
-import { PromptPayload, SimulationConfig, StreamContext } from "../core/types.js";
+import { FishingState, PromptPayload, SimulationConfig, StreamContext } from "../core/types.js";
 import { providerConditioningForMode, resolvePersonaCalibration } from "../llm/realismSignals.js";
+
+const FISHING_KEYWORDS = [/right\?/i, /dont i/i, /don't i/i, /am i not/i, /isnt it/i, /isn't it/i, /agree\?/i, /tell me/i, /goat/i, /fire/i, /clean/i, /best/i];
+
+export function checkFishingState(transcript: string, vibe?: string, intent?: string): FishingState {
+  const isAskingLeadingQ = FISHING_KEYWORDS.some((regex) => regex.test(transcript));
+  const confidentOrArrogant = vibe === "arrogant" || vibe === "confident";
+  const inquiryIntent = intent === "inquiry";
+
+  if (confidentOrArrogant && inquiryIntent && isAskingLeadingQ) {
+    return "AGGRESSIVE_SUBVERSION";
+  }
+
+  if (isAskingLeadingQ) {
+    return "STANDARD_CONTRARIAN";
+  }
+
+  return "OFF";
+}
 
 function detectSituationalTags(context: StreamContext): string[] {
   const tags = new Set<string>(context.visionTags.map((tag) => tag.trim().toLowerCase()).filter(Boolean));
@@ -29,13 +47,18 @@ export function buildPromptPayload(config: SimulationConfig, context: StreamCont
   const situationalTags = detectSituationalTags(context);
   const behavioralModes = mapBehavioralModes(situationalTags);
 
+  const fishingState = checkFishingState(context.transcript, context.vibe, context.intent);
+
   return {
     persona: config.persona,
     bias: config.bias,
     emoteOnly: config.emoteOnly,
     viewerCount: config.viewerCount,
     streamTopic: config.streamTopic,
-    context,
+    context: {
+      ...context,
+      fishingState
+    },
     situationalTags,
     behavioralModes,
     requestedMessageCount,

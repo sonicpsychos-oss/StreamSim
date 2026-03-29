@@ -166,10 +166,17 @@ function systemPromptForPayload(payload: PromptPayload): string {
   const vibeDirective = payload.context.vibe
     ? `Audio intelligence: current vibe is "${payload.context.vibe}", topic "${payload.context.topic ?? "general"}", intent "${payload.context.intent ?? "none"}", command=${Boolean(payload.context.isCommand)}.`
     : "Audio intelligence: unavailable for this tick.";
+  const fishingState = payload.context.fishingState ?? "OFF";
+  const fishingDirective = fishingState === "AGGRESSIVE_SUBVERSION"
+    ? "SITUATIONAL: Streamer is FISHING for a W or compliment. Do not validate ego. Be contrarian: use terms like fraud, mid, cap, who lied to u, delusional, washed. Intentional misunderstanding is allowed: ignore cool moments and roast small mistakes. FISHING CONTRAST: message 1 is a hater, message 2 is a glazer so chat argues."
+    : fishingState === "STANDARD_CONTRARIAN"
+      ? "SITUATIONAL: Streamer appears to be fishing for validation. Lean skeptical or teasing, avoid full glazing, and keep contrast between first two messages."
+      : "SITUATIONAL: Standard reaction mode.";
 
   return [
     // Primacy zone: engine rules
     `Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number|null,"ttsText":string|null}]}. Never include usernames.`,
+    fishingDirective,
     `messages must be an array with exactly ${payload.requestedMessageCount} items (valid batch range is 2 to 8 based on viewerCount).`,
     "STRICT COMMAND OVERRIDE (highest priority): if streamer says 'drop [X]' or 'type [X]' or 'spam [X]', message 1 and message 2 MUST be exactly [X] with no extra words, punctuation, or emojis.",
     "COMMAND PRECEDENCE: when command override triggers, it cancels contrast, question-answer, anti-echo, and diversity constraints for message 1/message 2.",
@@ -184,6 +191,7 @@ function systemPromptForPayload(payload: PromptPayload): string {
     vibeDirective,
     `Situational tags detected by orchestrator metadata: ${situationalTags}`,
     `Behavioral modes selected by orchestrator: ${behavioralModes}`,
+    `Fishing state selected by orchestrator: ${fishingState}`,
     "Mode map: baddie/curvy/model=>thirst ('gyatt','whats the @?','respectfully 😳'); expensive_item/flex=>flex mode ('W flex','bro is rich','loaner car lol'); player_death=>respect mode ('F','L timing','trash aim'); funny/laughing=>laughter mode (mostly emotes like '😭','💀','LUL','KEKW'); disrespect/sassy=>drama mode ('O MA','oop','TEA','GOTTEM'); sarcastic=>cap mode ('cap','biggest lie ever','sure buddy')",
     "Do not wait for the streamer to explicitly ask chat for permission; trigger hivemind reactions when metadata tags are present",
     "Treat context.transcript as more important than persona flavor text when they conflict.",
@@ -222,7 +230,7 @@ function systemPromptForPayload(payload: PromptPayload): string {
     "Roleplay license for realism: mild profanity is allowed when it fits chat energy (ass, shit, fucked, hell nah)",
     "When vibe is critical, prefer raw wording like 'dogshit', 'ass', 'actual garbage' over sanitized filler",
     "Use rapid-fire Twitch-style pacing: 60%+ of messages must be under 5 words.",
-    "Keep most messages short fragments, meme slang, or reactions like 'W', 'L', 'LMAO', 'ratio', 'wait what?', 'cap', 'trippin', 'idk', 'cooked', 'bro what', 'we are so back', 'yooo'.",
+    "Keep most messages short fragments, meme slang, or reactions like 'W', 'L', 'LMAO', 'ratio', 'wait what?', 'cap', 'trippin', 'idk', 'cooked', 'bro what', 'we are so back', 'yooo', 'glazing', 'fraud', 'mid', 'delusional'.",
     `Emotes rule: emotes array may contain only unicode emoji or one of [${ALLOWED_TEXT_EMOTES.join(", ")}]. Never invent emote names.`,
     "Some viewers should be emote-only (message text can be empty while emotes are populated).",
     "Only set ttsText when donationCents is a positive number. Otherwise ttsText must be null."
@@ -262,6 +270,7 @@ function buildModelFacingPayload(payload: PromptPayload): Record<string, unknown
       intent: payload.context.intent ?? "none",
       isCommand: Boolean(payload.context.isCommand),
       intentScore: payload.context.intentScore ?? 0,
+      fishingState: payload.context.fishingState ?? "OFF",
       recentChatHistory: payload.context.recentChatHistory,
       timestamp: payload.context.timestamp
     },
