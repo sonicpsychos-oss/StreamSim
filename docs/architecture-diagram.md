@@ -11,24 +11,24 @@ flowchart LR
 
   %% Runtime configuration + APIs
   subgraph API[Server & Runtime API Layer]
-    server[server.ts\nExpress + SSE]
-    configStore[Runtime Config\nconfigStore/runtimeConfig]
-    readiness[Readiness + Compliance + NFR gates]
+    server["server.ts<br/>Express + SSE"]
+    configStore["Runtime Config<br/>configStore/runtimeConfig"]
+    readiness["Readiness + Compliance + NFR gates"]
   end
 
   %% Core orchestration
   subgraph ORCH[Simulation Control Plane]
     orchestrator[SimulationOrchestrator]
-    sidecar[SidecarManager\n(Local model pull / control)]
+    sidecar["SidecarManager<br/>Local model pull and control"]
     observability[ObservabilityLogger]
-    audioState[AudioStateManager\nAnti-Echo deafen state]
+    audioState["AudioStateManager<br/>Anti-Echo deafen state"]
   end
 
   %% Capture and intelligence
   subgraph CAPTURE[Capture + Context Intelligence]
     stt[STT Engine + Providers]
-    device[DeviceCapturePipeline\nrolling mic + vision buffers]
-    deepgramIntel[Deepgram Intelligence Mapper\n(sentiment/topic/intent -> vibe)]
+    device["DeviceCapturePipeline<br/>rolling mic + vision buffers"]
+    deepgramIntel["Deepgram Intelligence Mapper<br/>sentiment/topic/intent to vibe"]
     contextAsm[Context Assembler]
     promptBuilder[Prompt Builder]
   end
@@ -36,7 +36,7 @@ flowchart LR
   %% Inference
   subgraph INFER[Hybrid Inference Plane]
     providerFactory[ProviderFactory]
-    hybrid[HybridInferenceProvider\nlocal/cloud routing + retries]
+    hybrid["HybridInferenceProvider<br/>local/cloud routing + retries"]
     localLLM[(Ollama / LM Studio)]
     cloudLLM[(OpenAI / Groq)]
     mockLLM[(Mock Provider)]
@@ -44,13 +44,13 @@ flowchart LR
 
   %% Post-inference and rendering
   subgraph RENDER[Safety + Persona Realism + Rendering]
-    parser[Output Parser\n(JSON recovery)]
+    parser["Output Parser<br/>JSON recovery"]
     antiEcho[Anti-Echo + Read-Chat detection]
     glaze[Behavior diversity / anti-glaze rules]
-    safety[Safety Filter\nbanlist + compliance]
-    identity[Identity Manager\nsafe username assignment]
-    spooler[Spooling Engine\nburst timing + pacing]
-    tts[TTS Service\nDeepgram TTS + playback]
+    safety["Safety Filter<br/>banlist + compliance"]
+    identity["Identity Manager<br/>safe username assignment"]
+    spooler["Spooling Engine<br/>burst timing + pacing"]
+    tts["TTS Service<br/>Deepgram TTS + playback"]
   end
 
   %% Primary flow
