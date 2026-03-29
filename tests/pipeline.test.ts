@@ -103,6 +103,16 @@ describe("prompt payload", () => {
     expect(checkFishingState("i am locking in", "confident", "inquiry")).toBe("OFF");
   });
 
+  it("keeps benign self-talk out of contrarian mode", () => {
+    expect(checkFishingState("good job", "chill", "statement")).toBe("OFF");
+    expect(checkFishingState("nice job to me", "confident", "statement")).toBe("OFF");
+  });
+
+  it("recognizes pity-bait validation fishing", () => {
+    expect(checkFishingState("man i'm so bad i should just quit", "questioning", "inquiry")).toBe("STANDARD_CONTRARIAN");
+    expect(checkFishingState("chat i'm so bad i should just quit right?", "confident", "inquiry")).toBe("AGGRESSIVE_SUBVERSION");
+  });
+
   it("injects fishingState metadata into payload context", () => {
     const payload = buildPromptPayload(defaultConfig, {
       transcript: "yo chat be honest this run was clean right?",

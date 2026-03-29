@@ -1,18 +1,58 @@
 import { FishingState, PromptPayload, SimulationConfig, StreamContext } from "../core/types.js";
 import { providerConditioningForMode, resolvePersonaCalibration } from "../llm/realismSignals.js";
 
-const FISHING_KEYWORDS = [/right\?/i, /dont i/i, /don't i/i, /am i not/i, /isnt it/i, /isn't it/i, /agree\?/i, /tell me/i, /goat/i, /fire/i, /clean/i, /best/i];
+const LEADING_VALIDATION_PATTERNS = [
+  /right\?/i,
+  /dont i/i,
+  /don't i/i,
+  /am i not/i,
+  /isnt it/i,
+  /isn't it/i,
+  /agree\??/i,
+  /tell me/i,
+  /be real/i
+];
+const BRAGGING_PATTERNS = [
+  /\b(i\s*am|i'm|im|literally)\s+(the\s+)?(goat|best)\b/i,
+  /\bthis\s+(is|was)\s+(fire|clean)\b/i,
+  /\bno\s+one\s+is\s+touching\s+me\b/i,
+  /\bwho\s+can\s+stop\s+me\b/i
+];
+const PITY_BAIT_PATTERNS = [
+  /\bi\s*(am|'m)?\s*so\s*bad\b/i,
+  /\bi\s*suck\b/i,
+  /\bi\s*should\s*just\s*quit\b/i,
+  /\bchat\s*i\s*am\s*washed\b/i
+];
+const BENIGN_SELF_TALK_PATTERNS = [/\bgood\s+job\b/i, /\bnice\s+job\b/i, /\bwell\s+played\b/i];
 
 export function checkFishingState(transcript: string, vibe?: string, intent?: string): FishingState {
-  const isAskingLeadingQ = FISHING_KEYWORDS.some((regex) => regex.test(transcript));
+  const normalized = transcript.trim();
+  if (!normalized) return "OFF";
+
+  const isAskingLeadingQ = LEADING_VALIDATION_PATTERNS.some((regex) => regex.test(normalized));
+  const isBragging = BRAGGING_PATTERNS.some((regex) => regex.test(normalized));
+  const isPityBait = PITY_BAIT_PATTERNS.some((regex) => regex.test(normalized));
+  const isBenignSelfTalk = BENIGN_SELF_TALK_PATTERNS.some((regex) => regex.test(normalized));
   const confidentOrArrogant = vibe === "arrogant" || vibe === "confident";
   const inquiryIntent = intent === "inquiry";
+  const hasValidationSignal = isAskingLeadingQ || isBragging || isPityBait;
 
-  if (confidentOrArrogant && inquiryIntent && isAskingLeadingQ) {
+  if (isBenignSelfTalk && !hasValidationSignal) {
+    return "OFF";
+  }
+
+  let confidenceScore = 0;
+  if (isAskingLeadingQ) confidenceScore += 2;
+  if (isBragging || isPityBait) confidenceScore += 1;
+  if (inquiryIntent) confidenceScore += 1;
+  if (confidentOrArrogant) confidenceScore += 1;
+
+  if ((isAskingLeadingQ || isPityBait) && confidenceScore >= 4) {
     return "AGGRESSIVE_SUBVERSION";
   }
 
-  if (isAskingLeadingQ) {
+  if (hasValidationSignal && confidenceScore >= 2) {
     return "STANDARD_CONTRARIAN";
   }
 
