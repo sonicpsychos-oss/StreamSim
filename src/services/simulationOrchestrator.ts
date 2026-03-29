@@ -23,6 +23,7 @@ export class SimulationOrchestrator {
   private readonly sidecar = new SidecarManager();
   private readonly mockProvider = new MockInferenceProvider();
   private readonly identityManager = new IdentityManager();
+  private recentChatHistory: string[] = [];
   private aiStatus: {
     state: "idle" | "running" | "degraded" | "error";
     providerHealth: "unknown" | "ok" | "degraded";
@@ -172,6 +173,32 @@ export class SimulationOrchestrator {
     };
   }
 
+  private tokenizeForOverlap(text: string): Set<string> {
+    return new Set(
+      text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s']/g, " ")
+        .split(/\s+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 4)
+    );
+  }
+
+  private isReadingChat(transcript: string, recentChatHistory: string[]): boolean {
+    if (!transcript.trim() || recentChatHistory.length === 0) return false;
+    const transcriptTokens = this.tokenizeForOverlap(transcript);
+    if (!transcriptTokens.size) return false;
+    const historyTokens = this.tokenizeForOverlap(recentChatHistory.join(" "));
+    if (!historyTokens.size) return false;
+    const overlapCount = Array.from(transcriptTokens).filter((token) => historyTokens.has(token)).length;
+    return overlapCount / transcriptTokens.size >= 0.45;
+  }
+
+  private rewriteForReadingChat(messages: ChatMessage[]): ChatMessage[] {
+    const reactions = ["l chatter", "ratio that chatter", "he reading us again 💀", "chat got him pressed", "stop farming chat lines"];
+    return messages.map((message, index) => ({ ...message, text: reactions[index % reactions.length] }));
+  }
+
   private applyAntiEchoConstraint(messages: ChatMessage[], transcript: string): ChatMessage[] {
     const anchors = this.transcriptAnchorTerms(transcript);
     if (!anchors.length) return messages;
@@ -188,7 +215,7 @@ export class SimulationOrchestrator {
     return [this.antiEchoFallback(seed?.id ?? `${Date.now()}-anti-echo`, seed?.createdAt ?? new Date().toISOString())];
   }
 
-  private enforceDiversityRules(messages: ChatMessage[]): ChatMessage[] {
+  private enforceDiversityRules(messages: ChatMessage[], behavioralModes: string[]): ChatMessage[] {
     const slangCooldownWords = ["lowkey", "bet", "cooked", "fr"];
     const slangAlternatives: Record<string, string[]> = {
       lowkey: ["ngl", "tbh", "honestly"],
@@ -215,6 +242,12 @@ export class SimulationOrchestrator {
     });
 
     if (remapped.length < 2) return remapped;
+
+    if (behavioralModes.includes("thirst")) {
+      remapped[0] = { ...remapped[0], text: "gyatt respectfully 😳" };
+      remapped[1] = { ...remapped[1], text: "simps in chat stand up" };
+      return remapped;
+    }
 
     const supportiveSignal = /\b(yes|yup|we hear u|w audio|mic w|facts|same|true|good)\b/i;
     if (supportiveSignal.test(remapped[0].text) && supportiveSignal.test(remapped[1].text)) {
@@ -290,7 +323,11 @@ export class SimulationOrchestrator {
       }
 
       const captureStarted = Date.now();
-      const context = await captureProvider.getContext(config);
+      const capturedContext = await captureProvider.getContext(config);
+      const context = {
+        ...capturedContext,
+        recentChatHistory: this.recentChatHistory.slice(0, 20)
+      };
       const captureLatencyMs = Date.now() - captureStarted;
 
       timing = this.spooler.nextDelayMs(config, context.tone);
@@ -368,10 +405,13 @@ export class SimulationOrchestrator {
         }
         const inferenceLatencyMs = Date.now() - inferenceStarted;
 
-        const deEchoedMessages = this.applyAntiEchoConstraint(messages, context.transcript);
-        const diverseMessages = this.enforceDiversityRules(deEchoedMessages);
+        const deEchoedMessages = this.isReadingChat(context.transcript, context.recentChatHistory)
+          ? this.rewriteForReadingChat(messages)
+          : this.applyAntiEchoConstraint(messages, context.transcript);
+        const diverseMessages = this.enforceDiversityRules(deEchoedMessages, payload.behavioralModes);
         const safety = applySafetyPolicy(diverseMessages, config);
         const safeMessages = safety.safeMessages;
+        this.recentChatHistory = [...safeMessages.map((message) => message.text), ...this.recentChatHistory].slice(0, 40);
 
         safeMessages.forEach((msg) => {
           if (config.ttsEnabled && config.ttsMode !== "off" && msg.ttsText) {

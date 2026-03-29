@@ -49,7 +49,16 @@ describe("hybrid routing and failover", () => {
     const provider = new HybridInferenceProvider("ollama");
     const config = { ...defaultConfig, provider: { ...defaultConfig.provider, localEndpoint: server.url, localModel: "local-model" } };
     const output = await provider.generate(
-      { persona: "supportive", bias: "agree", emoteOnly: false, viewerCount: 10, requestedMessageCount: 1, context: { transcript: "hi", tone: { volumeRms: 0.4, paceWpm: 120 }, visionTags: [], timestamp: new Date().toISOString() } },
+      {
+        persona: "supportive",
+        bias: "agree",
+        emoteOnly: false,
+        viewerCount: 10,
+        requestedMessageCount: 1,
+        situationalTags: [],
+        behavioralModes: ["default"],
+        context: { transcript: "hi", tone: { volumeRms: 0.4, paceWpm: 120 }, visionTags: [], recentChatHistory: [], timestamp: new Date().toISOString() }
+      },
       config
     );
 
@@ -76,7 +85,16 @@ describe("hybrid routing and failover", () => {
     };
 
     const output = await provider.generate(
-      { persona: "supportive", bias: "agree", emoteOnly: false, viewerCount: 10, requestedMessageCount: 1, context: { transcript: "hi", tone: { volumeRms: 0.4, paceWpm: 120 }, visionTags: [], timestamp: new Date().toISOString() } },
+      {
+        persona: "supportive",
+        bias: "agree",
+        emoteOnly: false,
+        viewerCount: 10,
+        requestedMessageCount: 1,
+        situationalTags: [],
+        behavioralModes: ["default"],
+        context: { transcript: "hi", tone: { volumeRms: 0.4, paceWpm: 120 }, visionTags: [], recentChatHistory: [], timestamp: new Date().toISOString() }
+      },
       config
     );
 
@@ -110,7 +128,16 @@ describe("hybrid routing and failover", () => {
     const provider = new HybridInferenceProvider("lmstudio");
     const config = { ...defaultConfig, provider: { ...defaultConfig.provider, localEndpoint: server.url } };
     const output = await provider.generate(
-      { persona: "supportive", bias: "agree", emoteOnly: false, viewerCount: 10, requestedMessageCount: 1, context: { transcript: "hi", tone: { volumeRms: 0.4, paceWpm: 120 }, visionTags: [], timestamp: new Date().toISOString() } },
+      {
+        persona: "supportive",
+        bias: "agree",
+        emoteOnly: false,
+        viewerCount: 10,
+        requestedMessageCount: 1,
+        situationalTags: [],
+        behavioralModes: ["default"],
+        context: { transcript: "hi", tone: { volumeRms: 0.4, paceWpm: 120 }, visionTags: [], recentChatHistory: [], timestamp: new Date().toISOString() }
+      },
       config
     );
     expect(output).toContain("messages");
@@ -137,7 +164,9 @@ describe("hybrid routing and failover", () => {
       emoteOnly: false,
       viewerCount: 10,
       requestedMessageCount: 1,
-      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+      situationalTags: [],
+      behavioralModes: ["default"],
+      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], recentChatHistory: [], timestamp: new Date().toISOString() }
     };
 
     await expect(provider.generate(payload, config)).rejects.toThrow(/429/);
@@ -158,7 +187,9 @@ describe("hybrid routing and failover", () => {
       emoteOnly: false,
       viewerCount: 10,
       requestedMessageCount: 1,
-      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+      situationalTags: [],
+      behavioralModes: ["default"],
+      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], recentChatHistory: [], timestamp: new Date().toISOString() }
     };
 
     await expect(provider.generate(payload, config)).rejects.toThrow(/timeout\/network failure/i);
@@ -184,7 +215,9 @@ describe("hybrid routing and failover", () => {
       emoteOnly: false,
       viewerCount: 10,
       requestedMessageCount: 1,
-      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+      situationalTags: [],
+      behavioralModes: ["default"],
+      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], recentChatHistory: [], timestamp: new Date().toISOString() }
     };
 
     await expect(provider.generate(payload, config)).rejects.toThrow(/503/);
@@ -221,7 +254,9 @@ describe("hybrid routing and failover", () => {
       emoteOnly: false,
       viewerCount: 10,
       requestedMessageCount: 1,
-      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+      situationalTags: [],
+      behavioralModes: ["default"],
+      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], recentChatHistory: [], timestamp: new Date().toISOString() }
     };
 
     await expect(openAiProvider.generate(payload, config)).resolves.toContain("messages");
@@ -259,7 +294,9 @@ describe("hybrid routing and failover", () => {
       emoteOnly: false,
       viewerCount: 10,
       requestedMessageCount: 1,
-      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+      situationalTags: [],
+      behavioralModes: ["default"],
+      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], recentChatHistory: [], timestamp: new Date().toISOString() }
     };
 
     await expect(provider.generate(payload, config)).resolves.toContain('"username":"newapi"');
@@ -294,7 +331,9 @@ describe("hybrid routing and failover", () => {
       emoteOnly: false,
       viewerCount: 10,
       requestedMessageCount: 1,
-      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+      situationalTags: [],
+      behavioralModes: ["default"],
+      context: { transcript: "switch now", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], recentChatHistory: [], timestamp: new Date().toISOString() }
     };
 
     await expect(provider.generate(payload, config)).resolves.toContain("messages");
@@ -334,7 +373,9 @@ describe("hybrid routing and failover", () => {
       emoteOnly: false,
       viewerCount: 10,
       requestedMessageCount: 1,
-      context: { transcript: "can you hear me?", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], timestamp: new Date().toISOString() }
+      situationalTags: [],
+      behavioralModes: ["default"],
+      context: { transcript: "can you hear me?", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], recentChatHistory: [], timestamp: new Date().toISOString() }
     };
 
     await expect(provider.generate(payload, config)).resolves.toContain("messages");
@@ -379,7 +420,9 @@ describe("hybrid routing and failover", () => {
       emoteOnly: false,
       viewerCount: 10,
       requestedMessageCount: 1,
-      context: { transcript: "can you hear me?", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["headset"], timestamp: new Date().toISOString() }
+      situationalTags: [],
+      behavioralModes: ["default"],
+      context: { transcript: "can you hear me?", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["headset"], recentChatHistory: [], timestamp: new Date().toISOString() }
     };
 
     await expect(provider.generate(payload, config)).resolves.toContain("messages");
@@ -423,7 +466,9 @@ describe("hybrid routing and failover", () => {
       emoteOnly: false,
       viewerCount: 10,
       requestedMessageCount: 1,
-      context: { transcript: "", tone: { volumeRms: 0.8, paceWpm: 180 }, visionTags: [], timestamp: new Date().toISOString() }
+      situationalTags: [],
+      behavioralModes: ["default"],
+      context: { transcript: "", tone: { volumeRms: 0.8, paceWpm: 180 }, visionTags: [], recentChatHistory: [], timestamp: new Date().toISOString() }
     };
 
     await expect(provider.generate(payload, config)).resolves.toContain("messages");

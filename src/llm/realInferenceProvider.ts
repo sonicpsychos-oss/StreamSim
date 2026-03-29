@@ -160,6 +160,8 @@ function systemPromptForPayload(payload: PromptPayload): string {
   const visionDirective = payload.context.visionTags.length
     ? `Vision state: context.visionTags is populated (${payload.context.visionTags.map((tag) => `"${tag}"`).join(", ")}). Reference concrete tag details directly and do not invent unseen attributes.`
     : "Vision state: context.visionTags is empty, so you are BLIND right now. Do not invent visuals; if asked visual questions, clearly say the cam/feed is not visible.";
+  const situationalTags = payload.situationalTags.length ? payload.situationalTags.join(", ") : "none";
+  const behavioralModes = payload.behavioralModes.length ? payload.behavioralModes.join(", ") : "default";
 
   return [
     // Primacy zone: engine rules
@@ -174,6 +176,10 @@ function systemPromptForPayload(payload: PromptPayload): string {
     transcriptDirective,
     questionDirective,
     visionDirective,
+    `Situational tags detected by orchestrator metadata: ${situationalTags}`,
+    `Behavioral modes selected by orchestrator: ${behavioralModes}`,
+    "Mode map: baddie/curvy/model=>thirst ('gyatt','whats the @?','respectfully 😳'); expensive_item/flex=>flex mode ('W flex','bro is rich','loaner car lol'); player_death=>respect mode ('F','L timing','trash aim'); funny/laughing=>laughter mode (mostly emotes like '😭','💀','LUL','KEKW'); disrespect/sassy=>drama mode ('O MA','oop','TEA','GOTTEM'); sarcastic=>cap mode ('cap','biggest lie ever','sure buddy')",
+    "Do not wait for the streamer to explicitly ask chat for permission; trigger hivemind reactions when metadata tags are present",
     "Treat context.transcript as more important than persona flavor text when they conflict.",
     "You are simulating a live audience reacting to the streamer in real time (not a generic standalone chat).",
     "ROLE: you are the audience. The transcript is what you heard from the streamer, not what you should say.",
@@ -183,6 +189,7 @@ function systemPromptForPayload(payload: PromptPayload): string {
     "CRITICAL: never mirror the streamer's exact question text back to chat. If streamer asks 'can you hear me?', answer it as audience (example: 'yep loud and clear').",
     "SKIP confirmation framing: do not begin by repeating topic as a question such as 'pizza?? W' or '[topic]??'. Jump straight to reaction or joke.",
     "Do not quote the streamer's exact wording unless you are intentionally making a joke/meme about it.",
+    "If transcript overlaps context.recentChatHistory heavily, treat it as the streamer reading chat; do not react to the quoted words themselves and instead react to the streamer's attitude toward chat",
     "Hard anti-echo constraint: do not reuse distinctive nouns/adjectives from the streamer's latest sentence; react with fresh wording instead.",
     "Example anti-echo: if streamer says they wear a purple sombrero, react with paraphrase like 'bro what is on your head 💀' instead of repeating those exact words.",
     "Do not simply repeat or lightly rephrase the streamer's words back to them.",
@@ -206,6 +213,8 @@ function systemPromptForPayload(payload: PromptPayload): string {
 
     // Recency zone: polish + syntax
     "Style lock: no em-dash, no ellipses, no final period, minimal capitalization, fast phone-typed fragments.",
+    "Roleplay license for realism: mild profanity is allowed when it fits chat energy (ass, shit, fucked, hell nah)",
+    "When vibe is critical, prefer raw wording like 'dogshit', 'ass', 'actual garbage' over sanitized filler",
     "Use rapid-fire Twitch-style pacing: 60%+ of messages must be under 5 words.",
     "Keep most messages short fragments, meme slang, or reactions like 'W', 'L', 'LMAO', 'ratio', 'wait what?', 'cap', 'trippin', 'idk', 'cooked', 'bro what', 'we are so back', 'yooo'.",
     `Emotes rule: emotes array may contain only unicode emoji or one of [${ALLOWED_TEXT_EMOTES.join(", ")}]. Never invent emote names.`,
@@ -242,8 +251,11 @@ function buildModelFacingPayload(payload: PromptPayload): Record<string, unknown
         pace: describePace(payload.context.tone.paceWpm)
       },
       visionTags: payload.context.visionTags,
+      recentChatHistory: payload.context.recentChatHistory,
       timestamp: payload.context.timestamp
     },
+    situationalTags: payload.situationalTags,
+    behavioralModes: payload.behavioralModes,
     personaCalibration: payload.personaCalibration,
     providerConditioning: payload.providerConditioning
   };

@@ -79,6 +79,7 @@ export interface StreamContext {
   transcript: string;
   tone: ToneSnapshot;
   visionTags: string[];
+  recentChatHistory: string[];
   timestamp: string;
 }
 
@@ -89,6 +90,8 @@ export interface PromptPayload {
   viewerCount: number;
   streamTopic?: string;
   context: StreamContext;
+  situationalTags: string[];
+  behavioralModes: string[];
   requestedMessageCount: number;
   personaCalibration: PersonaCalibration;
   providerConditioning: ProviderConditioning;
