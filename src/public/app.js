@@ -21,6 +21,8 @@ const sttCaptionPreview = document.getElementById("sttCaptionPreview");
 let liveMonitorStream = null;
 let liveMonitorAudioContext = null;
 let liveMonitorMeterInterval = null;
+let liveMonitorVisionInterval = null;
+let liveMonitorVisionCanvas = null;
 let micCheckStream = null;
 let micCheckAudioContext = null;
 let micCheckMeterInterval = null;
@@ -46,6 +48,7 @@ const MIC_CHECK_PROBE_SECONDS = 3.5;
 const MIC_CHECK_BUFFER_SECONDS = 8;
 const MIC_CHECK_MIN_SAMPLES = 12000;
 const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
+const LIVE_MONITOR_VISION_SAMPLE_MS = 8000;
 const STT_DEFAULT_ENDPOINTS = {
   "local-whisper": "http://127.0.0.1:7778/stt",
   whispercpp: "http://127.0.0.1:7778/stt",
@@ -356,13 +359,34 @@ function stopLiveMonitor() {
     void liveMonitorAudioContext.close();
     liveMonitorAudioContext = null;
   }
+  if (liveMonitorVisionInterval) {
+    clearInterval(liveMonitorVisionInterval);
+    liveMonitorVisionInterval = null;
+  }
   if (liveMonitorStream) {
     liveMonitorStream.getTracks().forEach((track) => track.stop());
     liveMonitorStream = null;
   }
+  liveMonitorVisionCanvas = null;
   if (liveVideo) liveVideo.srcObject = null;
   drawVoiceMeter(0);
   setLiveMonitorStatus("Live monitor disabled.", "warn");
+}
+
+async function pushLiveVisionSample() {
+  if (!liveVideo || !liveMonitorStream) return;
+  const width = Math.max(256, Math.min(320, liveVideo.videoWidth || 640));
+  const height = Math.max(144, Math.min(180, liveVideo.videoHeight || 360));
+  if (!liveMonitorVisionCanvas) {
+    liveMonitorVisionCanvas = document.createElement("canvas");
+  }
+  liveMonitorVisionCanvas.width = width;
+  liveMonitorVisionCanvas.height = height;
+  const ctx = liveMonitorVisionCanvas.getContext("2d");
+  if (!ctx) return;
+  ctx.drawImage(liveVideo, 0, 0, width, height);
+  const dataUrl = liveMonitorVisionCanvas.toDataURL("image/jpeg", 0.55);
+  await post("/api/capture/vision-sample", { dataUrl });
 }
 
 async function startLiveMonitor() {
@@ -397,8 +421,12 @@ async function startLiveMonitor() {
     const rms = Math.sqrt(sum / samples.length);
     drawVoiceMeter(Math.min(1, rms * 3.2));
   }, 90);
+  liveMonitorVisionInterval = setInterval(() => {
+    void pushLiveVisionSample();
+  }, LIVE_MONITOR_VISION_SAMPLE_MS);
+  void pushLiveVisionSample();
 
-  setLiveMonitorStatus("Camera and microphone active for live monitor.", "ok");
+  setLiveMonitorStatus("Camera and microphone active for live monitor (vision snapshots every 8s).", "ok");
   return true;
 }
 
@@ -693,6 +721,9 @@ function summarizeVisionHealth(payload) {
       ? "latest sample present"
       : "waiting for first sample"
     : "not collecting";
+  const detailWithHint = sampleStatus === "waiting for first sample" && enabled && useRealCapture
+    ? `${detail}; run Start Simulation and confirm the vision endpoint is producing tags (webcam permission alone does not populate visionTags).`
+    : detail;
 
   visionHealthSummary.textContent = [
     `Vision enabled: ${enabled ? "yes" : "no"}`,
@@ -700,7 +731,7 @@ function summarizeVisionHealth(payload) {
     `Capture mode: ${useRealCapture ? "real" : "simulated"}`,
     `Vision ready: ${ready ? "yes" : "no"}`,
     `Sample state: ${sampleStatus}`,
-    `Detail: ${detail}`
+    `Detail: ${detailWithHint}`
   ].join("\n");
 }
 
@@ -1217,7 +1248,7 @@ events.addEventListener("messages", (event) => {
 
     const user = document.createElement("span");
     user.className = "user";
-    user.textContent = msg.username;
+    user.textContent = msg.username ? `${msg.username}:` : "";
 
     const messageText = document.createElement("span");
     messageText.textContent = msg.text || msg.emotes.join(" ");

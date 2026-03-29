@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sharedDeviceCapturePipeline } from "./capture/deviceCapturePipeline.js";
 import { sharedSttEngine } from "./capture/sttEngine.js";
+import { sharedVisionFrameStore } from "./capture/visionFrameStore.js";
 import { ConfigStore } from "./config/configStore.js";
 import { mergeConfig } from "./config/runtimeConfig.js";
 import { SimulationConfig } from "./core/types.js";
@@ -283,6 +284,8 @@ app.post("/api/capture/audio-chunk", async (req, res) => {
 });
 
 app.post("/api/capture/vision-sample", (req, res) => {
+  const dataUrl = typeof req.body?.dataUrl === "string" ? req.body.dataUrl.trim() : "";
+  if (dataUrl) sharedVisionFrameStore.setFrame(dataUrl);
   sharedDeviceCapturePipeline.ingestVisionSample(req.body ?? {});
   res.json({ ok: true });
 });
