@@ -1,11 +1,13 @@
 import { execFileSync } from "node:child_process";
 
 const SERVICE_NAME = "streamsim";
-const ACCOUNT_NAME = "cloud-api-key";
+const CLOUD_ACCOUNT_NAME = "cloud-api-key";
+const DEEPGRAM_ACCOUNT_NAME = "deepgram-api-key";
 
 export interface SecretStoreDiagnostics {
   keychainBacked: boolean;
   hasCloudKey: boolean;
+  hasDeepgramKey: boolean;
   provider: string;
   available: boolean;
   warning?: string;
@@ -14,8 +16,8 @@ export interface SecretStoreDiagnostics {
 interface SecretProvider {
   name: string;
   isAvailable(): { ok: boolean; warning?: string };
-  read(): string;
-  write(value: string): boolean;
+  read(account: string): string;
+  write(account: string, label: string, value: string): boolean;
 }
 
 function hasBinary(command: string): boolean {
@@ -38,12 +40,12 @@ class DarwinKeychainProvider implements SecretProvider {
     return hasBinary("security") ? { ok: true } : { ok: false, warning: "macOS keychain binary 'security' is unavailable." };
   }
 
-  public read(): string {
-    return runCommand("security", ["find-generic-password", "-s", SERVICE_NAME, "-a", ACCOUNT_NAME, "-w"]);
+  public read(account: string): string {
+    return runCommand("security", ["find-generic-password", "-s", SERVICE_NAME, "-a", account, "-w"]);
   }
 
-  public write(value: string): boolean {
-    runCommand("security", ["add-generic-password", "-U", "-s", SERVICE_NAME, "-a", ACCOUNT_NAME, "-w", value]);
+  public write(account: string, _label: string, value: string): boolean {
+    runCommand("security", ["add-generic-password", "-U", "-s", SERVICE_NAME, "-a", account, "-w", value]);
     return true;
   }
 }
@@ -55,12 +57,12 @@ class LinuxSecretToolProvider implements SecretProvider {
     return hasBinary("secret-tool") ? { ok: true } : { ok: false, warning: "Install libsecret tools (secret-tool) to store cloud keys securely." };
   }
 
-  public read(): string {
-    return runCommand("secret-tool", ["lookup", "service", SERVICE_NAME, "account", ACCOUNT_NAME]);
+  public read(account: string): string {
+    return runCommand("secret-tool", ["lookup", "service", SERVICE_NAME, "account", account]);
   }
 
-  public write(value: string): boolean {
-    runCommand("secret-tool", ["store", "--label=StreamSim Cloud API Key", "service", SERVICE_NAME, "account", ACCOUNT_NAME, value]);
+  public write(account: string, label: string, value: string): boolean {
+    runCommand("secret-tool", ["store", `--label=${label}`, "service", SERVICE_NAME, "account", account, value]);
     return true;
   }
 }
@@ -85,21 +87,21 @@ class WindowsCredentialProvider implements SecretProvider {
     }
   }
 
-  public read(): string {
+  public read(account: string): string {
     return runCommand("powershell", [
       "-NoProfile",
       "-Command",
-      "$cred=Get-StoredCredential -Target 'streamsim-cloud-api-key'; if($cred){$cred.GetNetworkCredential().Password}"
+      `$cred=Get-StoredCredential -Target 'streamsim-${account}'; if($cred){$cred.GetNetworkCredential().Password}`
     ]);
   }
 
-  public write(value: string): boolean {
+  public write(account: string, _label: string, value: string): boolean {
     runCommand("powershell", [
       "-NoProfile",
       "-Command",
       `$secret=ConvertTo-SecureString '${value.replace(/'/g, "''")}' -AsPlainText -Force; ` +
         "$cred=New-Object System.Management.Automation.PSCredential('streamsim',$secret); " +
-        "New-StoredCredential -Target 'streamsim-cloud-api-key' -UserName 'streamsim' -Password $cred.GetNetworkCredential().Password -Persist LocalMachine"
+        `New-StoredCredential -Target 'streamsim-${account}' -UserName 'streamsim' -Password $cred.GetNetworkCredential().Password -Persist LocalMachine`
     ]);
     return true;
   }
@@ -110,10 +112,10 @@ class UnsupportedProvider implements SecretProvider {
   public isAvailable(): { ok: boolean; warning?: string } {
     return { ok: false, warning: `Unsupported platform for keychain storage: ${process.platform}` };
   }
-  public read(): string {
+  public read(_account: string): string {
     return "";
   }
-  public write(): boolean {
+  public write(_account: string, _label: string, _value: string): boolean {
     return false;
   }
 }
@@ -129,42 +131,54 @@ export class SecretStore {
   private readonly provider = createProvider();
 
   public getCloudApiKey(): string {
-    const fromKeychain = this.getCloudApiKeyFromKeychain();
+    const fromKeychain = this.getKeyFromKeychain(CLOUD_ACCOUNT_NAME);
     if (fromKeychain) return fromKeychain;
     return process.env.STREAMSIM_CLOUD_API_KEY ?? "";
   }
 
   public setCloudApiKey(value: string): boolean {
-    return this.setCloudApiKeyInKeychain(value);
+    return this.setKeyInKeychain(CLOUD_ACCOUNT_NAME, "StreamSim Cloud API Key", value);
+  }
+
+  public getDeepgramApiKey(): string {
+    const fromKeychain = this.getKeyFromKeychain(DEEPGRAM_ACCOUNT_NAME);
+    if (fromKeychain) return fromKeychain;
+    return process.env.DEEPGRAM_API_KEY ?? process.env.STREAMSIM_DEEPGRAM_API_KEY ?? "";
+  }
+
+  public setDeepgramApiKey(value: string): boolean {
+    return this.setKeyInKeychain(DEEPGRAM_ACCOUNT_NAME, "StreamSim Deepgram API Key", value);
   }
 
   public diagnostics(): SecretStoreDiagnostics {
     const availability = this.provider.isAvailable();
-    const keychainValue = this.getCloudApiKeyFromKeychain();
+    const cloudKeychainValue = this.getKeyFromKeychain(CLOUD_ACCOUNT_NAME);
+    const deepgramKeychainValue = this.getKeyFromKeychain(DEEPGRAM_ACCOUNT_NAME);
     return {
-      keychainBacked: Boolean(keychainValue),
-      hasCloudKey: Boolean(keychainValue || process.env.STREAMSIM_CLOUD_API_KEY),
+      keychainBacked: Boolean(cloudKeychainValue || deepgramKeychainValue),
+      hasCloudKey: Boolean(cloudKeychainValue || process.env.STREAMSIM_CLOUD_API_KEY),
+      hasDeepgramKey: Boolean(deepgramKeychainValue || process.env.DEEPGRAM_API_KEY || process.env.STREAMSIM_DEEPGRAM_API_KEY),
       provider: this.provider.name,
       available: availability.ok,
       warning: availability.warning
     };
   }
 
-  private getCloudApiKeyFromKeychain(): string {
+  private getKeyFromKeychain(account: string): string {
     const availability = this.provider.isAvailable();
     if (!availability.ok) return "";
     try {
-      return this.provider.read();
+      return this.provider.read(account);
     } catch {
       return "";
     }
   }
 
-  private setCloudApiKeyInKeychain(value: string): boolean {
+  private setKeyInKeychain(account: string, label: string, value: string): boolean {
     const availability = this.provider.isAvailable();
     if (!availability.ok) return false;
     try {
-      return this.provider.write(value);
+      return this.provider.write(account, label, value);
     } catch {
       return false;
     }

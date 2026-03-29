@@ -9,7 +9,7 @@ interface SttBackend {
 }
 
 const DEFAULT_LOCAL_STT_ENDPOINT = "http://127.0.0.1:7778/stt";
-const DEFAULT_DEEPGRAM_ENDPOINT = "https://api.deepgram.com/v1/listen?model=nova-2&punctuate=true";
+const DEFAULT_DEEPGRAM_ENDPOINT = "https://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true&filler_words=true&punctuate=true";
 const DEFAULT_OPENAI_STT_ENDPOINT = "https://api.openai.com/v1/audio/transcriptions";
 
 class MockSttBackend implements SttBackend {
@@ -41,16 +41,19 @@ class WhisperCppBackend implements SttBackend {
 }
 
 class DeepgramBackend implements SttBackend {
+  private readonly secretStore = new SecretStore();
+
   constructor(private readonly endpoint: string, private readonly apiKey: string | undefined) {}
 
   public async transcribe(frame: Buffer): Promise<string> {
-    if (!this.apiKey) throw new Error("Deepgram API key missing.");
+    const token = this.apiKey ?? this.secretStore.getDeepgramApiKey();
+    if (!token) throw new Error("Deepgram API key missing.");
     let response: Response;
     try {
       response = await fetch(this.endpoint, {
         method: "POST",
         headers: {
-          Authorization: `Token ${this.apiKey}`,
+          Authorization: `Token ${token}`,
           "Content-Type": "audio/wav"
         },
         body: new Uint8Array(frame),
@@ -176,7 +179,7 @@ export class DeviceSttEngine implements SttEngine {
       case "deepgram":
         return new DeepgramBackend(
           this.resolveProviderEndpoint(provider, endpoint, process.env.STREAMSIM_DEEPGRAM_ENDPOINT ?? DEFAULT_DEEPGRAM_ENDPOINT),
-          process.env.STREAMSIM_DEEPGRAM_API_KEY
+          process.env.DEEPGRAM_API_KEY ?? process.env.STREAMSIM_DEEPGRAM_API_KEY
         );
       case "openai-whisper":
         return new OpenAiWhisperBackend(

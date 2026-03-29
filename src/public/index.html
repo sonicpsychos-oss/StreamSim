@@ -81,6 +81,13 @@
                 <option value="off">Off</option>
               </select>
             </label>
+            <label>TTS Provider
+              <select id="ttsProvider">
+                <option value="local">Local (no synth call)</option>
+                <option value="deepgram_aura">Deepgram Aura (Luna)</option>
+                <option value="openai">OpenAI TTS</option>
+              </select>
+            </label>
             <label><input id="visionEnabled" type="checkbox" checked /> Vision Capture Enabled</label>
             <label><input id="useRealCapture" type="checkbox" /> Use real capture endpoints</label>
             <label>Vision Interval (seconds) <input id="visionIntervalSec" type="number" min="5" max="120" value="25" /></label>
@@ -96,6 +103,7 @@
             </label>
             <label>STT endpoint <input id="sttEndpoint" type="text" value="http://127.0.0.1:7778/stt" /></label>
             <label>Vision endpoint <input id="visionEndpoint" type="text" value="http://127.0.0.1:7778/vision-tags" /></label>
+            <label><input id="audioIntelligenceEnabled" type="checkbox" checked /> Audio Intelligence Enabled</label>
           </div>
         </details>
 
@@ -121,9 +129,11 @@
           <summary>Secrets + Maintenance</summary>
           <div class="grid">
             <label>Cloud API key <input id="cloudApiKey" type="password" placeholder="sk-..." /></label>
+            <label>Deepgram API key <input id="deepgramApiKey" type="password" placeholder="dg_..." /></label>
           </div>
           <div class="buttons">
             <button id="saveCloudKey" type="button">Save Cloud Key</button>
+            <button id="saveDeepgramKey" type="button">Save Deepgram Key</button>
             <button id="rebindAudio" type="button">Rebind Audio</button>
             <button id="sidecarCancel" type="button">Cancel Sidecar Pull</button>
             <button id="sidecarResume" type="button">Resume Sidecar Pull</button>

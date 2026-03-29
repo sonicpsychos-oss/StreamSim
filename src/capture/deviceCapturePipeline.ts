@@ -17,6 +17,7 @@ export class DeviceCapturePipeline {
   private readonly micFrames: MicFrame[] = [];
   private readonly transcriptWindowMs = 30_000;
   private lastVisionSample: VisionSample | null = null;
+  private lastIntelligenceSample: Pick<StreamContext, "vibe" | "topic" | "intent" | "isCommand" | "intentScore"> | null = null;
   private micPaused = false;
 
   public setMicPaused(paused: boolean): void {
@@ -44,6 +45,16 @@ export class DeviceCapturePipeline {
     console.log("[DeviceCapturePipeline] Saved latest vision tags", { tags, capturedAt: this.lastVisionSample.capturedAt });
   }
 
+  public ingestIntelligenceSample(sample: Pick<StreamContext, "vibe" | "topic" | "intent" | "isCommand" | "intentScore">): void {
+    this.lastIntelligenceSample = {
+      vibe: sample.vibe,
+      topic: sample.topic,
+      intent: sample.intent,
+      isCommand: sample.isCommand,
+      intentScore: sample.intentScore
+    };
+  }
+
   public getContext(config: SimulationConfig): StreamContext {
     this.pruneOldMicFrames();
 
@@ -67,6 +78,11 @@ export class DeviceCapturePipeline {
       transcript,
       tone,
       visionTags,
+      vibe: this.lastIntelligenceSample?.vibe,
+      topic: this.lastIntelligenceSample?.topic,
+      intent: this.lastIntelligenceSample?.intent,
+      isCommand: this.lastIntelligenceSample?.isCommand,
+      intentScore: this.lastIntelligenceSample?.intentScore,
       recentChatHistory: [],
       timestamp: new Date(now).toISOString()
     };
@@ -75,6 +91,7 @@ export class DeviceCapturePipeline {
   public reset(): void {
     this.micFrames.length = 0;
     this.lastVisionSample = null;
+    this.lastIntelligenceSample = null;
   }
 
   public diagnostics(): { micPaused: boolean; bufferedFrames: number; hasVisionSample: boolean } {

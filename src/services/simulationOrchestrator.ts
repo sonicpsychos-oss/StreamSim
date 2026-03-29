@@ -12,6 +12,7 @@ import { SpoolingEngine } from "./spoolingEngine.js";
 import { MockInferenceProvider } from "../llm/mockInferenceProvider.js";
 import { IdentityManager } from "./identityManager.js";
 import { sharedDeviceCapturePipeline } from "../capture/deviceCapturePipeline.js";
+import { sharedTextToSpeechService } from "./tts/textToSpeechService.js";
 
 export class SimulationOrchestrator {
   private readonly spooler = new SpoolingEngine();
@@ -415,6 +416,12 @@ export class SimulationOrchestrator {
 
         safeMessages.forEach((msg) => {
           if (config.ttsEnabled && config.ttsMode !== "off" && msg.ttsText) {
+            void sharedTextToSpeechService
+              .synthesize(config, msg.ttsText)
+              .then((tts) => this.emitMeta({ tts: { provider: tts.provider, bytes: tts.bytes } }))
+              .catch((error) =>
+                this.emitMeta({ warnings: [`TTS synth failed: ${error instanceof Error ? error.message : String(error)}`], blocked: false })
+              );
             this.audioState.startTts();
             sharedSttEngine.pause();
             setTimeout(() => {
