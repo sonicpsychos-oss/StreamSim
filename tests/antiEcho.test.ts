@@ -97,8 +97,55 @@ describe("anti-echo constraint", () => {
       }
     ];
 
-    const diverse = (orchestrator as any).enforceDiversityRules(input);
+    const diverse = (orchestrator as any).enforceDiversityRules(input, ["default"]);
     expect(diverse[1].text).not.toBe("yes w audio fr");
     expect(diverse[3].text.toLowerCase()).not.toContain("lowkey");
+  });
+
+  it("detects streamer reading chat and pivots to chatter-response messages", () => {
+    const orchestrator = makeOrchestrator();
+    const input: ChatMessage[] = [
+      {
+        id: "1",
+        username: "user1",
+        text: "any reaction",
+        emotes: [],
+        donationCents: null,
+        ttsText: null,
+        createdAt: new Date().toISOString()
+      }
+    ];
+
+    const rewritten = (orchestrator as any).isReadingChat("bro that take is wild", ["bro that take is wild", "chat got him pressed"]);
+    expect(rewritten).toBe(true);
+    const reacted = (orchestrator as any).rewriteForReadingChat(input);
+    expect(reacted[0].text).toContain("chatter");
+  });
+
+  it("forces simp vs anti-simp contrast when thirst mode is active", () => {
+    const orchestrator = makeOrchestrator();
+    const input: ChatMessage[] = [
+      {
+        id: "1",
+        username: "user1",
+        text: "w",
+        emotes: [],
+        donationCents: null,
+        ttsText: null,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "2",
+        username: "user2",
+        text: "w",
+        emotes: [],
+        donationCents: null,
+        ttsText: null,
+        createdAt: new Date().toISOString()
+      }
+    ];
+    const diverse = (orchestrator as any).enforceDiversityRules(input, ["thirst"]);
+    expect(diverse[0].text).toContain("gyatt");
+    expect(diverse[1].text).toContain("simps");
   });
 });

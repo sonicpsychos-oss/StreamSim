@@ -67,6 +67,7 @@ export class DeviceCapturePipeline {
       transcript,
       tone,
       visionTags,
+      recentChatHistory: [],
       timestamp: new Date(now).toISOString()
     };
   }

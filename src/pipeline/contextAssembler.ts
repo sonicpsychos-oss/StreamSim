@@ -52,6 +52,7 @@ export class ContextAssembler {
       transcript,
       tone: calibrateToneSnapshot(toneFromTranscript(transcript)),
       visionTags: this.lastVisionTags,
+      recentChatHistory: [],
       timestamp: new Date().toISOString()
     };
   }

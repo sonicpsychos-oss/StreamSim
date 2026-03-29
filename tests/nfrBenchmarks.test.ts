@@ -7,7 +7,13 @@ import { defaultConfig } from "../src/config/runtimeConfig.js";
 describe("NFR measurement pass", () => {
   it("meets parser throughput + latency threshold", () => {
     const payload = JSON.stringify({
-      messages: Array.from({ length: 20 }, (_, i) => ({ username: `u${i}`, text: `hello ${i}`, emotes: [] }))
+      messages: Array.from({ length: 20 }, (_, i) => ({
+        username: `u${i}`,
+        text: `hello ${i}`,
+        emotes: [],
+        donationCents: null,
+        ttsText: null
+      }))
     });
 
     const runs = 200;

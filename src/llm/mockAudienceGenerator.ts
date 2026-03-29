@@ -47,7 +47,7 @@ function realisticDonation(
   conditioning: ProviderConditioning,
   context?: StreamContext
 ): { donationCents: number | null; ttsText: string | null } {
-  const safeContext = context ?? { transcript: "", tone, visionTags: [], timestamp: new Date().toISOString() };
+  const safeContext = context ?? { transcript: "", tone, visionTags: [], recentChatHistory: [], timestamp: new Date().toISOString() };
   const features = realismModel.extract(safeContext, config.persona);
   const engagement = engagementFromSignals(config, safeContext, conditioning);
   const effectiveRate = Math.min(0.85, config.donationFrequency * engagement * (0.42 + features.donationPropensity) * (0.7 + conditioning.expressiveness * 0.4));
@@ -74,7 +74,7 @@ export function generateAudienceBatch(config: SimulationConfig, tone: ToneSnapsh
     const energetic = tone.volumeRms > 0.45 || tone.paceWpm > 160;
     const text = energetic ? `${pick(pool)} !!!` : pick(pool);
 
-    const safeContext = context ?? { transcript: "", tone, visionTags: [], timestamp: new Date().toISOString() };
+    const safeContext = context ?? { transcript: "", tone, visionTags: [], recentChatHistory: [], timestamp: new Date().toISOString() };
     const features = realismModel.extract(safeContext, config.persona);
     const message: ChatMessage = {
       id: `${Date.now()}-${idx}-${Math.random().toString(16).slice(2)}`,

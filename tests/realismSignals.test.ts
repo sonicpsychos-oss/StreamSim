@@ -15,11 +15,11 @@ describe("realism signal extraction + calibration", () => {
   it("provides rolling excitement + donation propensity + persona-conditioned bias", () => {
     const model = new RealismSignalModel();
     const baseline = model.extract(
-      { transcript: "chat what should we do", tone: { volumeRms: 0.3, paceWpm: 110 }, visionTags: [], timestamp: new Date().toISOString() },
+      { transcript: "chat what should we do", tone: { volumeRms: 0.3, paceWpm: 110 }, visionTags: [], recentChatHistory: [], timestamp: new Date().toISOString() },
       "neutral"
     );
     const excited = model.extract(
-      { transcript: "CHAT LETS GO!!! clip that!!!", tone: { volumeRms: 0.8, paceWpm: 190 }, visionTags: ["keyboard", "lights"], timestamp: new Date().toISOString() },
+      { transcript: "CHAT LETS GO!!! clip that!!!", tone: { volumeRms: 0.8, paceWpm: 190 }, visionTags: ["keyboard", "lights"], recentChatHistory: [], timestamp: new Date().toISOString() },
       "supportive"
     );
 
