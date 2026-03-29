@@ -35,8 +35,8 @@ function checkDevice(config: SimulationConfig, hasCloudKey: boolean): ReadinessC
     errors.push("TTS enabled with zero retries may produce dropouts.");
   }
 
-  if (config.capture.useRealCapture && config.capture.sttProvider === "deepgram" && !process.env.STREAMSIM_DEEPGRAM_API_KEY) {
-    errors.push("Deepgram STT selected but STREAMSIM_DEEPGRAM_API_KEY is missing.");
+  if (config.capture.useRealCapture && config.capture.sttProvider === "deepgram" && !(process.env.DEEPGRAM_API_KEY ?? process.env.STREAMSIM_DEEPGRAM_API_KEY)) {
+    errors.push("Deepgram STT selected but DEEPGRAM_API_KEY is missing.");
   }
 
   if (

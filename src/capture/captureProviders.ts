@@ -1,6 +1,7 @@
 import { CaptureProvider, SimulationConfig, StreamContext } from "../core/types.js";
 import { ContextAssembler } from "../pipeline/contextAssembler.js";
 import { sharedDeviceCapturePipeline } from "./deviceCapturePipeline.js";
+import { mapDeepgramToIntelligence } from "../services/intelligence/deepgramIntelligence.js";
 
 interface JsonCaptureResponse {
   transcript?: string;
@@ -14,6 +15,9 @@ interface JsonCaptureResponse {
   objects?: string[];
   detections?: Array<{ label?: string; name?: string }>;
   results?: { channels?: Array<{ alternatives?: Array<{ transcript?: string }> }> };
+  sentiment?: { average?: number };
+  intents?: Array<{ intent?: string; confidence_score?: number }>;
+  topics?: Array<{ topic?: string }>;
 }
 
 function normalizeTranscript(payload: JsonCaptureResponse): string {
@@ -125,7 +129,18 @@ export class EndpointCaptureProvider implements CaptureProvider {
       sharedDeviceCapturePipeline.ingestVisionSample({ tags: visionTags });
     }
 
-    return this.fallback.getContext(config);
+    const baseContext = await this.fallback.getContext(config);
+    const intelligence = config.capture.sttProvider === "deepgram" ? mapDeepgramToIntelligence(sttData, config.audioIntelligence) : null;
+
+    if (!intelligence) return baseContext;
+    return {
+      ...baseContext,
+      vibe: intelligence.simulatedVibe,
+      topic: intelligence.topic,
+      intent: intelligence.intent,
+      isCommand: intelligence.isCommand,
+      intentScore: intelligence.intentScore
+    };
   }
 }
 

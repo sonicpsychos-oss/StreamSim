@@ -16,8 +16,8 @@ export const defaultConfig: SimulationConfig = {
     visionEnabled: true,
     visionIntervalSec: 25,
     useRealCapture: true,
-    sttEndpoint: "http://127.0.0.1:7778/stt",
-    sttProvider: "local-whisper",
+    sttEndpoint: process.env.STREAMSIM_DEEPGRAM_ENDPOINT ?? "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&filler_words=true&punctuate=true",
+    sttProvider: process.env.SIM_DEFAULT_STT === "deepgram_nova_2" ? "deepgram" : "local-whisper",
     visionEndpoint: "http://127.0.0.1:7778/vision-tags"
   },
   safety: {
@@ -41,6 +41,16 @@ export const defaultConfig: SimulationConfig = {
     sidecarLocalhostOnly: true,
     allowNonLocalSidecarOverride: false,
     allowDiagnostics: false
+  },
+  audioIntelligence: {
+    enabled: true,
+    sentiment: true,
+    intents: true,
+    topics: true,
+    thresholds: {
+      nuclearDrama: -0.9,
+      hypeVibe: 0.8
+    }
   }
 };
 
@@ -64,6 +74,8 @@ export function sanitizeConfig(input: unknown): SimulationConfig {
   const compliance = (candidate.compliance ?? {}) as Record<string, unknown>;
   const provider = (candidate.provider ?? {}) as Record<string, unknown>;
   const security = (candidate.security ?? {}) as Record<string, unknown>;
+  const audioIntelligence = (candidate.audioIntelligence ?? {}) as Record<string, unknown>;
+  const thresholds = (audioIntelligence.thresholds ?? {}) as Record<string, unknown>;
 
   const persona = candidate.persona;
   const bias = candidate.bias;
@@ -126,6 +138,16 @@ export function sanitizeConfig(input: unknown): SimulationConfig {
       sidecarLocalhostOnly: asBoolean(security.sidecarLocalhostOnly, defaultConfig.security.sidecarLocalhostOnly),
       allowNonLocalSidecarOverride: asBoolean(security.allowNonLocalSidecarOverride, defaultConfig.security.allowNonLocalSidecarOverride),
       allowDiagnostics: asBoolean(security.allowDiagnostics, defaultConfig.security.allowDiagnostics)
+    },
+    audioIntelligence: {
+      enabled: asBoolean(audioIntelligence.enabled, defaultConfig.audioIntelligence.enabled),
+      sentiment: asBoolean(audioIntelligence.sentiment, defaultConfig.audioIntelligence.sentiment),
+      intents: asBoolean(audioIntelligence.intents, defaultConfig.audioIntelligence.intents),
+      topics: asBoolean(audioIntelligence.topics, defaultConfig.audioIntelligence.topics),
+      thresholds: {
+        nuclearDrama: Math.max(-1, Math.min(1, asNumber(thresholds.nuclearDrama, defaultConfig.audioIntelligence.thresholds.nuclearDrama))),
+        hypeVibe: Math.max(-1, Math.min(1, asNumber(thresholds.hypeVibe, defaultConfig.audioIntelligence.thresholds.hypeVibe)))
+      }
     }
   };
 }
@@ -153,6 +175,16 @@ export function mergeConfig(current: SimulationConfig, patch: unknown): Simulati
     security: {
       ...current.security,
       ...((typeof patch === "object" && patch !== null ? (patch as Record<string, unknown>).security : {}) as Record<string, unknown>)
+    },
+    audioIntelligence: {
+      ...current.audioIntelligence,
+      ...((typeof patch === "object" && patch !== null ? (patch as Record<string, unknown>).audioIntelligence : {}) as Record<string, unknown>),
+      thresholds: {
+        ...current.audioIntelligence.thresholds,
+        ...((typeof patch === "object" && patch !== null
+          ? ((patch as Record<string, unknown>).audioIntelligence as Record<string, unknown> | undefined)?.thresholds
+          : {}) as Record<string, unknown>)
+      }
     }
   });
 }

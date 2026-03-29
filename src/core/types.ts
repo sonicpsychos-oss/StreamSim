@@ -2,6 +2,7 @@ export type PersonaMode = "supportive" | "trolls" | "meme-lords" | "neutral";
 export type BiasMode = "agree" | "disagree" | "split";
 export type InferenceMode = "mock-local" | "mock-cloud" | "ollama" | "lmstudio" | "openai" | "groq";
 export type TtsMode = "off" | "local" | "cloud";
+export type SimulatedVibe = "chill" | "nuclear_drama" | "hyped" | "questioning";
 
 export interface CaptureConfig {
   visionEnabled: boolean;
@@ -51,6 +52,17 @@ export interface SecurityConfig {
   allowDiagnostics: boolean;
 }
 
+export interface AudioIntelligenceConfig {
+  enabled: boolean;
+  sentiment: boolean;
+  intents: boolean;
+  topics: boolean;
+  thresholds: {
+    nuclearDrama: number;
+    hypeVibe: number;
+  };
+}
+
 export interface SimulationConfig {
   streamTopic: string;
   viewerCount: number;
@@ -68,6 +80,7 @@ export interface SimulationConfig {
   compliance: ComplianceConfig;
   provider: ProviderConfig;
   security: SecurityConfig;
+  audioIntelligence: AudioIntelligenceConfig;
 }
 
 export interface ToneSnapshot {
@@ -79,6 +92,11 @@ export interface StreamContext {
   transcript: string;
   tone: ToneSnapshot;
   visionTags: string[];
+  vibe?: SimulatedVibe;
+  topic?: string;
+  intent?: string;
+  isCommand?: boolean;
+  intentScore?: number;
   recentChatHistory: string[];
   timestamp: string;
 }

@@ -1,7 +1,7 @@
 import { SimulationConfig } from "../core/types.js";
 import { defaultConfig, sanitizeConfig } from "./runtimeConfig.js";
 
-export const CURRENT_CONFIG_SCHEMA_VERSION = 4;
+export const CURRENT_CONFIG_SCHEMA_VERSION = 5;
 
 interface PersistedEnvelope {
   schemaVersion?: unknown;
@@ -52,7 +52,11 @@ function migrateV3toV4(input: Record<string, unknown>): Record<string, unknown> 
 const migrationRegistry: Record<number, MigrationFn> = {
   1: migrateV1toV2,
   2: migrateV2toV3,
-  3: migrateV3toV4
+  3: migrateV3toV4,
+  4: (input) => ({
+    ...input,
+    audioIntelligence: typeof input.audioIntelligence === "object" && input.audioIntelligence !== null ? input.audioIntelligence : defaultConfig.audioIntelligence
+  })
 };
 
 function normalizeVersion(version: unknown): number {

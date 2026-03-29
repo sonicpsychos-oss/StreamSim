@@ -256,7 +256,7 @@ app.get("/api/status", (_req, res) => {
     stt: {
       configuredProvider: config.capture.sttProvider,
       engineProvider: sharedSttEngine.state().provider,
-      deepgramKeyPresent: Boolean(process.env.STREAMSIM_DEEPGRAM_API_KEY),
+      deepgramKeyPresent: Boolean(process.env.DEEPGRAM_API_KEY ?? process.env.STREAMSIM_DEEPGRAM_API_KEY),
       cloudKeyPresent: secretStore.diagnostics().hasCloudKey,
       endpoint: config.capture.sttEndpoint,
       localConfigured: config.capture.sttProvider === "local-whisper",
