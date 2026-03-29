@@ -192,7 +192,7 @@ describe("anti-echo constraint", () => {
     expect(diverse[1].text.toLowerCase()).not.toBe("mic check passed");
   });
 
-  it("applies transcript decay after the same transcript is seen three times", () => {
+  it("keeps transcript context stable even after repeated identical lines", () => {
     const orchestrator = makeOrchestrator();
     const baseContext = {
       transcript: "same line from streamer",
@@ -210,6 +210,6 @@ describe("anti-echo constraint", () => {
     expect(first.transcript).toBe("same line from streamer");
     expect(second.transcript).toBe("same line from streamer");
     expect(third.transcript).toBe("same line from streamer");
-    expect(fourth.transcript).toBe("");
+    expect(fourth.transcript).toBe("same line from streamer");
   });
 });

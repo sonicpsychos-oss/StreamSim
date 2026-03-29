@@ -37,6 +37,7 @@ export class SimulationOrchestrator {
     (meta) => this.emitMeta(meta)
   );
   private readonly transcriptSeenCounter = new Map<string, { count: number; lastSeenAt: number }>();
+  private lastNonEmptyTranscript = "";
   private recentChatHistory: string[] = [];
   private aiStatus: {
     state: "idle" | "running" | "degraded" | "error";
@@ -86,6 +87,7 @@ export class SimulationOrchestrator {
     sharedSttEngine.resume();
     sharedDeviceCapturePipeline.reset();
     this.transcriptSeenCounter.clear();
+    this.lastNonEmptyTranscript = "";
   }
 
   public cancelSidecarPull(): void {
@@ -309,7 +311,14 @@ export class SimulationOrchestrator {
 
   private applyTranscriptDecay(context: PromptPayload["context"]): PromptPayload["context"] {
     const normalized = context.transcript.trim().toLowerCase();
-    if (!normalized) return context;
+    if (!normalized) {
+      if (!this.lastNonEmptyTranscript) return context;
+      return {
+        ...context,
+        transcript: this.lastNonEmptyTranscript
+      };
+    }
+    this.lastNonEmptyTranscript = context.transcript.trim();
 
     const now = Date.now();
     for (const [key, value] of this.transcriptSeenCounter.entries()) {
@@ -322,7 +331,10 @@ export class SimulationOrchestrator {
     const seenCount = existing?.count ?? 0;
     this.transcriptSeenCounter.set(normalized, { count: seenCount + 1, lastSeenAt: now });
     if (seenCount >= 3) {
-      return { ...context, transcript: "" };
+      return {
+        ...context,
+        transcript: this.lastNonEmptyTranscript
+      };
     }
     return context;
   }

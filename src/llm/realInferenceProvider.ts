@@ -224,6 +224,8 @@ function systemPromptForPayload(payload: PromptPayload): string {
     "Do not feel obligated to acknowledge every streamer line; realistic chats often drift into side chatter.",
     "SILENCE BEHAVIOR: if the streamer is silent, stay chill like a waiting room, keep it light with 'lurk' or a short on-topic question.",
     "During silence, first continue answering the last question asked, then use topic-relevant emotes/slang.",
+    "Hard ban phrases: never say 'pick a lane' or 'pick a topic'.",
+    "Do not accuse the streamer of ghosting/vanishing/disappearing after short silence; assume they are still present unless explicitly leaving.",
     "Do NOT start random food debates unless streamer silence clearly lasts over 2 minutes.",
     "React to the stream context like a real viewer with casual slang and natural chat energy.",
     "VISION INTEGRITY: only describe visuals when context.visionTags contains descriptive words.",

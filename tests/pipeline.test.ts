@@ -74,6 +74,22 @@ describe("output parser", () => {
     );
     expect(result[0].text).toBe("we hear u we got you yes");
   });
+
+  it("sanitizes repetitive lane/topic phrasing and ghosting language", () => {
+    const result = parseInferenceOutput(
+      '{"messages":[{"text":"pick a lane you ghosted","emotes":[],"donationCents":null,"ttsText":null},{"text":"pick a topic you vanished","emotes":[],"donationCents":null,"ttsText":null}]}'
+    );
+    expect(result[0].text).toBe("switch it up you still here");
+    expect(result[1].text).toBe("switch it up still here");
+  });
+
+  it("drops fully empty messages from parsed output", () => {
+    expect(() =>
+      parseInferenceOutput(
+        '{"messages":[{"text":"","emotes":[],"donationCents":null,"ttsText":null},{"text":"ok","emotes":[],"donationCents":null,"ttsText":null}]}'
+      )
+    ).toThrow(/Expected at least 2 valid messages/);
+  });
 });
 
 
