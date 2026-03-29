@@ -219,6 +219,11 @@ pre { margin-top: 12px; background: #0c0e14; border: 1px solid #293145; border-r
   margin-top: 8px;
 }
 
+#visionHealthSummary {
+  min-height: 82px;
+  margin-top: 8px;
+}
+
 .caption-preview {
   min-height: 56px;
   margin-bottom: 8px;

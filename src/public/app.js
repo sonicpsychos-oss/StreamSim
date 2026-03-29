@@ -9,6 +9,7 @@ const aiHealthSummary = document.getElementById("aiHealthSummary");
 const aiActiveModelLabel = document.getElementById("aiActiveModelLabel");
 const ttsHealthSummary = document.getElementById("ttsHealthSummary");
 const sttHealthSummary = document.getElementById("sttHealthSummary");
+const visionHealthSummary = document.getElementById("visionHealthSummary");
 const liveMonitorEnabled = document.getElementById("liveMonitorEnabled");
 const liveMonitorStatus = document.getElementById("liveMonitorStatus");
 const liveVideo = document.getElementById("liveVideo");
@@ -662,6 +663,46 @@ function summarizeSttHealth(payload) {
   ].join("\n");
 }
 
+function summarizeVisionHealth(payload) {
+  if (!visionHealthSummary) return;
+  const capture = payload.config?.capture ?? {};
+  const enabled = Boolean(capture.visionEnabled);
+  const provider = capture.visionProvider ?? "local";
+  const useRealCapture = Boolean(capture.useRealCapture);
+  const endpoint = capture.visionEndpoint ?? "n/a";
+  const hasVisionSample = Boolean(payload.privacy?.captureBuffer?.hasVisionSample);
+  const hasCloudKey = Boolean(payload.secrets?.hasCloudKey);
+
+  let ready = true;
+  let detail = "ready";
+  if (!enabled) {
+    detail = "vision capture disabled";
+  } else if (!useRealCapture) {
+    detail = "simulated capture mode (real vision polling optional)";
+  } else if (!endpoint.startsWith("http")) {
+    ready = false;
+    detail = "Vision endpoint must be a valid URL";
+  } else if (provider === "openai" && !hasCloudKey) {
+    ready = false;
+    detail = "OpenAI vision selected but no cloud API key is stored";
+  }
+
+  const sampleStatus = enabled
+    ? hasVisionSample
+      ? "latest sample present"
+      : "waiting for first sample"
+    : "not collecting";
+
+  visionHealthSummary.textContent = [
+    `Vision enabled: ${enabled ? "yes" : "no"}`,
+    `Vision provider: ${provider}`,
+    `Capture mode: ${useRealCapture ? "real" : "simulated"}`,
+    `Vision ready: ${ready ? "yes" : "no"}`,
+    `Sample state: ${sampleStatus}`,
+    `Detail: ${detail}`
+  ].join("\n");
+}
+
 function renderDeviceChecks(result) {
   deviceChecks.innerHTML = "";
   const cameraPermissionDetail = result.cameraPermission
@@ -971,6 +1012,7 @@ async function refreshStatus() {
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
   summarizeSttHealth(payload);
+  summarizeVisionHealth(payload);
   return payload;
 }
 
@@ -1081,6 +1123,7 @@ completeWizardBtn.addEventListener("click", async () => {
   summarizeAiHealth(status);
   summarizeTtsHealth(status);
   summarizeSttHealth(status);
+  summarizeVisionHealth(status);
 });
 
 
@@ -1177,6 +1220,7 @@ async function boot() {
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
   summarizeSttHealth(payload);
+  summarizeVisionHealth(payload);
   latestDeviceVerification = { micPermission: false, cameraPermission: false, hasMicDevice: false, hasCameraDevice: false, cameraPermissionState: "unknown", cameraFailureReason: null };
   if (liveMonitorEnabled) {
     liveMonitorEnabled.checked = false;
