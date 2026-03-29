@@ -41,16 +41,19 @@ class WhisperCppBackend implements SttBackend {
 }
 
 class DeepgramBackend implements SttBackend {
+  private readonly secretStore = new SecretStore();
+
   constructor(private readonly endpoint: string, private readonly apiKey: string | undefined) {}
 
   public async transcribe(frame: Buffer): Promise<string> {
-    if (!this.apiKey) throw new Error("Deepgram API key missing.");
+    const token = this.apiKey ?? this.secretStore.getDeepgramApiKey();
+    if (!token) throw new Error("Deepgram API key missing.");
     let response: Response;
     try {
       response = await fetch(this.endpoint, {
         method: "POST",
         headers: {
-          Authorization: `Token ${this.apiKey}`,
+          Authorization: `Token ${token}`,
           "Content-Type": "audio/wav"
         },
         body: new Uint8Array(frame),

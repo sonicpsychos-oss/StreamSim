@@ -10,7 +10,8 @@ export const defaultConfig: SimulationConfig = {
   bias: "split",
   donationFrequency: 0.08,
   ttsEnabled: true,
-  ttsMode: "local",
+  ttsMode: process.env.SIM_DEFAULT_TTS === "deepgram_aura" ? "cloud" : "local",
+  ttsProvider: process.env.SIM_DEFAULT_TTS === "deepgram_aura" ? "deepgram_aura" : "local",
   inferenceMode: "openai",
   capture: {
     visionEnabled: true,
@@ -92,6 +93,10 @@ export function sanitizeConfig(input: unknown): SimulationConfig {
     donationFrequency: Math.max(0, Math.min(1, asNumber(candidate.donationFrequency, defaultConfig.donationFrequency))),
     ttsEnabled: asBoolean(candidate.ttsEnabled, defaultConfig.ttsEnabled),
     ttsMode: candidate.ttsMode === "off" || candidate.ttsMode === "local" || candidate.ttsMode === "cloud" ? candidate.ttsMode : defaultConfig.ttsMode,
+    ttsProvider:
+      candidate.ttsProvider === "local" || candidate.ttsProvider === "openai" || candidate.ttsProvider === "deepgram_aura"
+        ? candidate.ttsProvider
+        : defaultConfig.ttsProvider,
     inferenceMode:
       inferenceMode === "mock-local" ||
       inferenceMode === "mock-cloud" ||

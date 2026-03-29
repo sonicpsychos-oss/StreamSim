@@ -47,7 +47,7 @@ const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
 const STT_DEFAULT_ENDPOINTS = {
   "local-whisper": "http://127.0.0.1:7778/stt",
   whispercpp: "http://127.0.0.1:7778/stt",
-  deepgram: "https://api.deepgram.com/v1/listen?model=nova-2&punctuate=true",
+  deepgram: "https://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true&filler_words=true&punctuate=true",
   "openai-whisper": "https://api.openai.com/v1/audio/transcriptions",
   "gpt-4o-mini-transcribe": "https://api.openai.com/v1/audio/transcriptions",
   mock: "http://127.0.0.1:7778/stt"
@@ -68,16 +68,19 @@ const controls = {
   maxRetries: document.getElementById("maxRetries"),
   dropPolicy: document.getElementById("dropPolicy"),
   cloudApiKey: document.getElementById("cloudApiKey"),
+  deepgramApiKey: document.getElementById("deepgramApiKey"),
   slowMode: document.getElementById("slowMode"),
   emoteOnly: document.getElementById("emoteOnly"),
   ttsEnabled: document.getElementById("ttsEnabled"),
   ttsMode: document.getElementById("ttsMode"),
+  ttsProvider: document.getElementById("ttsProvider"),
   visionEnabled: document.getElementById("visionEnabled"),
   useRealCapture: document.getElementById("useRealCapture"),
   visionIntervalSec: document.getElementById("visionIntervalSec"),
   sttProvider: document.getElementById("sttProvider"),
   sttEndpoint: document.getElementById("sttEndpoint"),
   visionEndpoint: document.getElementById("visionEndpoint"),
+  audioIntelligenceEnabled: document.getElementById("audioIntelligenceEnabled"),
   allowDiagnostics: document.getElementById("allowDiagnostics"),
   allowNonLocalSidecarOverride: document.getElementById("allowNonLocalSidecarOverride"),
   overrideReason: document.getElementById("overrideReason"),
@@ -436,6 +439,7 @@ function getPayload() {
     emoteOnly: controls.emoteOnly.checked,
     ttsEnabled: controls.ttsEnabled.checked,
     ttsMode: controls.ttsMode.value,
+    ttsProvider: controls.ttsProvider.value,
     capture: {
       visionEnabled: controls.visionEnabled.checked,
       useRealCapture: controls.useRealCapture.checked,
@@ -443,6 +447,9 @@ function getPayload() {
       sttProvider: controls.sttProvider.value,
       sttEndpoint: controls.sttEndpoint.value,
       visionEndpoint: controls.visionEndpoint.value
+    },
+    audioIntelligence: {
+      enabled: controls.audioIntelligenceEnabled.checked
     },
     provider: {
       localEndpoint: controls.localEndpoint.value,
@@ -483,12 +490,14 @@ function hydrateControls(config) {
   controls.emoteOnly.checked = config.emoteOnly;
   controls.ttsEnabled.checked = config.ttsEnabled;
   controls.ttsMode.value = config.ttsMode ?? "local";
+  controls.ttsProvider.value = config.ttsProvider ?? "local";
   controls.visionEnabled.checked = config.capture.visionEnabled;
   controls.useRealCapture.checked = config.capture.useRealCapture;
   controls.visionIntervalSec.value = config.capture.visionIntervalSec;
   controls.sttProvider.value = config.capture.sttProvider ?? "local-whisper";
   controls.sttEndpoint.value = config.capture.sttEndpoint || STT_DEFAULT_ENDPOINTS[controls.sttProvider.value] || STT_DEFAULT_ENDPOINTS["local-whisper"];
   controls.visionEndpoint.value = config.capture.visionEndpoint;
+  controls.audioIntelligenceEnabled.checked = Boolean(config.audioIntelligence?.enabled);
   controls.allowDiagnostics.checked = config.security.allowDiagnostics;
   controls.allowNonLocalSidecarOverride.checked = config.security.allowNonLocalSidecarOverride;
   controls.eulaAccepted.checked = config.compliance.eulaAccepted;
@@ -806,6 +815,7 @@ const sidecarCancelBtn = document.getElementById("sidecarCancel");
 const sidecarResumeBtn = document.getElementById("sidecarResume");
 const runReadinessBtn = document.getElementById("runReadiness");
 const saveCloudKeyBtn = document.getElementById("saveCloudKey");
+const saveDeepgramKeyBtn = document.getElementById("saveDeepgramKey");
 const refreshStatusBtn = document.getElementById("refreshStatus");
 const verifyMicBtn = document.getElementById("verifyMic");
 const verifyCameraBtn = document.getElementById("verifyCamera");
@@ -849,11 +859,18 @@ startBtn.addEventListener("click", async () => {
       if (cloudMode && !hasCloudKey) {
         throw new Error("Cloud inference selected but no API key is stored. Save a Cloud API key before starting.");
       }
-      if (controls.ttsEnabled.checked && controls.ttsMode.value === "cloud" && !hasCloudKey) {
-        throw new Error("Cloud TTS selected but no API key is stored. Save a Cloud API key or switch TTS path to local.");
+      if (controls.ttsEnabled.checked && controls.ttsMode.value === "cloud" && controls.ttsProvider.value === "openai" && !hasCloudKey) {
+        throw new Error("OpenAI TTS selected but no Cloud API key is stored. Save a Cloud API key or switch TTS provider.");
       }
       if (cloudStt && !hasCloudKey) {
         throw new Error("Cloud OpenAI STT selected but no API key is stored. Save a Cloud API key or switch STT provider.");
+      }
+      const hasDeepgramKey = Boolean(latestStatusPayload?.secrets?.hasDeepgramKey || latestStatusPayload?.stt?.deepgramKeyPresent);
+      if (controls.sttProvider.value === "deepgram" && !hasDeepgramKey) {
+        throw new Error("Deepgram STT selected but no Deepgram API key is stored.");
+      }
+      if (controls.ttsEnabled.checked && controls.ttsMode.value === "cloud" && controls.ttsProvider.value === "deepgram_aura" && !hasDeepgramKey) {
+        throw new Error("Deepgram Aura TTS selected but no Deepgram API key is stored.");
       }
       return post("/api/start");
     }
@@ -922,6 +939,16 @@ saveCloudKeyBtn.addEventListener("click", async () => {
     onRun: () => post("/api/secrets/cloud-key", { key: controls.cloudApiKey.value })
   });
   controls.cloudApiKey.value = "";
+});
+
+saveDeepgramKeyBtn.addEventListener("click", async () => {
+  await runAction({
+    button: saveDeepgramKeyBtn,
+    pendingText: "Saving Deepgram API key...",
+    successText: "Deepgram API key saved to keychain.",
+    onRun: () => post("/api/secrets/deepgram-key", { key: controls.deepgramApiKey.value })
+  });
+  controls.deepgramApiKey.value = "";
 });
 
 refreshStatusBtn.addEventListener("click", async () => {

@@ -162,6 +162,9 @@ function systemPromptForPayload(payload: PromptPayload): string {
     : "Vision state: context.visionTags is empty, so you are BLIND right now. Do not invent visuals; if asked visual questions, clearly say the cam/feed is not visible.";
   const situationalTags = payload.situationalTags.length ? payload.situationalTags.join(", ") : "none";
   const behavioralModes = payload.behavioralModes.length ? payload.behavioralModes.join(", ") : "default";
+  const vibeDirective = payload.context.vibe
+    ? `Audio intelligence: current vibe is "${payload.context.vibe}", topic "${payload.context.topic ?? "general"}", intent "${payload.context.intent ?? "none"}", command=${Boolean(payload.context.isCommand)}.`
+    : "Audio intelligence: unavailable for this tick.";
 
   return [
     // Primacy zone: engine rules
@@ -176,6 +179,7 @@ function systemPromptForPayload(payload: PromptPayload): string {
     transcriptDirective,
     questionDirective,
     visionDirective,
+    vibeDirective,
     `Situational tags detected by orchestrator metadata: ${situationalTags}`,
     `Behavioral modes selected by orchestrator: ${behavioralModes}`,
     "Mode map: baddie/curvy/model=>thirst ('gyatt','whats the @?','respectfully 😳'); expensive_item/flex=>flex mode ('W flex','bro is rich','loaner car lol'); player_death=>respect mode ('F','L timing','trash aim'); funny/laughing=>laughter mode (mostly emotes like '😭','💀','LUL','KEKW'); disrespect/sassy=>drama mode ('O MA','oop','TEA','GOTTEM'); sarcastic=>cap mode ('cap','biggest lie ever','sure buddy')",
@@ -251,6 +255,11 @@ function buildModelFacingPayload(payload: PromptPayload): Record<string, unknown
         pace: describePace(payload.context.tone.paceWpm)
       },
       visionTags: payload.context.visionTags,
+      vibe: payload.context.vibe ?? "chill",
+      topic: payload.context.topic ?? "general",
+      intent: payload.context.intent ?? "none",
+      isCommand: Boolean(payload.context.isCommand),
+      intentScore: payload.context.intentScore ?? 0,
       recentChatHistory: payload.context.recentChatHistory,
       timestamp: payload.context.timestamp
     },

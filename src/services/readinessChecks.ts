@@ -22,7 +22,7 @@ async function checkNetwork(config: SimulationConfig): Promise<ReadinessCheck> {
   }
 }
 
-function checkDevice(config: SimulationConfig, hasCloudKey: boolean): ReadinessCheck {
+function checkDevice(config: SimulationConfig, credentials: { hasCloudKey: boolean; hasDeepgramKey: boolean }): ReadinessCheck {
   const errors: string[] = [];
   try {
     new URL(config.capture.sttEndpoint);
@@ -35,14 +35,14 @@ function checkDevice(config: SimulationConfig, hasCloudKey: boolean): ReadinessC
     errors.push("TTS enabled with zero retries may produce dropouts.");
   }
 
-  if (config.capture.useRealCapture && config.capture.sttProvider === "deepgram" && !(process.env.DEEPGRAM_API_KEY ?? process.env.STREAMSIM_DEEPGRAM_API_KEY)) {
+  if (config.capture.useRealCapture && config.capture.sttProvider === "deepgram" && !credentials.hasDeepgramKey) {
     errors.push("Deepgram STT selected but DEEPGRAM_API_KEY is missing.");
   }
 
   if (
     config.capture.useRealCapture &&
     (config.capture.sttProvider === "openai-whisper" || config.capture.sttProvider === "gpt-4o-mini-transcribe") &&
-    !hasCloudKey
+    !credentials.hasCloudKey
   ) {
     errors.push("Cloud OpenAI STT selected but no cloud API key is stored.");
   }
@@ -70,11 +70,12 @@ function checkDevice(config: SimulationConfig, hasCloudKey: boolean): ReadinessC
   };
 }
 
-function checkCredentials(config: SimulationConfig, hasCloudKey: boolean): ReadinessCheck {
+function checkCredentials(config: SimulationConfig, credentials: { hasCloudKey: boolean; hasDeepgramKey: boolean }): ReadinessCheck {
   const cloudInference = config.inferenceMode === "openai" || config.inferenceMode === "groq" || config.inferenceMode === "mock-cloud";
-  const cloudTts = config.ttsEnabled && config.ttsMode === "cloud";
+  const cloudTts = config.ttsEnabled && config.ttsMode === "cloud" && config.ttsProvider === "openai";
+  const deepgramTts = config.ttsEnabled && config.ttsMode === "cloud" && config.ttsProvider === "deepgram_aura";
 
-  if ((cloudInference || cloudTts) && !hasCloudKey) {
+  if ((cloudInference || cloudTts) && !credentials.hasCloudKey) {
     return {
       id: "credentials",
       ok: false,
@@ -82,12 +83,20 @@ function checkCredentials(config: SimulationConfig, hasCloudKey: boolean): Readi
       message: "Cloud mode selected without a stored API key. Save a cloud key or switch to local mode."
     };
   }
+  if ((config.capture.sttProvider === "deepgram" || deepgramTts) && !credentials.hasDeepgramKey) {
+    return {
+      id: "credentials",
+      ok: false,
+      severity: "blocking",
+      message: "Deepgram mode selected without a stored Deepgram key. Save DEEPGRAM_API_KEY in Secrets."
+    };
+  }
 
   return {
     id: "credentials",
     ok: true,
     severity: "warning",
-    message: cloudInference || cloudTts ? "Cloud credentials ready." : "Local-only mode selected; cloud key not required."
+    message: cloudInference || cloudTts || deepgramTts ? "Provider credentials ready." : "Local-only mode selected; cloud key not required."
   };
 }
 
@@ -105,8 +114,12 @@ async function checkSidecar(config: SimulationConfig, sidecar: SidecarManager): 
   };
 }
 
-export async function runReadinessChecks(config: SimulationConfig, sidecar = new SidecarManager(), hasCloudKey = false): Promise<{ checks: ReadinessCheck[]; ready: boolean }> {
-  const checks = [checkDevice(config, hasCloudKey), checkCredentials(config, hasCloudKey), await checkNetwork(config), await checkSidecar(config, sidecar)];
+export async function runReadinessChecks(
+  config: SimulationConfig,
+  sidecar = new SidecarManager(),
+  credentials = { hasCloudKey: false, hasDeepgramKey: false }
+): Promise<{ checks: ReadinessCheck[]; ready: boolean }> {
+  const checks = [checkDevice(config, credentials), checkCredentials(config, credentials), await checkNetwork(config), await checkSidecar(config, sidecar)];
   const ready = checks.filter((check) => check.severity === "blocking").every((check) => check.ok);
   return { checks, ready };
 }

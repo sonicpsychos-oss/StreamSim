@@ -133,6 +133,13 @@ export class EndpointCaptureProvider implements CaptureProvider {
     const intelligence = config.capture.sttProvider === "deepgram" ? mapDeepgramToIntelligence(sttData, config.audioIntelligence) : null;
 
     if (!intelligence) return baseContext;
+    sharedDeviceCapturePipeline.ingestIntelligenceSample({
+      vibe: intelligence.simulatedVibe,
+      topic: intelligence.topic,
+      intent: intelligence.intent,
+      isCommand: intelligence.isCommand,
+      intentScore: intelligence.intentScore
+    });
     return {
       ...baseContext,
       vibe: intelligence.simulatedVibe,

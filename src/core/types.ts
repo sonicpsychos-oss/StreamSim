@@ -2,6 +2,7 @@ export type PersonaMode = "supportive" | "trolls" | "meme-lords" | "neutral";
 export type BiasMode = "agree" | "disagree" | "split";
 export type InferenceMode = "mock-local" | "mock-cloud" | "ollama" | "lmstudio" | "openai" | "groq";
 export type TtsMode = "off" | "local" | "cloud";
+export type TtsProvider = "local" | "openai" | "deepgram_aura";
 export type SimulatedVibe = "chill" | "nuclear_drama" | "hyped" | "questioning";
 
 export interface CaptureConfig {
@@ -74,6 +75,7 @@ export interface SimulationConfig {
   donationFrequency: number;
   ttsEnabled: boolean;
   ttsMode: TtsMode;
+  ttsProvider: TtsProvider;
   inferenceMode: InferenceMode;
   capture: CaptureConfig;
   safety: SafetyConfig;

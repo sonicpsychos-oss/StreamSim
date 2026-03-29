@@ -1,7 +1,7 @@
 import { SimulationConfig } from "../core/types.js";
 import { defaultConfig, sanitizeConfig } from "./runtimeConfig.js";
 
-export const CURRENT_CONFIG_SCHEMA_VERSION = 5;
+export const CURRENT_CONFIG_SCHEMA_VERSION = 6;
 
 interface PersistedEnvelope {
   schemaVersion?: unknown;
@@ -56,6 +56,13 @@ const migrationRegistry: Record<number, MigrationFn> = {
   4: (input) => ({
     ...input,
     audioIntelligence: typeof input.audioIntelligence === "object" && input.audioIntelligence !== null ? input.audioIntelligence : defaultConfig.audioIntelligence
+  }),
+  5: (input) => ({
+    ...input,
+    ttsProvider:
+      input.ttsProvider === "local" || input.ttsProvider === "openai" || input.ttsProvider === "deepgram_aura"
+        ? input.ttsProvider
+        : defaultConfig.ttsProvider
   })
 };
 
