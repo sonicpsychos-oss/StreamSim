@@ -423,13 +423,11 @@ export class HybridInferenceProvider implements InferenceProvider {
         model: string;
         messages: Array<{ role: "system" | "user"; content: string }>;
         response_format?: ReturnType<typeof openAiResponseSchema>;
-        max_tokens: number;
         max_completion_tokens: number;
       } = {
         model,
         messages,
-        max_tokens: 12,
-        max_completion_tokens: 15
+        max_completion_tokens: 35
       };
       if (this.mode === "openai") {
         body.response_format = openAiResponseSchema(payload.requestedMessageCount);
