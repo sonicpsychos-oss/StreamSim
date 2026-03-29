@@ -65,7 +65,7 @@ function realisticDonation(
 }
 
 export function generateAudienceBatch(config: SimulationConfig, tone: ToneSnapshot, context?: StreamContext, providerConditioning?: ProviderConditioning): ChatMessage[] {
-  const count = Math.max(1, Math.min(8, Math.floor(Math.sqrt(config.viewerCount) / 15) + 1));
+  const count = Math.max(2, Math.min(8, Math.floor(Math.sqrt(config.viewerCount) / 15) + 1));
   const pool = personaPool(config.persona);
   const personaCalibration = resolvePersonaCalibration(config.persona);
   const conditioning = providerConditioning ?? providerConditioningForMode(config.inferenceMode);

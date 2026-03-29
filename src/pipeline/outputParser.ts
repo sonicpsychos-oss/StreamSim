@@ -104,7 +104,7 @@ export function classifyMalformedOutput(raw: string): MalformedOutputClass {
   if (!Array.isArray(data.messages)) return "missing_messages";
 
   const parsed = data.messages.map(coerceMessage).filter((message): message is ChatMessage => Boolean(message));
-  if (!parsed.length) return "invalid_message_schema";
+  if (parsed.length < 2) return "invalid_message_schema";
 
   return "json_syntax";
 }
@@ -138,7 +138,7 @@ export function parseInferenceOutput(raw: string): ChatMessage[] {
   if (!Array.isArray(data.messages)) throw new Error("Invalid output: messages array missing");
 
   const parsed = data.messages.map(coerceMessage).filter((message): message is ChatMessage => Boolean(message));
-  if (!parsed.length) throw new Error("No valid messages in output");
+  if (parsed.length < 2) throw new Error("Expected at least 2 valid messages in output");
 
   return parsed;
 }
