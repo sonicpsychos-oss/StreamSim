@@ -48,7 +48,7 @@ export class DeviceCapturePipeline {
     this.pruneOldMicFrames();
 
     const transcript = this.micFrames
-      .filter((frame) => Date.now() - frame.capturedAt <= 10_000)
+      .filter((frame) => Date.now() - frame.capturedAt <= this.transcriptWindowMs)
       .map((frame) => frame.transcriptChunk)
       .filter(Boolean)
       .join(" ")

@@ -52,6 +52,7 @@ export interface SecurityConfig {
 }
 
 export interface SimulationConfig {
+  streamTopic: string;
   viewerCount: number;
   engagementMultiplier: number;
   slowMode: boolean;
@@ -86,6 +87,7 @@ export interface PromptPayload {
   bias: BiasMode;
   emoteOnly: boolean;
   viewerCount: number;
+  streamTopic?: string;
   context: StreamContext;
   requestedMessageCount: number;
   personaCalibration: PersonaCalibration;

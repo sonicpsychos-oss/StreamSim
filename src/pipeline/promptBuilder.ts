@@ -9,6 +9,7 @@ export function buildPromptPayload(config: SimulationConfig, context: StreamCont
     bias: config.bias,
     emoteOnly: config.emoteOnly,
     viewerCount: config.viewerCount,
+    streamTopic: config.streamTopic,
     context,
     requestedMessageCount,
     personaCalibration: resolvePersonaCalibration(config.persona),
