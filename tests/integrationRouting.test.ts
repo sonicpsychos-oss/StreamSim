@@ -358,8 +358,9 @@ describe("hybrid routing and failover", () => {
         const systemPrompt = parsed.messages[0]?.content as string;
         const userPayload = JSON.parse(parsed.messages[1]?.content as string);
 
-        expect(systemPrompt).toMatch(/react directly to the streamer's latest words/i);
+        expect(systemPrompt).toMatch(/react directly to the streamer's words/i);
         expect(systemPrompt).toMatch(/Prioritize the most recent ~10 seconds/i);
+        expect(systemPrompt).toMatch(/Current Stream Topic:/i);
         expect(systemPrompt).toMatch(/Do not output generic filler/i);
         expect(systemPrompt).toMatch(/60%\+ of messages must be under 5 words/i);
         expect(systemPrompt).toMatch(/drop F in the chat|drop \[X\]|spam \[X\]|type \[X\]/i);
@@ -401,7 +402,7 @@ describe("hybrid routing and failover", () => {
         const systemPrompt = parsed.messages[0]?.content as string;
         const userPayload = JSON.parse(parsed.messages[1]?.content as string);
 
-        expect(systemPrompt).toMatch(/small talk/i);
+        expect(systemPrompt).toMatch(/streamer is currently silent/i);
         expect(systemPrompt).toMatch(/never mention RMS, WPM, telemetry/i);
         expect(userPayload.context.transcriptAvailable).toBe(false);
         expect(userPayload.context.tone.energy).toBe("high");

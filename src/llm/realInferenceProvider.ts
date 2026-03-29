@@ -150,9 +150,10 @@ function systemPromptForPayload(payload: PromptPayload): string {
   const transcriptTail = rawTranscriptTail.includes(" ")
     ? rawTranscriptTail.slice(rawTranscriptTail.indexOf(" ") + 1)
     : rawTranscriptTail;
+  const streamTopic = String(payload.streamTopic ?? "").trim() || "Just Chatting";
   const transcriptDirective = transcript
-    ? `Highest priority: react directly to the streamer's latest words from context.transcript ("${transcriptTail}"). Prioritize the most recent ~10 seconds (the tail end of context.transcript) as the primary signal, and use earlier transcript lines only as background context.`
-    : "No transcript text is available right now. Fall back to persona-led small talk and channel chatter topics without claiming missing feeds or missing tags. IDLE BEHAVIOR: do NOT spam that the stream is mid/boring/sleepy; instead start a random debate (pineapple on pizza, tacos vs burgers), ask streamer personal preference questions, or chat with other viewers naturally.";
+    ? `Highest priority: react directly to the streamer's words: "${transcriptTail}". Prioritize the most recent ~10 seconds (the tail end of context.transcript) as the primary signal, and use earlier transcript lines only as background context.`
+    : "The streamer is currently silent (waiting for chat, focused, or taking a breath). This is a lull, not a reset. DO NOT change the subject. Continue the vibe of the previous conversation. If the streamer just asked a question, KEEP ANSWERING IT. If nothing was recently asked, react with emotes, slang, 'W', or 'Lurk'.";
   const questionDirective = transcript && /\?/.test(transcript)
     ? "The transcript includes a question; at least one message must directly answer or acknowledge that question."
     : "If no question is present in the transcript, avoid inventing one.";
@@ -169,6 +170,7 @@ function systemPromptForPayload(payload: PromptPayload): string {
     "Few-shot command examples: streamer 'drop F in the chat' => chat 'F'; streamer 'drop 1s if ready' => chat '1'; streamer 'type 7' => chat '7'.",
 
     // Context zone: current reality
+    `Current Stream Topic: ${streamTopic}. Stay on this topic even if the streamer is quiet.`,
     transcriptDirective,
     questionDirective,
     visionDirective,
@@ -189,6 +191,9 @@ function systemPromptForPayload(payload: PromptPayload): string {
     "Force contrast: message 1 and message 2 must not flatly agree with each other; make one of them contrarian, trolling, or off-topic.",
     "Radio-check ban: never use the exact phrase 'loud and clear'; use alternatives like 'mic W', 'we hear u', 'W audio', or 'yup'.",
     "Do not feel obligated to acknowledge every streamer line; realistic chats often drift into side chatter.",
+    "SILENCE BEHAVIOR: if the streamer is silent, never judge stream energy as boring/sleepy/mid.",
+    "During silence, first continue answering the last question asked, then use topic-relevant emotes/slang, and side-convos about the same stream topic.",
+    "Do NOT start random food debates unless streamer silence clearly lasts over 2 minutes.",
     "React to the stream context like a real viewer with casual slang and natural chat energy.",
     "VISION INTEGRITY: only describe visuals when context.visionTags contains descriptive words.",
     "If visionTags is empty, you are BLIND. DO NOT make 'POV' jokes or jokes about ghosts. ACT FRUSTRATED. Use phrases like: 'cam is cooked', 'L camera', 'fix the feed', 'black screen wtf', 'is my twitch lagging or is the cam dead?' If the streamer asks 'what color is my shirt' and tags are empty, you MUST say: 'we can't see you bro, fix the cam'.",
@@ -227,6 +232,7 @@ function buildModelFacingPayload(payload: PromptPayload): Record<string, unknown
     bias: payload.bias,
     emoteOnly: payload.emoteOnly,
     viewerCount: payload.viewerCount,
+    streamTopic: String(payload.streamTopic ?? "").trim() || "Just Chatting",
     requestedMessageCount: payload.requestedMessageCount,
     context: {
       transcript: payload.context.transcript,

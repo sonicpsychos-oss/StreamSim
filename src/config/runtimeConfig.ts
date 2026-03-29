@@ -1,6 +1,7 @@
 import { SimulationConfig } from "../core/types.js";
 
 export const defaultConfig: SimulationConfig = {
+  streamTopic: "Just Chatting",
   viewerCount: 100,
   engagementMultiplier: 1,
   slowMode: false,
@@ -69,6 +70,7 @@ export function sanitizeConfig(input: unknown): SimulationConfig {
   const inferenceMode = candidate.inferenceMode;
 
   return {
+    streamTopic: asString(candidate.streamTopic, defaultConfig.streamTopic),
     viewerCount: Math.max(1, Math.min(50000, Math.floor(asNumber(candidate.viewerCount, defaultConfig.viewerCount)))),
     engagementMultiplier: Math.max(0.1, Math.min(5, asNumber(candidate.engagementMultiplier, defaultConfig.engagementMultiplier))),
     slowMode: asBoolean(candidate.slowMode, defaultConfig.slowMode),
