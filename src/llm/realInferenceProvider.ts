@@ -168,9 +168,15 @@ function systemPromptForPayload(payload: PromptPayload): string {
   const questionDirective = transcript && /\?/.test(transcript)
     ? "The transcript includes a question; at least one message must directly answer or acknowledge that question."
     : "If no question is present in the transcript, avoid inventing one.";
+  const visionAgeMs = payload.context.visionCapturedAt ? Date.now() - Date.parse(payload.context.visionCapturedAt) : Number.POSITIVE_INFINITY;
+  const visualQuestionDetected = /\b(look|see|show|camera|cam|color|wearing|shirt|hat|hands?|fingers?|peace sign|how many)\b/i.test(transcript);
+  const staleVision = !Number.isFinite(visionAgeMs) || visionAgeMs > 12_000;
   const visionDirective = payload.context.visionTags.length
     ? `Vision state: context.visionTags is populated (${payload.context.visionTags.map((tag) => `"${tag}"`).join(", ")}). Reference concrete tag details directly and do not invent unseen attributes.`
     : "Vision state: context.visionTags is empty, so you are BLIND right now. Do not invent visuals; if asked visual questions, clearly say the cam/feed is not visible.";
+  const visionFreshnessDirective = visualQuestionDetected && staleVision
+    ? "Visual question detected but the latest vision sample is stale or missing. Do not guess. At least one message should ask to wait for a fresh cam update."
+    : "Vision freshness looks usable for current tick.";
   const situationalTags = payload.situationalTags.length ? payload.situationalTags.join(", ") : "none";
   const behavioralModes = payload.behavioralModes.length ? payload.behavioralModes.join(", ") : "default";
   const vibeDirective = payload.context.vibe
@@ -198,6 +204,7 @@ function systemPromptForPayload(payload: PromptPayload): string {
     transcriptDirective,
     questionDirective,
     visionDirective,
+    visionFreshnessDirective,
     vibeDirective,
     `Situational tags detected by orchestrator metadata: ${situationalTags}`,
     `Behavioral modes selected by orchestrator: ${behavioralModes}`,
@@ -225,6 +232,8 @@ function systemPromptForPayload(payload: PromptPayload): string {
     "Do not feel obligated to acknowledge every streamer line; realistic chats often drift into side chatter.",
     "SILENCE BEHAVIOR: if the streamer is silent, stay chill like a waiting room, keep it light with 'lurk' or a short on-topic question.",
     "During silence, first continue answering the last question asked, then use topic-relevant emotes/slang.",
+    "Idle-topic rotation examples for short silence: queue check, setup tweak, next map guess, controller check, warmup routine, clip timestamp callout, hydration reminder, scoreboard prediction.",
+    "Silence repetition guard: avoid repeating the exact phrases 'morning vibes' or 'keep it chill' in nearby messages; rotate idle openers.",
     "Hard ban phrases: never say 'pick a lane' or 'pick a topic'.",
     "Do not accuse the streamer of ghosting/vanishing/disappearing after short silence; assume they are still present unless explicitly leaving.",
     "Do NOT start random food debates unless streamer silence clearly lasts over 2 minutes.",
@@ -285,6 +294,7 @@ function buildModelFacingPayload(payload: PromptPayload): Record<string, unknown
         pace: describePace(payload.context.tone.paceWpm)
       },
       visionTags: payload.context.visionTags,
+      visionCapturedAt: payload.context.visionCapturedAt ?? null,
       vibe: payload.context.vibe ?? "chill",
       topic: payload.context.topic ?? "general",
       intent: payload.context.intent ?? "none",
@@ -318,6 +328,11 @@ function isRetryableCloudFailure(message: string): boolean {
 
 function isResponseFormatSchemaFailure(status: number, detail: string): boolean {
   return status === 400 && /invalid schema for response_format|required/i.test(detail);
+}
+
+function completionTokenCap(requestedMessageCount: number): number {
+  const safeCount = Math.max(2, Math.min(8, Math.floor(requestedMessageCount || 2)));
+  return Math.max(120, Math.min(240, 40 + safeCount * 20));
 }
 
 export class HybridInferenceProvider implements InferenceProvider {
@@ -441,12 +456,14 @@ export class HybridInferenceProvider implements InferenceProvider {
         model: string;
         messages: Array<{ role: "system" | "user"; content: string }>;
         response_format?: ReturnType<typeof openAiResponseSchema>;
+        max_completion_tokens?: number;
       } = {
         model,
         messages
       };
       if (this.mode === "openai") {
         baseBody.response_format = openAiResponseSchema(payload.requestedMessageCount);
+        baseBody.max_completion_tokens = completionTokenCap(payload.requestedMessageCount);
       }
 
       const requestVariants =

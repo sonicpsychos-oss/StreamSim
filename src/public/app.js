@@ -1415,7 +1415,10 @@ function renderIncomingMessages(messages) {
 
     const source = document.createElement("span");
     source.className = "source-tag";
-    source.textContent = msg.source ?? "unknown";
+    source.textContent = "ⓘ";
+    source.title = `message source: ${msg.source ?? "unknown"}`;
+    source.setAttribute("aria-label", source.title);
+    source.dataset.source = msg.source ?? "unknown";
     item.append(source);
 
     if (msg.donationCents) {

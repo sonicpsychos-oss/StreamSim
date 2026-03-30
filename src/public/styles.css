@@ -140,9 +140,21 @@ button.primary { background: var(--accent-muted); border-color: #3b82f6; }
 .user { color: #7dd3fc; font-weight: 700; margin-right: 8px; }
 .donation { color: #facc15; margin-left: 8px; }
 .source-tag {
-  margin-left: 8px; padding: 1px 6px; border: 1px solid #334155; border-radius: 999px; font-size: 0.68rem;
-  letter-spacing: 0.04em; text-transform: uppercase; color: #cbd5e1;
+  margin-left: 8px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  color: #94a3b8;
+  opacity: 0.45;
+  cursor: help;
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
 }
+.chat-msg:hover .source-tag { opacity: 1; color: #e2e8f0; border-color: #64748b; }
 
 pre { margin-top: 8px; background: #0c0e14; border: 1px solid #293145; border-radius: 8px; padding: 10px; font-size: 0.75rem; min-height: 80px; }
 

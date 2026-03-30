@@ -94,10 +94,11 @@ export class ModSimController {
     const deEchoedMessages = this.isReadingChat(context.transcript, context.recentChatHistory)
       ? this.rewriteForReadingChat(messages)
       : this.applyAntiEchoConstraint(messages, context.transcript);
-    const diverseMessages = this.enforceDiversityRules(deEchoedMessages, payload.behavioralModes);
+    const diverseMessages = this.enforceDiversityRules(deEchoedMessages, payload.behavioralModes, payload.context.recentChatHistory);
     const personaLocked = this.enforcePersonaSyntax(diverseMessages);
     const scrubbedMessages = this.postFlight(personaLocked, { brainRot: payload.persona !== "supportive" });
-    return this.identityManager.assignToMessages(scrubbedMessages);
+    const dedupedPostFlight = this.enforceBatchUniqueness(scrubbedMessages);
+    return this.identityManager.assignToMessages(dedupedPostFlight);
   }
 
   public postFlight(messages: ChatMessage[], options?: { brainRot?: boolean }): ChatMessage[] {
@@ -137,7 +138,7 @@ export class ModSimController {
     return context;
   }
 
-  public enforceDiversityRules(messages: ChatMessage[], behavioralModes: string[]): ChatMessage[] {
+  public enforceDiversityRules(messages: ChatMessage[], behavioralModes: string[], recentChatHistory: string[] = []): ChatMessage[] {
     const slangCooldownWords = ["lowkey", "ngl", "bet", "cooked", "fr"];
     const slangAlternatives: Record<string, string[]> = {
       lowkey: ["ngl", "tbh", "honestly"],
@@ -199,13 +200,29 @@ export class ModSimController {
     const seen = new Set<string>();
     const fallbackReplies = ["new take pls", "same line again??", "switch it up bro", "different angle pls"];
     deduped.forEach((message, index) => {
-      const key = message.text.toLowerCase().replace(/\s+/g, " ").trim();
+      const key = this.normalizedDiversityKey(message.text);
       if (!key) return;
       if (seen.has(key)) {
         message.text = fallbackReplies[index % fallbackReplies.length];
         return;
       }
       seen.add(key);
+    });
+
+    const recentlyUsedIdlePhrases = [
+      "morning vibes",
+      "keep it chill",
+      "keep it light",
+      "waiting room energy",
+      "just lurking"
+    ];
+    const historyJoined = recentChatHistory.join(" ").toLowerCase();
+    deduped.forEach((message, index) => {
+      const normalized = message.text.toLowerCase().replace(/\s+/g, " ").trim();
+      if (recentlyUsedIdlePhrases.some((phrase) => normalized.includes(phrase) && historyJoined.includes(phrase))) {
+        const replacements = ["queue check?", "next map?", "scoreboard soon?", "clip that setup", "hydration break?"];
+        message.text = replacements[index % replacements.length];
+      }
     });
 
     const maxWords = 4;
@@ -232,9 +249,13 @@ export class ModSimController {
   public applyAntiEchoConstraint(messages: ChatMessage[], transcript: string): ChatMessage[] {
     const anchors = this.transcriptAnchorTerms(transcript);
     if (!anchors.length) return messages;
+    const transcriptHasQuestion = transcript.includes("?");
 
     const filtered = messages.filter((message) => {
       const lowered = message.text.toLowerCase();
+      if (transcriptHasQuestion && this.looksLikeDirectAnswer(lowered)) {
+        return true;
+      }
       return anchors.every((token) => !lowered.includes(token));
     });
 
@@ -321,5 +342,32 @@ export class ModSimController {
         .map((token) => token.trim())
         .filter((token) => token.length >= 4)
     );
+  }
+
+  private normalizedDiversityKey(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/\p{Extended_Pictographic}/gu, "")
+      .replace(/[^a-z0-9\s']/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  private looksLikeDirectAnswer(text: string): boolean {
+    return /\b(yes|yep|no|nah|idk|cant|can't|cannot|wait)\b/.test(text) || /\b(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/.test(text);
+  }
+
+  private enforceBatchUniqueness(messages: ChatMessage[]): ChatMessage[] {
+    const seen = new Set<string>();
+    const replacements = ["new angle bro", "different read", "switching lanes", "not the same line", "fresh take only"];
+    return messages.map((message, index) => {
+      const key = this.normalizedDiversityKey(message.text);
+      if (!key) return message;
+      if (!seen.has(key)) {
+        seen.add(key);
+        return message;
+      }
+      return { ...message, text: replacements[index % replacements.length] };
+    });
   }
 }

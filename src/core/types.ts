@@ -96,6 +96,7 @@ export interface StreamContext {
   transcript: string;
   tone: ToneSnapshot;
   visionTags: string[];
+  visionCapturedAt?: string;
   vibe?: SimulatedVibe;
   topic?: string;
   intent?: string;

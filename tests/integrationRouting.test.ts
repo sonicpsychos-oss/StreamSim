@@ -240,7 +240,11 @@ describe("hybrid routing and failover", () => {
         const parsed = JSON.parse(body);
         expect(parsed.messages[1].role).toBe("user");
         expect(parsed.max_tokens).toBeUndefined();
-        expect(parsed.max_completion_tokens).toBeUndefined();
+        if (req.headers["x-streamsim-provider"] === "groq") {
+          expect(parsed.max_completion_tokens).toBeUndefined();
+        } else {
+          expect(parsed.max_completion_tokens).toBeGreaterThanOrEqual(120);
+        }
         expect(parsed.temperature).toBeUndefined();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
@@ -320,7 +324,7 @@ describe("hybrid routing and failover", () => {
         const parsed = JSON.parse(body);
         expect(parsed.model).toBe("gpt-5-mini");
         expect(parsed.max_tokens).toBeUndefined();
-        expect(parsed.max_completion_tokens).toBeUndefined();
+        expect(parsed.max_completion_tokens).toBeGreaterThanOrEqual(120);
         expect(parsed.temperature).toBeUndefined();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));

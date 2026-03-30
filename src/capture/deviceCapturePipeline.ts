@@ -79,6 +79,7 @@ export class DeviceCapturePipeline {
       transcript,
       tone,
       visionTags,
+      visionCapturedAt: this.lastVisionSample ? new Date(this.lastVisionSample.capturedAt).toISOString() : undefined,
       vibe: this.lastIntelligenceSample?.vibe,
       topic: this.lastIntelligenceSample?.topic,
       intent: this.lastIntelligenceSample?.intent,
