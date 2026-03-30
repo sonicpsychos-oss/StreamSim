@@ -35,6 +35,7 @@ let micCheckProbeInFlight = false;
 let latestCaptionText = "";
 let latestStatusPayload = null;
 let simulationActionInFlight = false;
+let statusAutoRefreshInterval = null;
 let latestDeviceVerification = {
   micPermission: false,
   cameraPermission: false,
@@ -49,6 +50,7 @@ const MIC_CHECK_BUFFER_SECONDS = 8;
 const MIC_CHECK_MIN_SAMPLES = 12000;
 const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
 const LIVE_MONITOR_VISION_SAMPLE_MS = 8000;
+const STATUS_AUTO_REFRESH_MS = 5000;
 const STT_DEFAULT_ENDPOINTS = {
   "local-whisper": "http://127.0.0.1:7778/stt",
   whispercpp: "http://127.0.0.1:7778/stt",
@@ -700,6 +702,7 @@ function summarizeVisionHealth(payload) {
   const useRealCapture = Boolean(capture.useRealCapture);
   const endpoint = capture.visionEndpoint ?? "n/a";
   const hasVisionSample = Boolean(payload.privacy?.captureBuffer?.hasVisionSample);
+  const latestVisionTagCount = Number(payload.privacy?.captureBuffer?.latestVisionTagCount ?? 0);
   const hasCloudKey = Boolean(payload.secrets?.hasCloudKey);
 
   let ready = true;
@@ -718,12 +721,16 @@ function summarizeVisionHealth(payload) {
 
   const sampleStatus = enabled
     ? hasVisionSample
-      ? "latest sample present"
+      ? latestVisionTagCount > 0
+        ? "latest sample present"
+        : "sample present, awaiting tag extraction"
       : "waiting for first sample"
     : "not collecting";
   const detailWithHint = sampleStatus === "waiting for first sample" && enabled && useRealCapture
     ? `${detail}; run Start Simulation and confirm the vision endpoint is producing tags (webcam permission alone does not populate visionTags).`
-    : detail;
+    : sampleStatus === "sample present, awaiting tag extraction"
+      ? `${detail}; camera frames are arriving but provider parsing returned no tags yet. Check meta warnings/providerResponse/rawText for diagnosis.`
+      : detail;
 
   visionHealthSummary.textContent = [
     `Vision enabled: ${enabled ? "yes" : "no"}`,
@@ -1237,6 +1244,7 @@ liveMonitorEnabled?.addEventListener("change", async () => {
 window.addEventListener("beforeunload", () => {
   stopLiveMonitor();
   stopMicVerificationCheck();
+  if (statusAutoRefreshInterval) clearInterval(statusAutoRefreshInterval);
 });
 
 const events = new EventSource("/api/events");
@@ -1308,6 +1316,12 @@ async function boot() {
   setCaptionPreview("No speech captured yet.");
   setCaptionStatus("Run Verify Microphone to start mic/STT check.", "warn");
   ensureVerifyCameraButtonActive();
+  if (statusAutoRefreshInterval) clearInterval(statusAutoRefreshInterval);
+  statusAutoRefreshInterval = setInterval(() => {
+    refreshStatus().catch(() => {
+      /* ignore transient polling errors; next interval retries */
+    });
+  }, STATUS_AUTO_REFRESH_MS);
 }
 
 void boot();
