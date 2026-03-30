@@ -65,6 +65,16 @@ function normalizeVisionTags(payload: VisionEndpointPayload): string[] {
     .slice(0, 8);
 }
 
+function payloadHasVisionSignal(payload: VisionEndpointPayload): boolean {
+  if (normalizeVisionTags(payload).length > 0) return true;
+  return Boolean(
+    payload.dataUrl ||
+    payload.imageBase64 ||
+    payload.imageUrl ||
+    payload.frameUrl
+  );
+}
+
 function parseVisionTagsFromText(rawText: string): string[] {
   return rawText
     .split(/[,\n;|]/g)
@@ -165,11 +175,23 @@ export class VisionPollingService {
     try {
       let endpointPayload: VisionEndpointPayload = {};
       if (config.capture.visionEndpoint) {
-        const endpointResponse = await fetch(config.capture.visionEndpoint, { signal: AbortSignal.timeout(3000) });
-        if (!endpointResponse.ok) {
-          throw new Error(`vision endpoint failed (${endpointResponse.status})`);
+        try {
+          const endpointResponse = await fetch(config.capture.visionEndpoint, { signal: AbortSignal.timeout(3000) });
+          if (!endpointResponse.ok) {
+            throw new Error(`vision endpoint failed (${endpointResponse.status})`);
+          }
+          endpointPayload = ((await endpointResponse.json()) ?? {}) as VisionEndpointPayload;
+        } catch (endpointError) {
+          if (config.capture.visionProvider !== "openai") throw endpointError;
+          const latestFrame = sharedVisionFrameStore.getLatestFrame();
+          if (!latestFrame) throw endpointError;
+          endpointPayload = { dataUrl: latestFrame.dataUrl };
+          this.emitMeta({
+            warnings: [`Vision endpoint unavailable; falling back to latest browser frame (${explainVisionPollingError(endpointError instanceof Error ? endpointError.message : String(endpointError))}).`],
+            blocked: false,
+            vision: { provider: config.capture.visionProvider, source: "live-monitor-fallback", ok: true }
+          });
         }
-        endpointPayload = ((await endpointResponse.json()) ?? {}) as VisionEndpointPayload;
       } else if (config.capture.visionProvider === "openai") {
         const latestFrame = sharedVisionFrameStore.getLatestFrame();
         if (!latestFrame) {
@@ -190,6 +212,17 @@ export class VisionPollingService {
         });
         this.scheduleNext(delayMs);
         return;
+      }
+      if (config.capture.visionProvider === "openai" && !payloadHasVisionSignal(endpointPayload)) {
+        const latestFrame = sharedVisionFrameStore.getLatestFrame();
+        if (latestFrame) {
+          endpointPayload = { ...endpointPayload, dataUrl: latestFrame.dataUrl };
+          this.emitMeta({
+            warnings: ["Vision endpoint returned no image/tags; using latest browser frame for OpenAI tagging."],
+            blocked: false,
+            vision: { provider: config.capture.visionProvider, source: "live-monitor-fallback", ok: true }
+          });
+        }
       }
       // eslint-disable-next-line no-console
       console.log("[VisionPollingService] vision endpoint payload", endpointPayload);

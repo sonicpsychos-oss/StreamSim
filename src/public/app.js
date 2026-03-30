@@ -1282,6 +1282,13 @@ events.addEventListener("messages", (event) => {
 
 events.addEventListener("meta", (event) => {
   const meta = JSON.parse(event.data);
+  const visionTags = Array.isArray(meta?.vision?.tags) ? meta.vision.tags.filter((tag) => typeof tag === "string") : null;
+  if (latestStatusPayload && latestStatusPayload.privacy?.captureBuffer && visionTags) {
+    latestStatusPayload.privacy.captureBuffer.hasVisionSample = true;
+    latestStatusPayload.privacy.captureBuffer.latestVisionTagCount = visionTags.length;
+    latestStatusPayload.privacy.captureBuffer.latestVisionCapturedAt = Date.now();
+    summarizeVisionHealth(latestStatusPayload);
+  }
   if (meta?.queueMessages) {
     meta.queuePreview = meta.queueMessages.slice(0, 3);
     delete meta.queueMessages;
