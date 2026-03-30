@@ -387,6 +387,58 @@ describe("hybrid routing and failover", () => {
     await server.close();
   });
 
+  it("retries once without response_format when strict schema is rejected", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
+    const bodies: Array<Record<string, unknown>> = [];
+    const server = await withTestServer((req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk.toString("utf8")));
+      req.on("end", () => {
+        const parsed = JSON.parse(body) as Record<string, unknown>;
+        bodies.push(parsed);
+        if (bodies.length === 1) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: {
+                message:
+                  "Invalid schema for response_format 'streamsim_chat_batch': required must include every property key"
+              }
+            })
+          );
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
+      });
+    });
+
+    const provider = new HybridInferenceProvider("openai");
+    const config = { ...defaultConfig, provider: { ...defaultConfig.provider, cloudEndpoint: server.url, cloudModel: "gpt-5.4-nano-2026-03-17", maxRetries: 0 } };
+    const payload = {
+      persona: "supportive" as const,
+      bias: "agree" as const,
+      emoteOnly: false,
+      viewerCount: 10,
+      requestedMessageCount: 1,
+      situationalTags: [],
+      behavioralModes: ["default"],
+      context: { transcript: "can you hear me?", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], recentChatHistory: [], timestamp: new Date().toISOString() }
+    };
+
+    await expect(provider.generate(payload, config)).resolves.toContain("messages");
+    expect(bodies).toHaveLength(2);
+    expect((bodies[0] as { response_format?: unknown }).response_format).toBeDefined();
+    expect((bodies[1] as { response_format?: unknown }).response_format).toBeUndefined();
+    await server.close();
+  });
+
   it("includes context.transcript and anti-generic reactive instructions in system prompt", async () => {
     process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
     const server = await withTestServer((req, res) => {

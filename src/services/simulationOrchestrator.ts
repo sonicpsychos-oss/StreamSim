@@ -37,6 +37,7 @@ export class SimulationOrchestrator {
     (meta) => this.emitMeta(meta)
   );
   private readonly transcriptSeenCounter = new Map<string, { count: number; lastSeenAt: number }>();
+  private lastNonEmptyTranscript = "";
   private recentChatHistory: string[] = [];
   private aiStatus: {
     state: "idle" | "running" | "degraded" | "error";
@@ -86,6 +87,7 @@ export class SimulationOrchestrator {
     sharedSttEngine.resume();
     sharedDeviceCapturePipeline.reset();
     this.transcriptSeenCounter.clear();
+    this.lastNonEmptyTranscript = "";
   }
 
   public cancelSidecarPull(): void {
@@ -239,6 +241,8 @@ export class SimulationOrchestrator {
       bannedPhrases.forEach((pattern) => {
         next = next.replace(pattern, "we");
       });
+      next = next.replace(/^\s*we\s+(are|re|r)\s+/i, "you ");
+      next = next.replace(/^\s*we\s+/i, "you ");
       next = next.replace(/[!?.,;:)\]]+$/g, "");
       next = next.replace(/\s+/g, " ").trim();
       return next;
@@ -247,9 +251,10 @@ export class SimulationOrchestrator {
   }
 
   private enforceDiversityRules(messages: ChatMessage[], behavioralModes: string[]): ChatMessage[] {
-    const slangCooldownWords = ["lowkey", "bet", "cooked", "fr"];
+    const slangCooldownWords = ["lowkey", "ngl", "bet", "cooked", "fr"];
     const slangAlternatives: Record<string, string[]> = {
       lowkey: ["ngl", "tbh", "honestly"],
+      ngl: ["lowkey", "tbh", "fr"],
       bet: ["aight", "say less", "ok then"],
       cooked: ["chalked", "donezo", "gg"],
       fr: ["facts", "real", "deadass"]
@@ -272,21 +277,38 @@ export class SimulationOrchestrator {
       return { ...message, text };
     });
 
-    if (remapped.length < 2) return remapped;
+    const starterAlternatives: Record<string, string[]> = {
+      lowkey: ["tbh", "idk", "fr"],
+      ngl: ["lowkey", "idk", "tbh"]
+    };
+    const starterSeen = new Set<string>();
+    const withStarterDiversity = remapped.map((message, index) => {
+      const words = message.text.trim().split(/\s+/);
+      const starter = (words[0] ?? "").toLowerCase();
+      if (starterAlternatives[starter] && starterSeen.has(starter)) {
+        const alternatives = starterAlternatives[starter];
+        words[0] = alternatives[index % alternatives.length];
+        return { ...message, text: words.join(" ").trim() };
+      }
+      if (starter) starterSeen.add(starter);
+      return message;
+    });
+
+    if (withStarterDiversity.length < 2) return withStarterDiversity;
 
     if (behavioralModes.includes("thirst")) {
-      remapped[0] = { ...remapped[0], text: "gyatt respectfully 😳" };
-      remapped[1] = { ...remapped[1], text: "simps in chat stand up" };
-      return remapped;
+      withStarterDiversity[0] = { ...withStarterDiversity[0], text: "gyatt respectfully 😳" };
+      withStarterDiversity[1] = { ...withStarterDiversity[1], text: "simps in chat stand up" };
+      return withStarterDiversity;
     }
 
     const supportiveSignal = /\b(yes|yup|we hear u|w audio|mic w|facts|same|true|good)\b/i;
-    if (supportiveSignal.test(remapped[0].text) && supportiveSignal.test(remapped[1].text)) {
+    if (supportiveSignal.test(withStarterDiversity[0].text) && supportiveSignal.test(withStarterDiversity[1].text)) {
       const contrastReplies = ["nah chat trolling today", "bro that take is wild", "off topic but who ate my snacks", "skill issue detected 🤨"];
-      remapped[1] = { ...remapped[1], text: contrastReplies[Math.floor(Math.random() * contrastReplies.length)] };
+      withStarterDiversity[1] = { ...withStarterDiversity[1], text: contrastReplies[Math.floor(Math.random() * contrastReplies.length)] };
     }
 
-    const deduped = remapped.map((message) => ({ ...message }));
+    const deduped = withStarterDiversity.map((message) => ({ ...message }));
     const seen = new Set<string>();
     const fallbackReplies = [
       "new take pls",
@@ -304,12 +326,37 @@ export class SimulationOrchestrator {
       seen.add(key);
     });
 
+    const maxWords = 4;
+    const minimumShortRatio = 0.8;
+    const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
+    const shorten = (text: string) => text.trim().split(/\s+/).slice(0, maxWords).join(" ");
+    const requiredShort = Math.ceil(deduped.length * minimumShortRatio);
+    let shortCount = deduped.filter((message) => countWords(message.text) <= maxWords).length;
+    if (shortCount < requiredShort) {
+      const longIndices = deduped
+        .map((message, index) => ({ index, words: countWords(message.text) }))
+        .filter((entry) => entry.words > maxWords)
+        .sort((a, b) => b.words - a.words);
+      for (const entry of longIndices) {
+        if (shortCount >= requiredShort) break;
+        deduped[entry.index].text = shorten(deduped[entry.index].text);
+        shortCount += 1;
+      }
+    }
+
     return deduped;
   }
 
   private applyTranscriptDecay(context: PromptPayload["context"]): PromptPayload["context"] {
     const normalized = context.transcript.trim().toLowerCase();
-    if (!normalized) return context;
+    if (!normalized) {
+      if (!this.lastNonEmptyTranscript) return context;
+      return {
+        ...context,
+        transcript: this.lastNonEmptyTranscript
+      };
+    }
+    this.lastNonEmptyTranscript = context.transcript.trim();
 
     const now = Date.now();
     for (const [key, value] of this.transcriptSeenCounter.entries()) {
@@ -322,7 +369,10 @@ export class SimulationOrchestrator {
     const seenCount = existing?.count ?? 0;
     this.transcriptSeenCounter.set(normalized, { count: seenCount + 1, lastSeenAt: now });
     if (seenCount >= 3) {
-      return { ...context, transcript: "" };
+      return {
+        ...context,
+        transcript: this.lastNonEmptyTranscript
+      };
     }
     return context;
   }
