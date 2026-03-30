@@ -316,6 +316,10 @@ function isRetryableCloudFailure(message: string): boolean {
   return /timeout|network failure|\(408\)|\(429\)|\(5\d\d\)/i.test(message);
 }
 
+function isResponseFormatSchemaFailure(status: number, detail: string): boolean {
+  return status === 400 && /invalid schema for response_format|required/i.test(detail);
+}
+
 export class HybridInferenceProvider implements InferenceProvider {
   private readonly mockProvider = new MockInferenceProvider();
   private readonly secretStore = new SecretStore();
@@ -433,7 +437,7 @@ export class HybridInferenceProvider implements InferenceProvider {
 
     let lastError: Error | null = null;
     for (const model of cloudModelCandidates(config.provider.cloudModel)) {
-      const body: {
+      const baseBody: {
         model: string;
         messages: Array<{ role: "system" | "user"; content: string }>;
         response_format?: ReturnType<typeof openAiResponseSchema>;
@@ -442,38 +446,49 @@ export class HybridInferenceProvider implements InferenceProvider {
         messages
       };
       if (this.mode === "openai") {
-        body.response_format = openAiResponseSchema(payload.requestedMessageCount);
+        baseBody.response_format = openAiResponseSchema(payload.requestedMessageCount);
       }
 
-      let response: Response;
-      try {
-        response = await fetch(config.provider.cloudEndpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...this.cloudHeaders(apiKey)
-          },
-          signal: AbortSignal.timeout(config.provider.requestTimeoutMs),
-          body: JSON.stringify(body)
-        });
-      } catch (error) {
-        const message = (error as Error).message || "request failed";
-        lastError = new Error(`Cloud provider timeout/network failure for model ${model}: ${message}`);
-        if (model === config.provider.cloudModel && isRetryableCloudFailure(lastError.message)) continue;
-        throw lastError;
-      }
+      const requestVariants =
+        this.mode === "openai"
+          ? [baseBody, { ...baseBody, response_format: undefined }]
+          : [baseBody];
 
-      if (!response.ok) {
-        const detail = await parseProviderError(response);
-        lastError = new Error(`Cloud provider failed (${response.status}) for model ${model}${detail ? `: ${detail}` : ""}`);
-        if (model === config.provider.cloudModel && isRetryableCloudFailure(lastError.message)) {
-          continue;
+      for (let variantIdx = 0; variantIdx < requestVariants.length; variantIdx += 1) {
+        const body = requestVariants[variantIdx];
+        let response: Response;
+        try {
+          response = await fetch(config.provider.cloudEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...this.cloudHeaders(apiKey)
+            },
+            signal: AbortSignal.timeout(config.provider.requestTimeoutMs),
+            body: JSON.stringify(body)
+          });
+        } catch (error) {
+          const message = (error as Error).message || "request failed";
+          lastError = new Error(`Cloud provider timeout/network failure for model ${model}: ${message}`);
+          if (model === config.provider.cloudModel && isRetryableCloudFailure(lastError.message)) break;
+          throw lastError;
         }
-        throw lastError;
-      }
 
-      const data = (await response.json()) as ProviderResponseShape;
-      return extractProviderTextOrThrow(data, `${this.mode}:${model}`);
+        if (!response.ok) {
+          const detail = await parseProviderError(response);
+          if (variantIdx === 0 && isResponseFormatSchemaFailure(response.status, detail)) {
+            continue;
+          }
+          lastError = new Error(`Cloud provider failed (${response.status}) for model ${model}${detail ? `: ${detail}` : ""}`);
+          if (model === config.provider.cloudModel && isRetryableCloudFailure(lastError.message)) {
+            break;
+          }
+          throw lastError;
+        }
+
+        const data = (await response.json()) as ProviderResponseShape;
+        return extractProviderTextOrThrow(data, `${this.mode}:${model}`);
+      }
     }
 
     throw lastError ?? new Error("Cloud provider failed before receiving a response.");
