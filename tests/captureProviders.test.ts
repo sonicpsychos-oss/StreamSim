@@ -170,6 +170,35 @@ describe("VisionPollingService", () => {
     expect(context.visionTags).toEqual(["focused expression", "leaning in"]);
   });
 
+  it("keeps generic tags when filtering would otherwise remove everything", async () => {
+    const config = {
+      ...defaultConfig,
+      provider: { ...defaultConfig.provider, cloudEndpoint: "https://api.openai.com/v1/chat/completions", cloudModel: "gpt-4o-mini" },
+      capture: {
+        ...defaultConfig.capture,
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "openai" as const,
+        visionEndpoint: ""
+      }
+    };
+    sharedVisionFrameStore.setFrame("data:image/jpeg;base64,abcd1234==");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '{"tags":["person","game","room"]}' } }] })
+      }))
+    );
+
+    const service = new VisionPollingService(() => config, () => undefined);
+    await (service as any).tick();
+
+    const context = sharedDeviceCapturePipeline.getContext(config);
+    expect(context.visionTags).toEqual(["person", "game", "room"]);
+  });
+
   it("parses JSON-tagged OpenAI vision responses", async () => {
     const config = {
       ...defaultConfig,
@@ -202,6 +231,32 @@ describe("VisionPollingService", () => {
     await (service as any).tick();
     const context = sharedDeviceCapturePipeline.getContext(config);
     expect(context.visionTags).toEqual(["ring light", "keyboard"]);
+  });
+
+  it("parses tags from JSON code blocks and bare arrays", async () => {
+    const config = {
+      ...defaultConfig,
+      provider: { ...defaultConfig.provider, cloudEndpoint: "https://api.openai.com/v1/chat/completions", cloudModel: "gpt-4o-mini" },
+      capture: {
+        ...defaultConfig.capture,
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "openai" as const,
+        visionEndpoint: ""
+      }
+    };
+    sharedVisionFrameStore.setFrame("data:image/jpeg;base64,abcd1234==");
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "```json\n[\"focused expression\",\"leaning in\"]\n```" } }] })
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const service = new VisionPollingService(() => config, () => undefined);
+    await (service as any).tick();
+    const context = sharedDeviceCapturePipeline.getContext(config);
+    expect(context.visionTags).toEqual(["focused expression", "leaning in"]);
   });
 
   it("uses live-monitor uploaded frame for OpenAI provider when vision endpoint is blank", async () => {

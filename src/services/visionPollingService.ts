@@ -54,13 +54,20 @@ const DEAD_VISION_TAGS = new Set([
   "monitor"
 ]);
 
-function filterDeadVisionTags(tags: string[]): string[] {
+function uniqueTagList(tags: string[]): string[] {
   return tags
     .map((tag) => tag.trim().toLowerCase())
     .filter(Boolean)
-    .filter((tag) => !DEAD_VISION_TAGS.has(tag))
     .filter((tag, index, arr) => arr.indexOf(tag) === index)
     .slice(0, 8);
+}
+
+function filterDeadVisionTags(tags: string[]): string[] {
+  const normalized = uniqueTagList(tags);
+  const filtered = normalized.filter((tag) => !DEAD_VISION_TAGS.has(tag));
+  // Never return an empty list if provider gave us at least one normalized tag.
+  // This keeps the chat from losing all visual hooks when the scene is generic.
+  return filtered.length > 0 ? filtered : normalized;
 }
 
 export function explainVisionPollingError(reason: string): string {
@@ -117,18 +124,29 @@ function parseVisionTagsFromText(rawText: string): string[] {
 }
 
 function tryParseJsonTags(rawText: string): string[] {
-  const trimmed = rawText.trim();
-  if (!trimmed) return [];
-  try {
-    const parsed = JSON.parse(trimmed) as { tags?: unknown };
-    if (!Array.isArray(parsed.tags)) return [];
-    return filterDeadVisionTags(parsed.tags
-      .filter((tag): tag is string => typeof tag === "string")
-      .map((tag) => tag.trim().toLowerCase())
-      .filter(Boolean));
-  } catch {
-    return [];
+  const attempts = [rawText.trim()];
+  const fencedJson = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+  if (fencedJson) attempts.push(fencedJson);
+
+  for (const attempt of attempts) {
+    if (!attempt) continue;
+    try {
+      const parsed = JSON.parse(attempt) as { tags?: unknown } | unknown[];
+      const parsedTags = Array.isArray(parsed)
+        ? parsed
+        : parsed && typeof parsed === "object" && Array.isArray((parsed as { tags?: unknown }).tags)
+          ? (parsed as { tags?: unknown[] }).tags
+          : [];
+      if (!Array.isArray(parsedTags)) continue;
+      return filterDeadVisionTags(parsedTags
+        .filter((tag): tag is string => typeof tag === "string")
+        .map((tag) => tag.trim().toLowerCase())
+        .filter(Boolean));
+    } catch {
+      continue;
+    }
   }
+  return [];
 }
 
 function extractVisionText(data: {
@@ -264,6 +282,19 @@ export class VisionPollingService {
       // eslint-disable-next-line no-console
       console.log("[VisionService] Raw response from provider:", providerResult.providerResponse);
       const tags = providerResult.tags;
+
+      if (tags.length > 0 && tags.every((tag) => DEAD_VISION_TAGS.has(tag))) {
+        this.emitMeta({
+          warnings: ["Vision tags were all generic labels; consider improving lighting or camera framing for richer activity/expression tags."],
+          vision: {
+            provider: config.capture.visionProvider,
+            endpoint: config.capture.visionEndpoint,
+            tags,
+            rawText: providerResult.rawText ?? "",
+            providerResponse: providerResult.providerResponse
+          }
+        });
+      }
 
       if (tags.length) {
         sharedDeviceCapturePipeline.ingestVisionSample({ tags });
