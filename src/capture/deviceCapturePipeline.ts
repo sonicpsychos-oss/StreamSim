@@ -55,11 +55,12 @@ export class DeviceCapturePipeline {
     };
   }
 
-  public getContext(config: SimulationConfig): StreamContext {
+  public getContext(config: SimulationConfig, options?: { transcriptWindowMs?: number }): StreamContext {
     this.pruneOldMicFrames();
 
+    const transcriptWindowMs = options?.transcriptWindowMs ?? this.transcriptWindowMs;
     const transcript = this.micFrames
-      .filter((frame) => Date.now() - frame.capturedAt <= this.transcriptWindowMs)
+      .filter((frame) => Date.now() - frame.capturedAt <= transcriptWindowMs)
       .map((frame) => frame.transcriptChunk)
       .filter(Boolean)
       .join(" ")
