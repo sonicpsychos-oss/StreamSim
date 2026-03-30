@@ -103,8 +103,8 @@ export class ModSimController {
   public postFlight(messages: ChatMessage[], options?: { brainRot?: boolean }): ChatMessage[] {
     const brainRot = options?.brainRot ?? true;
     return messages.map((message, index) => {
-      const truncated = message.text.trim().split(/\s+/).filter(Boolean).slice(0, 12).join(" ");
-      let text = truncated.replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim();
+      const capped = this.enforceWordCapSmart(message.text, 12);
+      let text = capped.replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim();
       if (brainRot) {
         const lowerCaseThis = index % 5 !== 0;
         if (lowerCaseThis) text = text.toLowerCase();
@@ -264,6 +264,27 @@ export class ModSimController {
   public rewriteForReadingChat(messages: ChatMessage[]): ChatMessage[] {
     const reactions = ["l chatter", "ratio that chatter", "he reading us again 💀", "chat got him pressed"];
     return messages.map((message, index) => ({ ...message, text: reactions[index % reactions.length] }));
+  }
+
+
+  private enforceWordCapSmart(text: string, maxWords: number): string {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    const words = normalized.split(/\s+/).filter(Boolean);
+    if (words.length <= maxWords) return normalized;
+
+    const fillerWords = new Set(["really", "literally", "basically", "actually", "kinda", "sorta", "just", "very", "maybe"]);
+    let compacted = words.filter((word) => !fillerWords.has(word.toLowerCase()));
+
+    if (compacted.length > maxWords) {
+      const glueWords = new Set(["the", "a", "an", "to", "for", "of", "and", "that", "this", "it", "is", "are"]);
+      compacted = compacted.filter((word, idx) => idx === 0 || idx === compacted.length - 1 || !glueWords.has(word.toLowerCase()));
+    }
+
+    if (compacted.length > maxWords) {
+      return [...compacted.slice(0, maxWords - 1), compacted[compacted.length - 1]].join(" ");
+    }
+
+    return compacted.join(" ");
   }
 
   private computeSaturatedSlang(recentChatHistory: string[]): string[] {
