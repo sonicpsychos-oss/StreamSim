@@ -17,6 +17,22 @@ const liveVideo = document.getElementById("liveVideo");
 const voiceMeter = document.getElementById("voiceMeter");
 const sttCaptionStatus = document.getElementById("sttCaptionStatus");
 const sttCaptionPreview = document.getElementById("sttCaptionPreview");
+const uiModeSelect = document.getElementById("uiMode");
+const systemStateBadge = document.getElementById("systemStateBadge");
+const statusCards = document.getElementById("statusCards");
+const connectStatusPill = document.getElementById("connectStatusPill");
+const logsToggleBtn = document.getElementById("logsToggle");
+const logsPanel = document.getElementById("logsPanel");
+const logsContent = document.getElementById("logsContent");
+const logFilter = document.getElementById("logFilter");
+const logSearch = document.getElementById("logSearch");
+const previewViewerCount = document.getElementById("previewViewerCount");
+const previewAlerts = document.getElementById("previewAlerts");
+const sendTestChatBtn = document.getElementById("sendTestChat");
+const triggerTestDonationBtn = document.getElementById("triggerTestDonation");
+const simulateViewerSpikeBtn = document.getElementById("simulateViewerSpike");
+const liveFrame = document.getElementById("liveFrame");
+const liveBadge = document.getElementById("liveBadge");
 
 let liveMonitorStream = null;
 let liveMonitorAudioContext = null;
@@ -36,6 +52,9 @@ let latestCaptionText = "";
 let latestStatusPayload = null;
 let simulationActionInFlight = false;
 let statusAutoRefreshInterval = null;
+let uiMode = "operator";
+let logEntries = [];
+let previewAlertCount = 0;
 let latestDeviceVerification = {
   micPermission: false,
   cameraPermission: false,
@@ -99,6 +118,7 @@ function setStatus(message, tone = "success") {
   statusBanner.textContent = message;
   statusBanner.classList.remove("success", "warn", "error");
   statusBanner.classList.add(tone);
+  addLog("system", tone === "error" ? "error" : tone === "warn" ? "warn" : "info", message);
 }
 
 function setLiveMonitorStatus(message, tone = "warn") {
@@ -113,11 +133,47 @@ function setCaptionStatus(message, tone = "warn") {
   sttCaptionStatus.textContent = message;
   sttCaptionStatus.classList.remove("ok", "warn", "error");
   sttCaptionStatus.classList.add(tone);
+  addLog("stt", tone === "error" ? "error" : "info", message);
 }
 
 function setCaptionPreview(text) {
   if (!sttCaptionPreview) return;
   sttCaptionPreview.textContent = text?.trim() || "No speech captured yet.";
+}
+
+function setMode(nextMode) {
+  uiMode = nextMode === "developer" ? "developer" : "operator";
+  document.body.dataset.uiMode = uiMode;
+  if (uiModeSelect) uiModeSelect.value = uiMode;
+  localStorage.setItem("streamsim-ui-mode", uiMode);
+}
+
+function addLog(area, level, message) {
+  const timestamp = new Date().toLocaleTimeString();
+  logEntries.unshift({ area, level, message, timestamp });
+  if (logEntries.length > 200) logEntries = logEntries.slice(0, 200);
+  renderLogs();
+}
+
+function renderLogs() {
+  if (!logsContent) return;
+  const filter = logFilter?.value || "all";
+  const query = (logSearch?.value || "").toLowerCase().trim();
+  const rows = logEntries
+    .filter((entry) => (filter === "all" ? true : entry.area === filter))
+    .filter((entry) => (!query ? true : `${entry.area} ${entry.level} ${entry.message}`.toLowerCase().includes(query)))
+    .slice(0, 80)
+    .map((entry) => `[${entry.timestamp}] [${entry.area.toUpperCase()}] ${entry.level.toUpperCase()} — ${entry.message}`);
+  logsContent.textContent = rows.length ? rows.join("\n") : "No logs yet.";
+}
+
+function updateRangeLabels() {
+  const viewerValue = document.getElementById("viewerCountValue");
+  const engagementValue = document.getElementById("engagementMultiplierValue");
+  const donationValue = document.getElementById("donationFrequencyValue");
+  if (viewerValue) viewerValue.textContent = controls.viewerCount.value;
+  if (engagementValue) engagementValue.textContent = Number(controls.engagementMultiplier.value).toFixed(1);
+  if (donationValue) donationValue.textContent = Number(controls.donationFrequency.value).toFixed(2);
 }
 
 function encodePcm16Wav(samples, sampleRate) {
@@ -371,6 +427,11 @@ function stopLiveMonitor() {
   }
   liveMonitorVisionCanvas = null;
   if (liveVideo) liveVideo.srcObject = null;
+  if (liveFrame) liveFrame.classList.remove("active");
+  if (liveBadge) {
+    liveBadge.textContent = "OFFLINE";
+    liveBadge.classList.remove("live");
+  }
   drawVoiceMeter(0);
   setLiveMonitorStatus("Live monitor disabled.", "warn");
 }
@@ -399,6 +460,11 @@ async function startLiveMonitor() {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
   liveMonitorStream = stream;
   if (liveVideo) liveVideo.srcObject = stream;
+  if (liveFrame) liveFrame.classList.add("active");
+  if (liveBadge) {
+    liveBadge.textContent = "LIVE";
+    liveBadge.classList.add("live");
+  }
 
   const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextCtor) {
@@ -441,6 +507,21 @@ function setSimulationActionPending(isPending) {
   simulationActionInFlight = isPending;
   if (startBtn) startBtn.disabled = isPending;
   if (stopBtn) stopBtn.disabled = isPending;
+  setSystemStateBadge();
+}
+
+function setSystemStateBadge(payload = latestStatusPayload) {
+  if (!systemStateBadge) return;
+  let state = "idle";
+  if (simulationActionInFlight || payload?.ai?.state === "running") {
+    state = "running";
+  }
+  if (String(statusBanner?.className || "").includes("error")) {
+    state = "error";
+  }
+  systemStateBadge.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+  systemStateBadge.classList.remove("idle", "running", "error");
+  systemStateBadge.classList.add(state);
 }
 
 async function runAction({ button, pendingText, successText, onRun }) {
@@ -537,6 +618,7 @@ function hydrateControls(config) {
   controls.allowNonLocalSidecarOverride.checked = config.security.allowNonLocalSidecarOverride;
   controls.eulaAccepted.checked = config.compliance.eulaAccepted;
   if (wizardEulaAccepted) wizardEulaAccepted.checked = config.compliance.eulaAccepted;
+  updateRangeLabels();
 }
 
 function syncSttEndpointForProvider() {
@@ -556,6 +638,8 @@ function renderOnboardingState(payload) {
     onboardingPill.classList.toggle("complete", onboardingDone);
     onboardingPill.classList.toggle("pending", !onboardingDone);
   }
+  const setupSection = document.getElementById("sectionSetup");
+  if (setupSection) setupSection.open = !onboardingDone;
 }
 
 function syncEulaCheckboxes(source) {
@@ -782,6 +866,37 @@ function summarizeApiKeyHealth(payload) {
     `Cloud key detected: ${hasCloudKey ? "yes" : "no"}`,
     `Deepgram key detected: ${hasDeepgramKey ? "yes" : "no"}`
   ].join("\n");
+}
+
+function deriveCardTone(statusText) {
+  const normalized = String(statusText || "").toLowerCase();
+  if (normalized.includes("missing") || normalized.includes("failed") || normalized.includes("error") || normalized.includes("no")) return "error";
+  if (normalized.includes("waiting") || normalized.includes("degraded") || normalized.includes("optional") || normalized.includes("simulated")) return "warn";
+  if (normalized.includes("off") || normalized.includes("disabled") || normalized.includes("inactive")) return "inactive";
+  return "ok";
+}
+
+function renderStatusCards(payload) {
+  if (!statusCards) return;
+  const cards = [
+    { label: "AI", summary: payload?.ai?.providerHealth ?? "unknown", detail: payload?.ai?.detail ?? "pending" },
+    { label: "STT", summary: (sttHealthSummary?.textContent || "").split("\n")[2] ?? "pending", detail: (sttHealthSummary?.textContent || "").split("\n")[3] ?? "" },
+    { label: "TTS", summary: (ttsHealthSummary?.textContent || "").split("\n")[2] ?? "pending", detail: (ttsHealthSummary?.textContent || "").split("\n")[3] ?? "" },
+    { label: "Vision", summary: (visionHealthSummary?.textContent || "").split("\n")[4] ?? "pending", detail: (visionHealthSummary?.textContent || "").split("\n")[5] ?? "" },
+    { label: "Microphone", summary: latestDeviceVerification.micPermission ? "ready" : "not verified", detail: latestCaptionText ? `Latest: ${latestCaptionText}` : "Run Verify Microphone" },
+    { label: "Camera", summary: latestDeviceVerification.cameraPermission ? "ready" : "not verified", detail: latestDeviceVerification.cameraFailureReason ?? "Run Verify Camera" },
+    { label: "Network", summary: diagnosticsSummary?.textContent?.includes("pending") ? "pending" : diagnosticsSummary.textContent.split("\n")[1] ?? "pending", detail: "Boot diagnostics probe" },
+    { label: "Credentials", summary: (apiKeyHealthSummary?.textContent || "").includes("missing") ? "partial" : "ready", detail: "Cloud + Deepgram key checks" }
+  ];
+
+  statusCards.innerHTML = "";
+  cards.forEach((card) => {
+    const article = document.createElement("article");
+    const tone = deriveCardTone(`${card.summary} ${card.detail}`);
+    article.className = `status-card ${tone}`;
+    article.innerHTML = `<h4>${card.label}</h4><p>${card.summary}</p><p>${card.detail}</p>`;
+    statusCards.appendChild(article);
+  });
 }
 
 function renderDeviceChecks(result) {
@@ -1089,12 +1204,21 @@ async function refreshStatus() {
   renderDiagnostics(payload);
   hydrateControls(payload.config);
   renderOnboardingState(payload);
+  if (previewViewerCount) previewViewerCount.textContent = `👥 ${payload.config.viewerCount ?? 0}`;
   summarizeRuntime(payload);
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
   summarizeSttHealth(payload);
   summarizeApiKeyHealth(payload);
   summarizeVisionHealth(payload);
+  renderStatusCards(payload);
+  setSystemStateBadge(payload);
+  const hasMissingKey = (apiKeyHealthSummary?.textContent || "").includes("missing");
+  if (connectStatusPill) {
+    connectStatusPill.textContent = hasMissingKey ? "Partial" : "Connected";
+    connectStatusPill.classList.toggle("pending", hasMissingKey);
+    connectStatusPill.classList.toggle("complete", !hasMissingKey);
+  }
   return payload;
 }
 
@@ -1222,6 +1346,33 @@ controls.sttProvider?.addEventListener("change", () => {
   syncSttEndpointForProvider();
 });
 
+[controls.viewerCount, controls.engagementMultiplier, controls.donationFrequency].forEach((input) => {
+  input?.addEventListener("input", updateRangeLabels);
+});
+
+uiModeSelect?.addEventListener("change", () => {
+  setMode(uiModeSelect.value);
+});
+
+logsToggleBtn?.addEventListener("click", () => {
+  logsPanel?.classList.toggle("hidden");
+});
+
+logFilter?.addEventListener("change", renderLogs);
+logSearch?.addEventListener("input", renderLogs);
+
+window.addEventListener("keydown", (event) => {
+  if (!(event.metaKey || event.ctrlKey)) return;
+  if (event.key.toLowerCase() === "d") {
+    event.preventDefault();
+    setMode(uiMode === "developer" ? "operator" : "developer");
+  }
+  if (event.key.toLowerCase() === "l") {
+    event.preventDefault();
+    logsPanel?.classList.toggle("hidden");
+  }
+});
+
 liveMonitorEnabled?.addEventListener("change", async () => {
   if (!liveMonitorEnabled.checked) {
     stopLiveMonitor();
@@ -1248,8 +1399,7 @@ window.addEventListener("beforeunload", () => {
 });
 
 const events = new EventSource("/api/events");
-events.addEventListener("messages", (event) => {
-  const messages = JSON.parse(event.data);
+function renderIncomingMessages(messages) {
   messages.forEach((msg) => {
     const item = document.createElement("div");
     item.className = "chat-msg";
@@ -1277,7 +1427,13 @@ events.addEventListener("messages", (event) => {
 
     chatEl.prepend(item);
     while (chatEl.children.length > 22) chatEl.lastChild.remove();
+    addLog("system", "event", `${msg.source ?? "unknown"} message from ${msg.username ?? "anon"}`);
   });
+}
+
+events.addEventListener("messages", (event) => {
+  const messages = JSON.parse(event.data);
+  renderIncomingMessages(messages);
 });
 
 events.addEventListener("meta", (event) => {
@@ -1297,9 +1453,30 @@ events.addEventListener("meta", (event) => {
   const recovery = meta.cloudRecovery ? `Recovery=${meta.cloudRecovery}` : "";
   const banner = warningLines.length ? `⚠️ ${warningLines.join(" | ")} ${recovery}`.trim() + "\n" : "";
   metaEl.textContent = `${banner}${JSON.stringify(meta, null, 2)}`;
+  if (warningLines.length) addLog("network", "warn", warningLines.join(" | "));
+});
+
+sendTestChatBtn?.addEventListener("click", () => {
+  renderIncomingMessages([{ username: "test_user", text: "This is a test chat message", emotes: [], source: "test" }]);
+});
+
+triggerTestDonationBtn?.addEventListener("click", () => {
+  previewAlertCount += 1;
+  if (previewAlerts) previewAlerts.textContent = `🔔 ${previewAlertCount}`;
+  renderIncomingMessages([{ username: "donor42", text: "Great stream!", donationCents: 500, emotes: [], source: "test" }]);
+});
+
+simulateViewerSpikeBtn?.addEventListener("click", () => {
+  const current = Number(controls.viewerCount.value);
+  const boosted = Math.min(5000, current + 250);
+  controls.viewerCount.value = String(boosted);
+  updateRangeLabels();
+  if (previewViewerCount) previewViewerCount.textContent = `👥 ${boosted}`;
+  addLog("system", "event", `Viewer spike simulated to ${boosted}`);
 });
 
 async function boot() {
+  setMode(localStorage.getItem("streamsim-ui-mode") || "operator");
   const response = await fetch("/api/status");
   const payload = await response.json();
   latestStatusPayload = payload;
@@ -1313,6 +1490,8 @@ async function boot() {
   summarizeSttHealth(payload);
   summarizeApiKeyHealth(payload);
   summarizeVisionHealth(payload);
+  renderStatusCards(payload);
+  setSystemStateBadge(payload);
   latestDeviceVerification = { micPermission: false, cameraPermission: false, hasMicDevice: false, hasCameraDevice: false, cameraPermissionState: "unknown", cameraFailureReason: null };
   if (liveMonitorEnabled) {
     liveMonitorEnabled.checked = false;
@@ -1323,6 +1502,9 @@ async function boot() {
   setCaptionPreview("No speech captured yet.");
   setCaptionStatus("Run Verify Microphone to start mic/STT check.", "warn");
   ensureVerifyCameraButtonActive();
+  if (previewViewerCount) previewViewerCount.textContent = `👥 ${payload.config.viewerCount ?? 0}`;
+  if (previewAlerts) previewAlerts.textContent = "🔔 0";
+  addLog("system", "info", "UI boot complete.");
   if (statusAutoRefreshInterval) clearInterval(statusAutoRefreshInterval);
   statusAutoRefreshInterval = setInterval(() => {
     refreshStatus().catch(() => {
