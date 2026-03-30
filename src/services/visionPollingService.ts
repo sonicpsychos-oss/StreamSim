@@ -32,6 +32,44 @@ const VISION_MODEL_FALLBACKS: Record<string, string[]> = {
   "gpt-5-mini": ["gpt-4o-mini"]
 };
 
+const DEAD_VISION_TAGS = new Set([
+  "person",
+  "people",
+  "human",
+  "man",
+  "woman",
+  "boy",
+  "girl",
+  "face",
+  "game",
+  "gaming",
+  "room",
+  "indoors",
+  "indoor",
+  "camera",
+  "webcam",
+  "stream",
+  "streamer",
+  "video",
+  "monitor"
+]);
+
+function uniqueTagList(tags: string[]): string[] {
+  return tags
+    .map((tag) => tag.trim().toLowerCase())
+    .filter(Boolean)
+    .filter((tag, index, arr) => arr.indexOf(tag) === index)
+    .slice(0, 8);
+}
+
+function filterDeadVisionTags(tags: string[]): string[] {
+  const normalized = uniqueTagList(tags);
+  const filtered = normalized.filter((tag) => !DEAD_VISION_TAGS.has(tag));
+  // Never return an empty list if provider gave us at least one normalized tag.
+  // This keeps the chat from losing all visual hooks when the scene is generic.
+  return filtered.length > 0 ? filtered : normalized;
+}
+
 export function explainVisionPollingError(reason: string): string {
   if (reason.includes("Unexpected end of JSON input")) {
     return "Vision endpoint returned truncated JSON (broken package).";
@@ -53,16 +91,17 @@ function normalizeVisionTags(payload: VisionEndpointPayload): string[] {
     .map((tag) => tag.trim())
     .filter(Boolean);
 
-  if (listTags.length > 0) return listTags.slice(0, 8);
+  if (listTags.length > 0) return filterDeadVisionTags(listTags);
 
   const caption = [payload.description, payload.caption, payload.text].find((value): value is string => typeof value === "string" && value.trim().length > 0);
   if (!caption) return [];
 
-  return caption
+  return filterDeadVisionTags(
+    caption
     .split(/[|,;\n]/g)
     .map((part) => part.trim())
     .filter(Boolean)
-    .slice(0, 8);
+  );
 }
 
 function payloadHasVisionSignal(payload: VisionEndpointPayload): boolean {
@@ -76,29 +115,38 @@ function payloadHasVisionSignal(payload: VisionEndpointPayload): boolean {
 }
 
 function parseVisionTagsFromText(rawText: string): string[] {
-  return rawText
+  return filterDeadVisionTags(rawText
     .split(/[,\n;|]/g)
     .map((chunk) => chunk.trim())
     .map((chunk) => chunk.replace(/^[-*•\d.)\s]+/, "").trim())
     .map((chunk) => chunk.replace(/^["'`]+|["'`]+$/g, "").trim().toLowerCase())
-    .filter(Boolean)
-    .slice(0, 8);
+    .filter(Boolean));
 }
 
 function tryParseJsonTags(rawText: string): string[] {
-  const trimmed = rawText.trim();
-  if (!trimmed) return [];
-  try {
-    const parsed = JSON.parse(trimmed) as { tags?: unknown };
-    if (!Array.isArray(parsed.tags)) return [];
-    return parsed.tags
-      .filter((tag): tag is string => typeof tag === "string")
-      .map((tag) => tag.trim().toLowerCase())
-      .filter(Boolean)
-      .slice(0, 8);
-  } catch {
-    return [];
+  const attempts = [rawText.trim()];
+  const fencedJson = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
+  if (fencedJson) attempts.push(fencedJson);
+
+  for (const attempt of attempts) {
+    if (!attempt) continue;
+    try {
+      const parsed = JSON.parse(attempt) as { tags?: unknown } | unknown[];
+      const parsedTags = Array.isArray(parsed)
+        ? parsed
+        : parsed && typeof parsed === "object" && Array.isArray((parsed as { tags?: unknown }).tags)
+          ? (parsed as { tags?: unknown[] }).tags
+          : [];
+      if (!Array.isArray(parsedTags)) continue;
+      return filterDeadVisionTags(parsedTags
+        .filter((tag): tag is string => typeof tag === "string")
+        .map((tag) => tag.trim().toLowerCase())
+        .filter(Boolean));
+    } catch {
+      continue;
+    }
   }
+  return [];
 }
 
 function extractVisionText(data: {
@@ -235,6 +283,19 @@ export class VisionPollingService {
       console.log("[VisionService] Raw response from provider:", providerResult.providerResponse);
       const tags = providerResult.tags;
 
+      if (tags.length > 0 && tags.every((tag) => DEAD_VISION_TAGS.has(tag))) {
+        this.emitMeta({
+          warnings: ["Vision tags were all generic labels; consider improving lighting or camera framing for richer activity/expression tags."],
+          vision: {
+            provider: config.capture.visionProvider,
+            endpoint: config.capture.visionEndpoint,
+            tags,
+            rawText: providerResult.rawText ?? "",
+            providerResponse: providerResult.providerResponse
+          }
+        });
+      }
+
       if (tags.length) {
         sharedDeviceCapturePipeline.ingestVisionSample({ tags });
       } else {
@@ -302,11 +363,16 @@ export class VisionPollingService {
           model,
           messages: [
             {
+              role: "system",
+              content:
+                "You are a stream-vision tagger. Prioritize streamer activity, facial expressions, body language, and scene energy (example outputs: focused expression, leaning in, adjusting headset, dim gaming vibe). Avoid static object lists unless they directly explain action/mood. Exclude generic dead tags such as person, man, woman, game, room, camera, monitor, stream, and video."
+            },
+            {
               role: "user",
               content: [
                 {
                   type: "text",
-                  text: 'Return strict JSON: {"tags":["tag1","tag2","tag3"]}. Keep tags short concrete nouns/adjectives from the frame.'
+                  text: 'Return strict JSON: {"tags":["tag1","tag2","tag3"]}. Use short phrase-style tags focused on actions/expressions/energy (not generic object labels).'
                 },
                 {
                   type: "image_url",
