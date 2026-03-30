@@ -169,7 +169,7 @@ describe("inference failure explanation", () => {
 });
 
 describe("cloud generation hardening", () => {
-  it("omits explicit max_completion_tokens for cloud generation compatibility", async () => {
+  it("sets a bounded max_completion_tokens budget for cloud generation", async () => {
     process.env.STREAMSIM_CLOUD_API_KEY = "test-key";
     const provider = new HybridInferenceProvider("openai");
     const fetchMock = vi.fn(async () => ({
@@ -187,7 +187,8 @@ describe("cloud generation hardening", () => {
 
     await provider.generate(payload, defaultConfig);
     const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
-    expect(body.max_completion_tokens).toBeUndefined();
+    expect(body.max_completion_tokens).toBeGreaterThanOrEqual(120);
+    expect(body.max_completion_tokens).toBeLessThanOrEqual(240);
     vi.unstubAllGlobals();
   });
 
