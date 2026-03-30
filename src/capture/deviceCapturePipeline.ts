@@ -94,11 +94,13 @@ export class DeviceCapturePipeline {
     this.lastIntelligenceSample = null;
   }
 
-  public diagnostics(): { micPaused: boolean; bufferedFrames: number; hasVisionSample: boolean } {
+  public diagnostics(): { micPaused: boolean; bufferedFrames: number; hasVisionSample: boolean; latestVisionTagCount: number; latestVisionCapturedAt: number | null } {
     return {
       micPaused: this.micPaused,
       bufferedFrames: this.micFrames.length,
-      hasVisionSample: Boolean(this.lastVisionSample)
+      hasVisionSample: Boolean(this.lastVisionSample),
+      latestVisionTagCount: this.lastVisionSample?.tags.length ?? 0,
+      latestVisionCapturedAt: this.lastVisionSample?.capturedAt ?? null
     };
   }
 

@@ -203,6 +203,70 @@ describe("VisionPollingService", () => {
     expect(context.visionTags).toEqual(["ring light", "keyboard"]);
   });
 
+  it("falls back to live-monitor frame when vision endpoint returns empty payload for OpenAI provider", async () => {
+    const config = {
+      ...defaultConfig,
+      provider: { ...defaultConfig.provider, cloudEndpoint: "https://api.openai.com/v1/chat/completions", cloudModel: "gpt-4o-mini" },
+      capture: {
+        ...defaultConfig.capture,
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "openai" as const,
+        visionEndpoint: "http://127.0.0.1:7778/vision-tags"
+      }
+    };
+    sharedVisionFrameStore.setFrame("data:image/jpeg;base64,abcd1234==");
+    const emitMeta = vi.fn();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/vision-tags")) return { ok: true, json: async () => ({}) };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: "ring light, keyboard" } }] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const service = new VisionPollingService(() => config, emitMeta);
+    await (service as any).tick();
+    const context = sharedDeviceCapturePipeline.getContext(config);
+    expect(context.visionTags).toEqual(["ring light", "keyboard"]);
+    expect(emitMeta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        warnings: expect.arrayContaining([expect.stringContaining("using latest browser frame")])
+      })
+    );
+  });
+
+  it("falls back to live-monitor frame when vision endpoint errors for OpenAI provider", async () => {
+    const config = {
+      ...defaultConfig,
+      provider: { ...defaultConfig.provider, cloudEndpoint: "https://api.openai.com/v1/chat/completions", cloudModel: "gpt-4o-mini" },
+      capture: {
+        ...defaultConfig.capture,
+        visionEnabled: true,
+        useRealCapture: true,
+        visionProvider: "openai" as const,
+        visionEndpoint: "http://127.0.0.1:7778/vision-tags"
+      }
+    };
+    sharedVisionFrameStore.setFrame("data:image/jpeg;base64,abcd1234==");
+    const emitMeta = vi.fn();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/vision-tags")) return { ok: false, status: 503, json: async () => ({}) };
+      return { ok: true, json: async () => ({ choices: [{ message: { content: "ring light, keyboard" } }] }) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const service = new VisionPollingService(() => config, emitMeta);
+    await (service as any).tick();
+    const context = sharedDeviceCapturePipeline.getContext(config);
+    expect(context.visionTags).toEqual(["ring light", "keyboard"]);
+    expect(emitMeta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        warnings: expect.arrayContaining([expect.stringContaining("Vision endpoint unavailable; falling back to latest browser frame")])
+      })
+    );
+  });
+
   it("falls back to gpt-4o-mini when primary OpenAI vision model is rate-limited", async () => {
     const config = {
       ...defaultConfig,
