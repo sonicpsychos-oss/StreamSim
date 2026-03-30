@@ -104,6 +104,7 @@ export interface StreamContext {
   fishingState?: FishingState;
   recentChatHistory: string[];
   timestamp: string;
+  bannedTerms?: string[];
 }
 
 export interface PromptPayload {
@@ -118,6 +119,7 @@ export interface PromptPayload {
   requestedMessageCount: number;
   personaCalibration: PersonaCalibration;
   providerConditioning: ProviderConditioning;
+  systemPrompt?: string;
 }
 
 export type MessageSource = "real-inference" | "mock-inference" | "mock-audience" | "fallback-mock" | "unknown";

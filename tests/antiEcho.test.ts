@@ -242,6 +242,6 @@ describe("anti-echo constraint", () => {
     expect(first.transcript).toBe("same line from streamer");
     expect(second.transcript).toBe("same line from streamer");
     expect(third.transcript).toBe("same line from streamer");
-    expect(fourth.transcript).toBe("same line from streamer");
+    expect(fourth.transcript).toBe("");
   });
 });

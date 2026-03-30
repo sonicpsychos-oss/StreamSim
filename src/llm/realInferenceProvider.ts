@@ -397,7 +397,7 @@ export class HybridInferenceProvider implements InferenceProvider {
           model: config.provider.localModel,
           temperature: 0.8,
           messages: [
-            { role: "system", content: systemPromptForPayload(payload) },
+            { role: "system", content: payload.systemPrompt ?? systemPromptForPayload(payload) },
             { role: "user", content: JSON.stringify(buildModelFacingPayload(payload)) }
           ]
         }
@@ -428,7 +428,7 @@ export class HybridInferenceProvider implements InferenceProvider {
       throw new Error("Missing cloud API key in keychain for cloud provider.");
     }
 
-    const systemPrompt = systemPromptForPayload(payload);
+    const systemPrompt = payload.systemPrompt ?? systemPromptForPayload(payload);
     const modelFacingPayload = buildModelFacingPayload(payload);
     const messages = [
       { role: "system" as const, content: systemPrompt },
