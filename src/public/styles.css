@@ -136,8 +136,30 @@ button.primary { background: var(--accent-muted); border-color: #3b82f6; }
 .preview-stats { display: flex; gap: 10px; color: #bfdbfe; font-size: 0.86rem; }
 .preview-actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
 #chat { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-.chat-msg { background: var(--panel-alt); border: 1px solid #30384b; padding: 8px 10px; border-radius: 10px; line-height: 1.4; animation: pulseIn 280ms ease; }
+.chat-msg {
+  background: var(--panel-alt);
+  border: 1px solid #30384b;
+  padding: 8px 10px;
+  border-radius: 10px;
+  line-height: 1.4;
+  animation: pulseIn 280ms ease;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .user { color: #7dd3fc; font-weight: 700; margin-right: 8px; }
+.chat-msg .user,
+.chat-msg .donation,
+.chat-msg .source-tag {
+  flex: 0 0 auto;
+}
+.chat-msg > span:not(.user):not(.donation):not(.source-tag) {
+  min-width: 0;
+  white-space: normal;
+}
 .donation { color: #facc15; margin-left: 8px; }
 .source-tag {
   margin-left: 8px;
