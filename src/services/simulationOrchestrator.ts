@@ -260,6 +260,7 @@ export class SimulationOrchestrator {
       const captureProvider = createCaptureProvider(config);
       const provider = createInferenceProvider(config.inferenceMode);
       const startedAt = Date.now();
+      await this.visionService.awaitLatestPoll();
 
       if (!config.compliance.eulaAccepted) {
         this.emitMeta({ warning: "EULA must be accepted before simulation starts." });
