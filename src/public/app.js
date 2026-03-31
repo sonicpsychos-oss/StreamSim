@@ -33,6 +33,7 @@ const triggerTestDonationBtn = document.getElementById("triggerTestDonation");
 const simulateViewerSpikeBtn = document.getElementById("simulateViewerSpike");
 const liveFrame = document.getElementById("liveFrame");
 const liveBadge = document.getElementById("liveBadge");
+const overlayEl = document.getElementById("overlay");
 
 let liveMonitorStream = null;
 let liveMonitorAudioContext = null;
@@ -220,6 +221,11 @@ function arrayBufferToBase64(buffer) {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withEventDelay(min = 200, max = 500) {
+  const ms = Math.round(min + Math.random() * Math.max(0, max - min));
+  await wait(ms);
 }
 
 async function confirmCameraFrames(stream) {
@@ -526,16 +532,19 @@ function setSimulationActionPending(isPending) {
 
 function setSystemStateBadge(payload = latestStatusPayload) {
   if (!systemStateBadge) return;
-  let state = "idle";
+  let state = "IDLE";
+  let stateClass = "idle";
   if (simulationActionInFlight || payload?.ai?.state === "running") {
-    state = "running";
+    state = "LIVE";
+    stateClass = "running";
   }
   if (String(statusBanner?.className || "").includes("error")) {
-    state = "error";
+    state = "STOPPED";
+    stateClass = "error";
   }
-  systemStateBadge.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+  systemStateBadge.textContent = state;
   systemStateBadge.classList.remove("idle", "running", "error");
-  systemStateBadge.classList.add(state);
+  systemStateBadge.classList.add(stateClass);
 }
 
 async function runAction({ button, pendingText, successText, onRun }) {
@@ -1421,6 +1430,7 @@ function renderIncomingMessages(messages) {
   messages.forEach((msg) => {
     const item = document.createElement("div");
     item.className = "chat-msg";
+    item.style.animationDelay = `${Math.round(40 + Math.random() * 160)}ms`;
 
     const user = document.createElement("span");
     user.className = "user";
@@ -1444,7 +1454,9 @@ function renderIncomingMessages(messages) {
       donation.className = "donation";
       donation.textContent = `$${(msg.donationCents / 100).toFixed(2)}`;
       item.append(donation);
+      item.classList.add("is-donation", "is-event");
     }
+    if (msg.source === "system") item.classList.add("is-event");
 
     chatEl.prepend(item);
     while (chatEl.children.length > 22) chatEl.lastChild.remove();
@@ -1478,22 +1490,36 @@ events.addEventListener("meta", (event) => {
 });
 
 sendTestChatBtn?.addEventListener("click", () => {
-  renderIncomingMessages([{ username: "test_user", text: "This is a test chat message", emotes: [], source: "test" }]);
+  void (async () => {
+    await withEventDelay();
+    renderIncomingMessages([{ username: "test_user", text: "This is a test chat message", emotes: [], source: "test" }]);
+  })();
 });
 
 triggerTestDonationBtn?.addEventListener("click", () => {
-  previewAlertCount += 1;
-  if (previewAlerts) previewAlerts.textContent = `🔔 ${previewAlertCount}`;
-  renderIncomingMessages([{ username: "donor42", text: "Great stream!", donationCents: 500, emotes: [], source: "test" }]);
+  void (async () => {
+    await withEventDelay();
+    previewAlertCount += 1;
+    if (previewAlerts) previewAlerts.textContent = `🔔 ${previewAlertCount}`;
+    overlayEl?.classList.add("event-pulse");
+    setTimeout(() => overlayEl?.classList.remove("event-pulse"), 520);
+    renderIncomingMessages([{ username: "donor42", text: "Great stream!", donationCents: 500, emotes: [], source: "test" }]);
+  })();
 });
 
 simulateViewerSpikeBtn?.addEventListener("click", () => {
-  const current = Number(controls.viewerCount.value);
-  const boosted = Math.min(5000, current + 250);
-  controls.viewerCount.value = String(boosted);
-  updateRangeLabels();
-  if (previewViewerCount) previewViewerCount.textContent = `👥 ${boosted}`;
-  addLog("system", "event", `Viewer spike simulated to ${boosted}`);
+  void (async () => {
+    await withEventDelay();
+    const current = Number(controls.viewerCount.value);
+    const boosted = Math.min(5000, current + 250);
+    controls.viewerCount.value = String(boosted);
+    updateRangeLabels();
+    if (previewViewerCount) previewViewerCount.textContent = `👥 ${boosted}`;
+    overlayEl?.classList.add("event-pulse");
+    setTimeout(() => overlayEl?.classList.remove("event-pulse"), 520);
+    renderIncomingMessages([{ username: "system", text: `Viewer spike detected: +${boosted - current}`, emotes: [], source: "system" }]);
+    addLog("system", "event", `Viewer spike simulated to ${boosted}`);
+  })();
 });
 
 async function boot() {
