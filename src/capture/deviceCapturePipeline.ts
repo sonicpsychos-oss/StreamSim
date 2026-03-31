@@ -45,8 +45,10 @@ export class DeviceCapturePipeline {
       return;
     }
     this.lastVisionSample = { tags, capturedAt: Date.now() };
-    // eslint-disable-next-line no-console
-    console.log("[DeviceCapturePipeline] Saved latest vision tags", { tags, capturedAt: this.lastVisionSample.capturedAt });
+    if (tags.length > 0) {
+      // eslint-disable-next-line no-console
+      console.log("[DeviceCapturePipeline] Saved latest vision tags", { tags, capturedAt: this.lastVisionSample.capturedAt });
+    }
   }
 
   public ingestIntelligenceSample(sample: Pick<StreamContext, "vibe" | "topic" | "intent" | "isCommand" | "intentScore">): void {
