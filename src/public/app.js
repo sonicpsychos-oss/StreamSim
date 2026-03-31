@@ -68,7 +68,7 @@ const MIC_CHECK_PROBE_SECONDS = 3.5;
 const MIC_CHECK_BUFFER_SECONDS = 8;
 const MIC_CHECK_MIN_SAMPLES = 12000;
 const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
-const LIVE_MONITOR_VISION_SAMPLE_MS = 8000;
+const DEFAULT_LIVE_MONITOR_VISION_SAMPLE_MS = 7000;
 const STATUS_AUTO_REFRESH_MS = 5000;
 const STT_DEFAULT_ENDPOINTS = {
   "local-whisper": "http://127.0.0.1:7778/stt",
@@ -452,6 +452,24 @@ async function pushLiveVisionSample() {
   await post("/api/capture/vision-sample", { dataUrl });
 }
 
+function getLiveMonitorVisionSampleMs() {
+  const configuredIntervalSec = Number(controls.visionIntervalSec?.value);
+  const safeIntervalSec = Number.isFinite(configuredIntervalSec)
+    ? Math.max(5, Math.min(120, Math.floor(configuredIntervalSec)))
+    : Math.round(DEFAULT_LIVE_MONITOR_VISION_SAMPLE_MS / 1000);
+  return safeIntervalSec * 1000;
+}
+
+function restartLiveMonitorVisionSampling() {
+  if (!liveMonitorStream) return;
+  if (liveMonitorVisionInterval) clearInterval(liveMonitorVisionInterval);
+  const sampleMs = getLiveMonitorVisionSampleMs();
+  liveMonitorVisionInterval = setInterval(() => {
+    void pushLiveVisionSample();
+  }, sampleMs);
+  setLiveMonitorStatus(`Camera and microphone active for live monitor (vision snapshots every ${Math.round(sampleMs / 1000)}s).`, "ok");
+}
+
 async function startLiveMonitor() {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error("Browser does not support getUserMedia for live monitor.");
@@ -489,12 +507,8 @@ async function startLiveMonitor() {
     const rms = Math.sqrt(sum / samples.length);
     drawVoiceMeter(Math.min(1, rms * 3.2));
   }, 90);
-  liveMonitorVisionInterval = setInterval(() => {
-    void pushLiveVisionSample();
-  }, LIVE_MONITOR_VISION_SAMPLE_MS);
+  restartLiveMonitorVisionSampling();
   void pushLiveVisionSample();
-
-  setLiveMonitorStatus("Camera and microphone active for live monitor (vision snapshots every 8s).", "ok");
   return true;
 }
 
@@ -1390,6 +1404,10 @@ liveMonitorEnabled?.addEventListener("change", async () => {
     liveMonitorEnabled.checked = false;
     stopLiveMonitor();
   }
+});
+
+controls.visionIntervalSec?.addEventListener("change", () => {
+  restartLiveMonitorVisionSampling();
 });
 
 window.addEventListener("beforeunload", () => {

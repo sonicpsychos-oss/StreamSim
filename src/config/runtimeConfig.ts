@@ -15,7 +15,7 @@ export const defaultConfig: SimulationConfig = {
   inferenceMode: "openai",
   capture: {
     visionEnabled: true,
-    visionIntervalSec: 25,
+    visionIntervalSec: 7,
     visionProvider: "local",
     useRealCapture: true,
     sttEndpoint:
