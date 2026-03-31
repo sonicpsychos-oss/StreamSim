@@ -193,7 +193,8 @@ function systemPromptForPayload(payload: PromptPayload): string {
     // Primacy zone: engine rules
     `Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents"?:number|null,"ttsText"?:string|null}]}. Never include usernames.`,
     fishingDirective,
-    `messages must be an array with exactly ${payload.requestedMessageCount} items (valid batch range is 2 to 8 based on viewerCount).`,
+    `messages must be an array with exactly ${payload.requestedMessageCount} items (valid batch range is 5 to 11 based on viewerCount).`,
+    "Each message text MUST stay under 10 words.",
     "STRICT COMMAND OVERRIDE (highest priority): if streamer says 'drop [X]' or 'type [X]' or 'spam [X]', message 1 and message 2 MUST be exactly [X] with no extra words, punctuation, or emojis.",
     "COMMAND PRECEDENCE: when command override triggers, it cancels contrast, question-answer, anti-echo, and diversity constraints for message 1/message 2.",
     "GROUPTHINK RULE: during a drop/type/spam command, diversity is disabled and both first messages must output the same exact token.",
@@ -331,8 +332,8 @@ function isResponseFormatSchemaFailure(status: number, detail: string): boolean 
 }
 
 function completionTokenCap(requestedMessageCount: number): number {
-  const safeCount = Math.max(2, Math.min(8, Math.floor(requestedMessageCount || 2)));
-  return Math.max(120, Math.min(240, 40 + safeCount * 20));
+  const safeCount = Math.max(5, Math.min(11, Math.floor(requestedMessageCount || 5)));
+  return Math.max(220, Math.min(520, 120 + safeCount * 30));
 }
 
 export class HybridInferenceProvider implements InferenceProvider {
@@ -468,7 +469,11 @@ export class HybridInferenceProvider implements InferenceProvider {
 
       const requestVariants =
         this.mode === "openai"
-          ? [baseBody, { ...baseBody, response_format: undefined }]
+          ? [
+              baseBody,
+              { ...baseBody, response_format: undefined },
+              { ...baseBody, response_format: undefined, max_completion_tokens: Math.max(320, completionTokenCap(payload.requestedMessageCount) + 120) }
+            ]
           : [baseBody];
 
       for (let variantIdx = 0; variantIdx < requestVariants.length; variantIdx += 1) {
@@ -504,7 +509,18 @@ export class HybridInferenceProvider implements InferenceProvider {
         }
 
         const data = (await response.json()) as ProviderResponseShape;
-        return extractProviderTextOrThrow(data, `${this.mode}:${model}`);
+        try {
+          return extractProviderTextOrThrow(data, `${this.mode}:${model}`);
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          if (variantIdx < requestVariants.length - 1) {
+            continue;
+          }
+          if (model !== config.provider.cloudModel) {
+            continue;
+          }
+          throw lastError;
+        }
       }
     }
 

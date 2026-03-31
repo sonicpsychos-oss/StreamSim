@@ -101,7 +101,7 @@ describe("output parser", () => {
 
 
 describe("prompt payload", () => {
-  it("requests between 2 and 8 messages based on viewer count", () => {
+  it("requests between 5 and 11 messages based on viewer count", () => {
     const low = buildPromptPayload(defaultConfig, {
       transcript: "",
       tone: { volumeRms: 0.1, paceWpm: 90 },
@@ -117,9 +117,9 @@ describe("prompt payload", () => {
       timestamp: new Date().toISOString()
     });
 
-    expect(low.requestedMessageCount).toBeGreaterThanOrEqual(2);
-    expect(low.requestedMessageCount).toBeLessThanOrEqual(8);
-    expect(high.requestedMessageCount).toBe(8);
+    expect(low.requestedMessageCount).toBeGreaterThanOrEqual(5);
+    expect(low.requestedMessageCount).toBeLessThanOrEqual(11);
+    expect(high.requestedMessageCount).toBe(11);
   });
 
   it("detects aggressive fishing only when vibe + inquiry + leading keywords align", () => {
@@ -187,8 +187,8 @@ describe("cloud generation hardening", () => {
 
     await provider.generate(payload, defaultConfig);
     const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
-    expect(body.max_completion_tokens).toBeGreaterThanOrEqual(120);
-    expect(body.max_completion_tokens).toBeLessThanOrEqual(240);
+    expect(body.max_completion_tokens).toBeGreaterThanOrEqual(220);
+    expect(body.max_completion_tokens).toBeLessThanOrEqual(520);
     vi.unstubAllGlobals();
   });
 

@@ -26,6 +26,7 @@ interface VisionProviderResult {
 }
 
 const DEFAULT_OPENAI_CHAT_COMPLETIONS_ENDPOINT = "https://api.openai.com/v1/chat/completions";
+const DEFAULT_VISION_MODEL = "gpt-5.4-nano-2026-03-17";
 const VISION_MODEL_FALLBACKS: Record<string, string[]> = {
   "gpt-5.4-nano-2026-03-17": ["gpt-5-mini", "gpt-4o-mini"],
   "gpt-5-nano": ["gpt-5-mini", "gpt-4o-mini"],
@@ -174,6 +175,13 @@ function visionModelCandidates(primaryModel: string): string[] {
   return candidates.filter((candidate, index) => candidate && candidates.indexOf(candidate) === index);
 }
 
+function selectVisionPrimaryModel(chatModel: string): string {
+  const normalized = chatModel.trim().toLowerCase();
+  if (normalized.includes("mini")) return DEFAULT_VISION_MODEL;
+  if (normalized.includes("nano")) return chatModel.trim();
+  return DEFAULT_VISION_MODEL;
+}
+
 function resolveOpenAiVisionEndpoint(config: SimulationConfig): string {
   const endpoint = String(config.provider.cloudEndpoint ?? "").trim();
   if (/^https:\/\/api\.openai\.com\/v1\/chat\/completions\/?$/i.test(endpoint)) return endpoint;
@@ -184,6 +192,7 @@ export class VisionPollingService {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private readonly secretStore = new SecretStore();
+  private inFlightTick: Promise<void> | null = null;
 
   constructor(
     private readonly getConfig: () => SimulationConfig,
@@ -193,7 +202,8 @@ export class VisionPollingService {
   public start(): void {
     if (this.running) return;
     this.running = true;
-    void this.tick();
+    this.inFlightTick = this.tick();
+    void this.inFlightTick;
   }
 
   public stop(): void {
@@ -202,12 +212,24 @@ export class VisionPollingService {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.inFlightTick = null;
+  }
+
+  public async awaitLatestPoll(maxWaitMs = 1500): Promise<void> {
+    if (!this.inFlightTick) return;
+    await Promise.race([
+      this.inFlightTick,
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, maxWaitMs);
+      })
+    ]);
   }
 
   private scheduleNext(delayMs: number): void {
     if (!this.running) return;
     this.timer = setTimeout(() => {
-      void this.tick();
+      this.inFlightTick = this.tick();
+      void this.inFlightTick;
     }, delayMs);
   }
 
@@ -352,7 +374,8 @@ export class VisionPollingService {
     const endpoint = resolveOpenAiVisionEndpoint(config);
     let lastError: Error | null = null;
     let lastEmptyResult: VisionProviderResult | null = null;
-    for (const model of visionModelCandidates(config.provider.cloudModel)) {
+    const primaryVisionModel = selectVisionPrimaryModel(config.provider.cloudModel);
+    for (const model of visionModelCandidates(primaryVisionModel)) {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -365,7 +388,7 @@ export class VisionPollingService {
             {
               role: "system",
               content:
-                "You are a stream-vision tagger. Prioritize streamer activity, facial expressions, body language, and scene energy (example outputs: focused expression, leaning in, adjusting headset, dim gaming vibe). Avoid static object lists unless they directly explain action/mood. Exclude generic dead tags such as person, man, woman, game, room, camera, monitor, stream, and video."
+                "You are a stream-vision tagger. Prioritize accuracy first, then detail. Prefer concrete observations over hype. Include neutral descriptors when appropriate (examples: neutral expression, reading chat, still posture). Use raw, unfiltered, slang-aware descriptors only when clearly visible, and describe intent without euphemisms. If a provocative/aggressive hand gesture appears, tag it explicitly (examples: flipping off chat, middle finger, aggressive gesture). Prioritize streamer activity, facial expressions, body language, and scene state (focused expression, leaning in, adjusting headset, dim gaming vibe). Avoid static object lists unless they directly explain action/mood. Exclude generic dead tags such as person, man, woman, game, room, camera, monitor, stream, and video."
             },
             {
               role: "user",

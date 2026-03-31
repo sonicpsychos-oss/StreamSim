@@ -33,6 +33,15 @@ describe("SpoolingEngine", () => {
 
     expect(hype).toBeGreaterThan(calm);
   });
+
+  it("creates staggered offsets for multi-message batches", () => {
+    const offsets = engine.batchOffsetsMs(6, 1200);
+    expect(offsets).toHaveLength(6);
+    expect(offsets[0]).toBe(0);
+    for (let i = 1; i < offsets.length; i += 1) {
+      expect(offsets[i]).toBeGreaterThan(offsets[i - 1]);
+    }
+  });
 });
 
 describe("Safety Filter", () => {

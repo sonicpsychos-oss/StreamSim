@@ -90,7 +90,7 @@ function mapBehavioralModes(situationalTags: string[]): string[] {
 }
 
 export function buildPromptPayload(config: SimulationConfig, context: StreamContext): PromptPayload {
-  const requestedMessageCount = Math.max(2, Math.min(8, Math.floor(Math.sqrt(config.viewerCount) / 18) + 1));
+  const requestedMessageCount = Math.max(5, Math.min(11, Math.floor(Math.sqrt(config.viewerCount) / 14) + 4));
   const situationalTags = detectSituationalTags(context);
   const behavioralModes = mapBehavioralModes(situationalTags);
 

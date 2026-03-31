@@ -140,6 +140,25 @@ export class SimulationOrchestrator {
     return messages.map((message) => ({ ...message, source: message.source ?? source ?? "unknown" }));
   }
 
+  private emitMessagesWithDrip(messages: ChatMessage[], timing: { actualDelayMs: number }, config: SimulationConfig, tone: { volumeRms: number; paceWpm: number }): void {
+    if (messages.length <= 1) {
+      this.emitMessages(messages);
+      return;
+    }
+
+    const offsets = this.spooler.batchOffsetsMs(messages.length, timing.actualDelayMs);
+    messages.forEach((message, index) => {
+      const delayMs = offsets[index] ?? 0;
+      setTimeout(() => {
+        if (!this.running) return;
+        const streamTone = { volumeRms: tone.volumeRms, paceWpm: tone.paceWpm };
+        const refreshedTiming = this.spooler.nextDelayMs(config, streamTone);
+        this.emitMessages([{ ...message, createdAt: new Date().toISOString() }]);
+        this.emitMeta({ spooling: { mode: "drip", index, batchSize: messages.length, delayMs, nextDelayMs: refreshedTiming.actualDelayMs } });
+      }, delayMs);
+    });
+  }
+
   private resolveActiveModelName(config: SimulationConfig): string {
     if (config.inferenceMode === "openai" || config.inferenceMode === "groq" || config.inferenceMode === "mock-cloud") {
       return config.provider.cloudModel;
@@ -260,6 +279,7 @@ export class SimulationOrchestrator {
       const captureProvider = createCaptureProvider(config);
       const provider = createInferenceProvider(config.inferenceMode);
       const startedAt = Date.now();
+      await this.visionService.awaitLatestPoll();
 
       if (!config.compliance.eulaAccepted) {
         this.emitMeta({ warning: "EULA must be accepted before simulation starts." });
@@ -402,7 +422,7 @@ export class SimulationOrchestrator {
           }
         });
 
-        this.emitMessages(safeMessages);
+        this.emitMessagesWithDrip(safeMessages, timing, config, context.tone);
         const latencyMs = Date.now() - startedAt;
         this.obs.log("pipeline_tick", {
           inferenceMode: config.inferenceMode,
