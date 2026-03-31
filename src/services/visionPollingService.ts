@@ -25,6 +25,19 @@ interface VisionProviderResult {
   model?: string;
 }
 
+function truncateForLog(value: string, maxLen = 96): string {
+  if (value.length <= maxLen) return value;
+  return `${value.slice(0, maxLen)}... (${value.length - maxLen} more chars)`;
+}
+
+function summarizeEndpointPayloadForLog(payload: VisionEndpointPayload): VisionEndpointPayload {
+  return {
+    ...payload,
+    dataUrl: typeof payload.dataUrl === "string" ? truncateForLog(payload.dataUrl) : payload.dataUrl,
+    imageBase64: typeof payload.imageBase64 === "string" ? truncateForLog(payload.imageBase64) : payload.imageBase64
+  };
+}
+
 const DEFAULT_OPENAI_CHAT_COMPLETIONS_ENDPOINT = "https://api.openai.com/v1/chat/completions";
 const DEFAULT_VISION_MODEL = "gpt-5.4-nano-2026-03-17";
 const VISION_MODEL_FALLBACKS: Record<string, string[]> = {
@@ -295,7 +308,7 @@ export class VisionPollingService {
         }
       }
       // eslint-disable-next-line no-console
-      console.log("[VisionPollingService] vision endpoint payload", endpointPayload);
+      console.log("[VisionPollingService] vision endpoint payload", summarizeEndpointPayloadForLog(endpointPayload));
 
       const providerResult: VisionProviderResult =
         config.capture.visionProvider === "openai"
