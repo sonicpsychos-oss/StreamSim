@@ -85,6 +85,41 @@ export class IdentityManager {
     return `${Math.floor(Math.random() * 99) + 1}`;
   }
 
+  private legacyTokenCase(token: string): string {
+    const styleRoll = Math.random() * 100;
+    if (styleRoll <= 30) return token;
+    if (styleRoll <= 55) return token.charAt(0).toUpperCase() + token.slice(1);
+    if (styleRoll <= 72) return token.toUpperCase();
+    if (styleRoll <= 88) return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+
+    const letters = token.split("");
+    for (let i = 0; i < letters.length; i += 1) {
+      if (/[a-z]/i.test(letters[i]) && this.randomChance(45)) {
+        letters[i] = this.randomChance(50) ? letters[i].toUpperCase() : letters[i].toLowerCase();
+      }
+    }
+    return letters.join("");
+  }
+
+  private generateLegacyIdentity(adj: string, noun: string): string {
+    const separatorRoll = Math.random() * 100;
+    let separator = "";
+    if (separatorRoll > 35 && separatorRoll <= 65) separator = "_";
+    else if (separatorRoll > 65 && separatorRoll <= 80) separator = ".";
+
+    let core = `${this.legacyTokenCase(adj)}${separator}${this.legacyTokenCase(noun)}`;
+    if (this.randomChance(25)) core = `${core}${this.randomChance(50) ? "X" : "x"}`;
+
+    const numberSuffixRoll = Math.random() * 100;
+    if (numberSuffixRoll <= 35) core = `${core}${this.generateNumberSuffix()}`;
+    else if (numberSuffixRoll <= 55) core = `${core}${Math.floor(Math.random() * 900) + 100}`;
+
+    if (this.randomChance(20)) core = `${this.randomChance(50) ? "xX" : "Xx"}${core}`;
+    if (this.randomChance(15)) core = `${core}${this.randomChance(50) ? "Xx" : "xX"}`;
+
+    return core;
+  }
+
   private passesSafetyFilter(username: string): boolean {
     const normalized = username.toLowerCase();
     return !this.banTerms.some((term) => normalized.includes(term));
@@ -93,16 +128,21 @@ export class IdentityManager {
   private createNewIdentity(): string {
     const tierRoll = Math.random() * 100;
 
+    const adj = pick(ADJECTIVES);
+    const noun = pick(NOUNS);
+
+    // Legacy throwback names with caps + numbers (~4%)
+    if (tierRoll <= 4) {
+      return this.generateLegacyIdentity(adj, noun);
+    }
+
     // Tier 3: modern single-word handles (35%)
-    if (tierRoll <= 35) {
+    if (tierRoll <= 40) {
       const single = pick(RARE_SINGLES);
       return this.randomChance(35) ? `${single}${Math.floor(Math.random() * 90) + 10}` : single;
     }
 
-    const adj = pick(ADJECTIVES);
-    const noun = pick(NOUNS);
-
-    // Tier 2: clean lowercase compounds (40%)
+    // Tier 2: mostly clean compounds (35%)
     if (tierRoll <= 75) {
       return `${adj}${noun}`;
     }
