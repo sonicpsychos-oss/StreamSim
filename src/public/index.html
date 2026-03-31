@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>StreamSim Control Center</title>
+    <title>StreamSim Simulation Instrument</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -21,32 +21,27 @@
                 <option value="developer">Developer</option>
               </select>
             </label>
-            <span id="systemStateBadge" class="state-pill idle">Idle</span>
+            <span id="systemStateBadge" class="state-pill idle">IDLE</span>
           </div>
         </header>
 
         <div class="workflow-stack">
-          <details class="control-group workflow-section" id="sectionSetup" open>
-            <summary><span>1. Setup</span><span id="onboardingPill" class="pill pending">Pending</span></summary>
-            <section class="onboarding-panel" id="onboardingPanel">
-              <ol class="onboarding-steps">
-                <li>Choose provider mode and stream profile.</li>
-                <li>Run readiness + performance checks.</li>
-                <li>Accept EULA to unlock simulation start.</li>
-              </ol>
-              <div class="wizard-inline-controls">
-                <label class="eula"><input id="wizardEulaAccepted" type="checkbox" /> I accept the simulation EULA/compliance terms</label>
-                <div class="buttons">
-                  <button id="runReadiness" type="button">Run Readiness</button>
-                  <button id="completeWizard" type="button" class="primary">Complete onboarding</button>
-                </div>
-                <ul id="readinessList"></ul>
-              </div>
-            </section>
-          </details>
+          <section class="control-group sticky-run workflow-section" id="sectionRun" open>
+            <div class="run-header">
+              <h3>Primary Actions</h3>
+              <span class="pill neutral">Play</span>
+            </div>
+            <div class="buttons sticky-actions">
+              <button id="start" type="button" class="primary">Start Simulation</button>
+              <button id="stop" type="button">Stop</button>
+              <button id="triggerTestDonation" type="button">Trigger Donation</button>
+              <button id="simulateViewerSpike" type="button">Simulate Spike</button>
+            </div>
+            <p id="statusBanner" class="status-banner" aria-live="polite">Ready.</p>
+          </section>
 
           <details class="control-group workflow-section" id="sectionConfigure" open>
-            <summary><span>2. Configure</span><span class="pill neutral">Profile</span></summary>
+            <summary><span>Core Controls</span><span class="pill neutral">Profile</span></summary>
             <div class="grid compact-grid">
               <label>Viewer Count
                 <input id="viewerCount" type="range" min="1" max="5000" value="100" />
@@ -60,6 +55,10 @@
                 <input id="donationFrequency" type="range" min="0" max="1" step="0.01" value="0.08" />
                 <span class="range-value" id="donationFrequencyValue">0.08</span>
               </label>
+            </div>
+            <details class="advanced-controls">
+              <summary><span>Advanced</span><span class="pill neutral">Collapsed</span></summary>
+              <div class="grid compact-grid">
               <label>Persona
                 <select id="persona">
                   <option value="supportive">Supportive</option>
@@ -85,12 +84,41 @@
                   <option value="groq">Groq</option>
                 </select>
               </label>
-            </div>
+              </div>
+            </details>
           </details>
 
-          <details class="control-group workflow-section" id="sectionConnect">
-            <summary><span>3. Connect</span><span id="connectStatusPill" class="pill neutral">Partial</span></summary>
-            <div class="grid">
+          <details class="control-group workflow-section system-status-group" id="sectionSystemStatus">
+            <summary><span>System Status</span><span id="connectStatusPill" class="pill neutral">Partial</span></summary>
+            <div class="buttons utility-actions">
+              <button id="save" type="button">Save Config</button>
+              <button id="refreshStatus" type="button">Refresh Status</button>
+              <button id="verifyMic" type="button">Verify Microphone</button>
+              <button id="verifyCamera" type="button" disabled>Verify Camera</button>
+              <button id="openOverlayWindow" type="button">Open Transparent Chat Window</button>
+            </div>
+            <details class="workflow-subsection" id="sectionSetup" open>
+              <summary><span>Setup</span><span id="onboardingPill" class="pill pending">Pending</span></summary>
+              <section class="onboarding-panel" id="onboardingPanel">
+                <ol class="onboarding-steps">
+                  <li>Choose provider mode and stream profile.</li>
+                  <li>Run readiness + performance checks.</li>
+                  <li>Accept EULA to unlock simulation start.</li>
+                </ol>
+                <div class="wizard-inline-controls">
+                  <label class="eula"><input id="wizardEulaAccepted" type="checkbox" /> I accept the simulation EULA/compliance terms</label>
+                  <div class="buttons">
+                    <button id="runReadiness" type="button">Run Readiness</button>
+                    <button id="completeWizard" type="button" class="primary">Complete onboarding</button>
+                  </div>
+                  <ul id="readinessList"></ul>
+                </div>
+              </section>
+            </details>
+
+            <details class="workflow-subsection" id="sectionConnect">
+              <summary><span>Connect</span><span class="pill neutral">Network</span></summary>
+              <div class="grid">
               <label>Local endpoint <input id="localEndpoint" type="text" value="http://127.0.0.1:11434" /></label>
               <label>Local model <input id="localModel" type="text" value="llama3.1:8b-instruct-q4_K_M" /></label>
               <label>Cloud endpoint <input id="cloudEndpoint" type="text" value="https://api.openai.com/v1/chat/completions" /></label>
@@ -134,11 +162,11 @@
               <label>STT endpoint <input id="sttEndpoint" type="text" value="http://127.0.0.1:7778/stt" /></label>
               <label>Vision endpoint <input id="visionEndpoint" type="text" value="http://127.0.0.1:7778/vision-tags" /></label>
               <label><input id="audioIntelligenceEnabled" type="checkbox" checked /> Audio Intelligence Enabled</label>
-            </div>
-          </details>
+              </div>
+            </details>
 
-          <details class="control-group workflow-section" id="sectionVerify" open>
-            <summary><span>4. Verify</span><span class="pill neutral">Status Cards</span></summary>
+            <details class="workflow-subsection" id="sectionVerify">
+            <summary><span>Verify</span><span class="pill neutral">Status Cards</span></summary>
             <h3>Runtime Verification</h3>
             <div id="statusCards" class="status-cards"></div>
             <label class="live-monitor-toggle"><input id="liveMonitorEnabled" type="checkbox" /> Enable live camera + voice monitor</label>
@@ -167,6 +195,7 @@
               <pre id="diagnosticsSummary"></pre>
               <pre id="meta"></pre>
             </div>
+            </details>
           </details>
 
           <details class="control-group workflow-section" id="sectionSecurity" data-mode-visible="developer">
@@ -205,22 +234,6 @@
             </div>
           </details>
 
-          <section class="control-group sticky-run workflow-section" id="sectionRun" open>
-            <div class="run-header">
-              <h3>5. Run</h3>
-              <span class="pill neutral">Action</span>
-            </div>
-            <div class="buttons sticky-actions">
-              <button id="start" type="button" class="primary">Start Simulation</button>
-              <button id="stop" type="button">Stop</button>
-              <button id="save" type="button">Save Config</button>
-              <button id="refreshStatus" type="button">Refresh Status</button>
-              <button id="verifyMic" type="button">Verify Microphone</button>
-              <button id="verifyCamera" type="button" disabled>Verify Camera</button>
-              <button id="openOverlayWindow" type="button">Open Transparent Chat Window</button>
-            </div>
-            <p id="statusBanner" class="status-banner" aria-live="polite">Ready.</p>
-          </section>
         </div>
       </section>
 
@@ -235,8 +248,6 @@
         </div>
         <div class="preview-actions">
           <button id="sendTestChat" type="button">Send Test Chat</button>
-          <button id="triggerTestDonation" type="button">Trigger Donation</button>
-          <button id="simulateViewerSpike" type="button">Simulate Viewer Spike</button>
         </div>
         <div id="chat"></div>
       </section>
