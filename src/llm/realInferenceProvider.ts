@@ -155,7 +155,7 @@ function extractProviderTextOrThrow(data: ProviderResponseShape, providerLabel: 
   throw new Error(`Provider returned empty content (${providerLabel})`);
 }
 
-function systemPromptForPayload(payload: PromptPayload): string {
+export function systemPromptForPayload(payload: PromptPayload): string {
   const transcript = payload.context.transcript.trim();
   const rawTranscriptTail = transcript.slice(-230);
   const transcriptTail = rawTranscriptTail.includes(" ")
