@@ -156,6 +156,46 @@ describe("prompt payload", () => {
 
     expect(payload.context.fishingState).toBe("STANDARD_CONTRARIAN");
   });
+
+  it("derives gesture-aware situational tags and behavioral modes from vision tags", () => {
+    const payload = buildPromptPayload(defaultConfig, {
+      transcript: "chat going wild",
+      tone: { volumeRms: 0.45, paceWpm: 132 },
+      visionTags: ["middle finger to camera", "heart hands pose"],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    });
+
+    expect(payload.situationalTags).toEqual(expect.arrayContaining([
+      "gesture_middle_finger",
+      "aggressive",
+      "disrespect",
+      "gesture_heart_hands",
+      "supportive",
+      "affectionate"
+    ]));
+    expect(payload.behavioralModes).toEqual(expect.arrayContaining(["drama", "conflict", "support"]));
+  });
+
+  it("adds broader expression/activity/environment context from vision tags", () => {
+    const payload = buildPromptPayload(defaultConfig, {
+      transcript: "queue next",
+      tone: { volumeRms: 0.31, paceWpm: 118 },
+      visionTags: ["smiling while reading chat", "leaning in", "adjusting headset", "dim rgb room"],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    });
+
+    expect(payload.situationalTags).toEqual(expect.arrayContaining([
+      "positive_expression",
+      "chat_engagement",
+      "engaged_posture",
+      "equipment_adjustment",
+      "dim_lighting",
+      "rgb_lighting"
+    ]));
+    expect(payload.behavioralModes).toEqual(expect.arrayContaining(["focus"]));
+  });
 });
 
 describe("inference failure explanation", () => {
