@@ -187,8 +187,8 @@ describe("cloud generation hardening", () => {
 
     await provider.generate(payload, defaultConfig);
     const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
-    expect(body.max_completion_tokens).toBeGreaterThanOrEqual(150);
-    expect(body.max_completion_tokens).toBeLessThanOrEqual(280);
+    expect(body.max_completion_tokens).toBeGreaterThanOrEqual(220);
+    expect(body.max_completion_tokens).toBeLessThanOrEqual(520);
     vi.unstubAllGlobals();
   });
 

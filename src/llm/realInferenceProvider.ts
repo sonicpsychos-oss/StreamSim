@@ -333,7 +333,7 @@ function isResponseFormatSchemaFailure(status: number, detail: string): boolean 
 
 function completionTokenCap(requestedMessageCount: number): number {
   const safeCount = Math.max(5, Math.min(11, Math.floor(requestedMessageCount || 5)));
-  return Math.max(150, Math.min(280, 70 + safeCount * 18));
+  return Math.max(220, Math.min(520, 120 + safeCount * 30));
 }
 
 export class HybridInferenceProvider implements InferenceProvider {
@@ -469,7 +469,11 @@ export class HybridInferenceProvider implements InferenceProvider {
 
       const requestVariants =
         this.mode === "openai"
-          ? [baseBody, { ...baseBody, response_format: undefined }]
+          ? [
+              baseBody,
+              { ...baseBody, response_format: undefined },
+              { ...baseBody, response_format: undefined, max_completion_tokens: Math.max(320, completionTokenCap(payload.requestedMessageCount) + 120) }
+            ]
           : [baseBody];
 
       for (let variantIdx = 0; variantIdx < requestVariants.length; variantIdx += 1) {
@@ -505,7 +509,18 @@ export class HybridInferenceProvider implements InferenceProvider {
         }
 
         const data = (await response.json()) as ProviderResponseShape;
-        return extractProviderTextOrThrow(data, `${this.mode}:${model}`);
+        try {
+          return extractProviderTextOrThrow(data, `${this.mode}:${model}`);
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          if (variantIdx < requestVariants.length - 1) {
+            continue;
+          }
+          if (model !== config.provider.cloudModel) {
+            continue;
+          }
+          throw lastError;
+        }
       }
     }
 

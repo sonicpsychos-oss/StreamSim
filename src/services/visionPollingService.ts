@@ -388,7 +388,7 @@ export class VisionPollingService {
             {
               role: "system",
               content:
-                "You are a stream-vision tagger. Prioritize streamer activity, facial expressions, body language, and scene energy (example outputs: focused expression, leaning in, adjusting headset, dim gaming vibe). Use raw, unfiltered, slang-aware descriptors and describe intent, not sanitized euphemisms. If a provocative/aggressive hand gesture appears, tag it explicitly (examples: flipping off chat, middle finger, aggressive gesture). Avoid static object lists unless they directly explain action/mood. Exclude generic dead tags such as person, man, woman, game, room, camera, monitor, stream, and video."
+                "You are a stream-vision tagger. Prioritize accuracy first, then detail. Prefer concrete observations over hype. Include neutral descriptors when appropriate (examples: neutral expression, reading chat, still posture). Use raw, unfiltered, slang-aware descriptors only when clearly visible, and describe intent without euphemisms. If a provocative/aggressive hand gesture appears, tag it explicitly (examples: flipping off chat, middle finger, aggressive gesture). Prioritize streamer activity, facial expressions, body language, and scene state (focused expression, leaning in, adjusting headset, dim gaming vibe). Avoid static object lists unless they directly explain action/mood. Exclude generic dead tags such as person, man, woman, game, room, camera, monitor, stream, and video."
             },
             {
               role: "user",

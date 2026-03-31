@@ -243,7 +243,7 @@ describe("hybrid routing and failover", () => {
         if (req.headers["x-streamsim-provider"] === "groq") {
           expect(parsed.max_completion_tokens).toBeUndefined();
         } else {
-          expect(parsed.max_completion_tokens).toBeGreaterThanOrEqual(150);
+          expect(parsed.max_completion_tokens).toBeGreaterThanOrEqual(220);
         }
         expect(parsed.temperature).toBeUndefined();
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -324,7 +324,7 @@ describe("hybrid routing and failover", () => {
         const parsed = JSON.parse(body);
         expect(parsed.model).toBe("gpt-5-mini");
         expect(parsed.max_tokens).toBeUndefined();
-        expect(parsed.max_completion_tokens).toBeGreaterThanOrEqual(150);
+        expect(parsed.max_completion_tokens).toBeGreaterThanOrEqual(220);
         expect(parsed.temperature).toBeUndefined();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
@@ -551,6 +551,16 @@ describe("device capture pipeline + security + observability schema", () => {
     expect(ctx.tone.volumeRms).toBeGreaterThan(0.49);
     expect(ctx.visionTags).toEqual(["keyboard", "ring light"]);
     expect(ctxImmediateFollowup.visionTags).toEqual(["keyboard", "ring light"]);
+  });
+
+  it("does not overwrite latest vision tags when an empty vision payload arrives", () => {
+    const pipeline = new DeviceCapturePipeline();
+    pipeline.ingestVisionSample({ tags: ["keyboard", "ring light"] });
+    pipeline.ingestVisionSample({ tags: [] });
+
+    const config = { ...defaultConfig, capture: { ...defaultConfig.capture, visionEnabled: true } };
+    const ctx = pipeline.getContext(config);
+    expect(ctx.visionTags).toEqual(["keyboard", "ring light"]);
   });
 
   it("redacts auth and key material", () => {

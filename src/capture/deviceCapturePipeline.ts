@@ -40,6 +40,10 @@ export class DeviceCapturePipeline {
 
   public ingestVisionSample(sample: { tags?: string[] }): void {
     const tags = Array.isArray(sample.tags) ? sample.tags.filter((tag) => typeof tag === "string" && tag.trim().length > 0).slice(0, 8) : [];
+    if (tags.length === 0 && this.lastVisionSample) {
+      // Preserve the last known-good sample when callers send placeholder/empty payloads.
+      return;
+    }
     this.lastVisionSample = { tags, capturedAt: Date.now() };
     // eslint-disable-next-line no-console
     console.log("[DeviceCapturePipeline] Saved latest vision tags", { tags, capturedAt: this.lastVisionSample.capturedAt });

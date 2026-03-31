@@ -34,4 +34,18 @@ export class SpoolingEngine {
 
     return { targetMps, baseDelayMs, actualDelayMs };
   }
+
+  public batchOffsetsMs(batchSize: number, tickDelayMs: number): number[] {
+    if (batchSize <= 0) return [];
+    if (batchSize === 1) return [0];
+
+    const baseSpacing = Math.max(MIN_DELAY_MS, Math.floor(Math.max(MIN_DELAY_MS * batchSize, tickDelayMs) / batchSize));
+    const offsets = [0];
+    for (let i = 1; i < batchSize; i += 1) {
+      const jitter = 0.75 + Math.random() * 0.5;
+      const spacing = Math.max(MIN_DELAY_MS, Math.floor(baseSpacing * jitter));
+      offsets.push(offsets[i - 1] + spacing);
+    }
+    return offsets;
+  }
 }
