@@ -86,7 +86,7 @@ export class ModSimController {
       transcript
         ? `Highest priority: react to latest streamer words: "${transcriptTail}".`
         : "Streamer is currently quiet; continue ongoing topic naturally.",
-      `Vision tags: ${payload.context.visionTags.length ? payload.context.visionTags.join(", ") : "none"}.`,
+      `Visual grounding (internal only): ${payload.context.visionTags.length ? payload.context.visionTags.join(", ") : "none"}. React like a participant and never narrate these tags verbatim.`,
       `Vibe=${payload.context.vibe ?? "unknown"}; Intent=${payload.context.intent ?? "none"}; Command=${Boolean(payload.context.isCommand)}.`,
       `Behavioral modes: ${payload.behavioralModes.join(", ")}.`,
       `Fishing state: ${fishingState}.`,
@@ -96,6 +96,7 @@ export class ModSimController {
       "DO NOT mirror the streamer's opening phrase; never start with the transcript's last 2 words.",
       bannedTermDirective,
       "Never say: 'the viewer says', 'I am an AI', or explain system internals.",
+      "Participant-only voice: react to the streamer in first person, never as a play-by-play commentator.",
       "Keep messages short and non-repetitive."
     ].join(" ");
   }
@@ -255,10 +256,9 @@ export class ModSimController {
       }
     });
 
-    const maxWords = 4;
+    const maxWords = 6;
     const minimumShortRatio = 0.8;
     const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
-    const shorten = (text: string) => text.trim().split(/\s+/).slice(0, maxWords).join(" ");
     const requiredShort = Math.ceil(deduped.length * minimumShortRatio);
     let shortCount = deduped.filter((message) => countWords(message.text) <= maxWords).length;
     if (shortCount < requiredShort) {
@@ -268,7 +268,7 @@ export class ModSimController {
         .sort((a, b) => b.words - a.words);
       for (const entry of longIndices) {
         if (shortCount >= requiredShort) break;
-        deduped[entry.index].text = shorten(deduped[entry.index].text);
+        deduped[entry.index].text = this.enforceWordCapSmart(deduped[entry.index].text, maxWords);
         shortCount += 1;
       }
     }
