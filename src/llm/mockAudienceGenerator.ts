@@ -111,6 +111,7 @@ const memes = [
   "we are farming clips"
 ];
 const emotePool = ["🔥", "😂", "👏", "W", "LUL", "Kappa", "PogChamp", "monkaS", "OMEGALUL", "L"];
+const disagreeOpeners = ["nah", "cap", "counterpoint", "idk", "nope", "wildtake"];
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -132,7 +133,7 @@ function personaPool(persona: PersonaMode): string[] {
 function withBias(text: string, bias: BiasMode, conditioning: ProviderConditioning, contrarianism: number): string {
   const disagreeWeight = Math.min(0.95, 0.25 + conditioning.volatility * 0.35 + contrarianism * 0.4);
   if (bias === "agree") return conditioning.expressiveness > 0.7 ? `${text} FRFR` : `${text} fr`;
-  if (bias === "disagree") return `nah ${text.toLowerCase()}`;
+  if (bias === "disagree") return `${pick(disagreeOpeners)} ${text.toLowerCase()}`;
   if (Math.random() < disagreeWeight) return `counterpoint: ${text.toLowerCase()}`;
   return `${text} agree`;
 }
