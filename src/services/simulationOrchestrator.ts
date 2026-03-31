@@ -14,6 +14,7 @@ import { ModSimController } from "./modSimController.js";
 import { sharedDeviceCapturePipeline } from "../capture/deviceCapturePipeline.js";
 import { sharedTextToSpeechService } from "./tts/textToSpeechService.js";
 import { VisionPollingService } from "./visionPollingService.js";
+import { systemPromptForPayload } from "../llm/realInferenceProvider.js";
 
 export function explainInferenceFailure(reason: string): string {
   if (reason.includes("Unexpected end of JSON input")) {
@@ -321,7 +322,7 @@ export class SimulationOrchestrator {
       if (this.audioState.canListenToMic()) {
         sharedSttEngine.resume();
         const payload = buildPromptPayload(config, context);
-        payload.systemPrompt = this.modSim.generatePrompt(payload);
+        payload.systemPrompt = `${this.modSim.generatePrompt(payload)} ${systemPromptForPayload(payload)}`;
         let messages: ChatMessage[] = [];
 
         const inferenceStarted = Date.now();

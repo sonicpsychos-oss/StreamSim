@@ -79,25 +79,19 @@ export class ModSimController {
       : "No banned slang this tick.";
 
     return [
-      `Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number|null,"ttsText":string|null}]}.`,
-      `messages must contain exactly ${payload.requestedMessageCount} entries.`,
-      "Each message text MUST be under 10 words. Quality over quantity.",
+      "Daily briefing (dynamic context follows; global handbook rules are appended after this block).",
       `Topic lock: ${streamTopic}.`,
       transcript
-        ? `Highest priority: react to latest streamer words: "${transcriptTail}".`
+        ? `Latest streamer tail: "${transcriptTail}".`
         : "Streamer is currently quiet; continue ongoing topic naturally.",
-      `Visual grounding (internal only): ${payload.context.visionTags.length ? payload.context.visionTags.join(", ") : "none"}. React like a participant and never narrate these tags verbatim.`,
+      `Visual grounding (internal only): ${payload.context.visionTags.length ? payload.context.visionTags.join(", ") : "none"}.`,
       `Vibe=${payload.context.vibe ?? "unknown"}; Intent=${payload.context.intent ?? "none"}; Command=${Boolean(payload.context.isCommand)}.`,
       `Behavioral modes: ${payload.behavioralModes.join(", ")}.`,
       `Fishing state: ${fishingState}.`,
       primacyDirective,
       chaosDirective,
       degeneracyDirective,
-      "DO NOT mirror the streamer's opening phrase; never start with the transcript's last 2 words.",
-      bannedTermDirective,
-      "Never say: 'the viewer says', 'I am an AI', or explain system internals.",
-      "Participant-only voice: react to the streamer in first person, never as a play-by-play commentator.",
-      "Keep messages short and non-repetitive."
+      bannedTermDirective
     ].join(" ");
   }
 
