@@ -440,6 +440,10 @@ describe("VisionPollingService", () => {
     expect(systemPrompt).toMatch(/stream-vision tagger/i);
     expect(systemPrompt).toMatch(/activity/i);
     expect(systemPrompt).toMatch(/facial expressions/i);
+    expect(systemPrompt).toMatch(/environment/i);
+    expect(systemPrompt).toMatch(/posture\/body language/i);
+    expect(systemPrompt).toMatch(/heart hands/i);
+    expect(systemPrompt).toMatch(/middle finger/i);
     expect(systemPrompt).toMatch(/dead tags/i);
   });
 
