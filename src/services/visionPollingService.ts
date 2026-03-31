@@ -206,6 +206,7 @@ export class VisionPollingService {
   private running = false;
   private readonly secretStore = new SecretStore();
   private inFlightTick: Promise<void> | null = null;
+  private lastConsumedLiveFrameVersion = 0;
 
   constructor(
     private readonly getConfig: () => SimulationConfig,
@@ -226,6 +227,7 @@ export class VisionPollingService {
       this.timer = null;
     }
     this.inFlightTick = null;
+    this.lastConsumedLiveFrameVersion = 0;
   }
 
   public async awaitLatestPoll(maxWaitMs = 1500): Promise<void> {
@@ -266,7 +268,7 @@ export class VisionPollingService {
           endpointPayload = ((await endpointResponse.json()) ?? {}) as VisionEndpointPayload;
         } catch (endpointError) {
           if (config.capture.visionProvider !== "openai") throw endpointError;
-          const latestFrame = sharedVisionFrameStore.getLatestFrame();
+          const latestFrame = await this.awaitNextLiveFrame(delayMs);
           if (!latestFrame) throw endpointError;
           endpointPayload = { dataUrl: latestFrame.dataUrl };
           this.emitMeta({
@@ -276,7 +278,7 @@ export class VisionPollingService {
           });
         }
       } else if (config.capture.visionProvider === "openai") {
-        const latestFrame = sharedVisionFrameStore.getLatestFrame();
+        const latestFrame = await this.awaitNextLiveFrame(delayMs);
         if (!latestFrame) {
           this.emitMeta({
             warnings: ["Vision polling skipped: waiting for browser camera frame upload."],
@@ -297,7 +299,7 @@ export class VisionPollingService {
         return;
       }
       if (config.capture.visionProvider === "openai" && !payloadHasVisionSignal(endpointPayload)) {
-        const latestFrame = sharedVisionFrameStore.getLatestFrame();
+        const latestFrame = await this.awaitNextLiveFrame(delayMs);
         if (latestFrame) {
           endpointPayload = { ...endpointPayload, dataUrl: latestFrame.dataUrl };
           this.emitMeta({
@@ -365,6 +367,31 @@ export class VisionPollingService {
     }
 
     this.scheduleNext(delayMs);
+  }
+
+  private async awaitNextLiveFrame(delayMs: number): Promise<{ dataUrl: string; updatedAt: number; version: number } | null> {
+    const freshest = sharedVisionFrameStore.getLatestFrame();
+    if (freshest && freshest.version > this.lastConsumedLiveFrameVersion) {
+      this.lastConsumedLiveFrameVersion = freshest.version;
+      return freshest;
+    }
+
+    const waitBudgetMs = Math.max(250, Math.min(2000, Math.floor(delayMs * 0.35)));
+    const waitUntil = Date.now() + waitBudgetMs;
+
+    while (Date.now() < waitUntil) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const candidate = sharedVisionFrameStore.getLatestFrame();
+      if (candidate && candidate.version > this.lastConsumedLiveFrameVersion) {
+        this.lastConsumedLiveFrameVersion = candidate.version;
+        return candidate;
+      }
+    }
+
+    const fallback = sharedVisionFrameStore.getLatestFrame();
+    if (!fallback) return null;
+    this.lastConsumedLiveFrameVersion = fallback.version;
+    return fallback;
   }
 
   private async fetchOpenAiVisionTags(config: SimulationConfig, payload: VisionEndpointPayload): Promise<VisionProviderResult> {
