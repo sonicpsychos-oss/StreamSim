@@ -2,6 +2,32 @@ import { ChatMessage, PromptPayload, SimulationConfig, StreamContext } from "../
 import { IdentityManager } from "./identityManager.js";
 
 const DEFAULT_SLANG_TERMS = ["cooked", "ratio", "l", "fr", "ngl", "lowkey"];
+const CONTRARIAN_REGISTRY = [
+  "nah that ain't it",
+  "cap detected instantly",
+  "who told you that",
+  "chat not buying this",
+  "wild take ngl",
+  "bro missed hard",
+  "this angle is cooked",
+  "hard disagree right now",
+  "that logic is fried",
+  "stop the glaze immediately",
+  "you reaching for that one",
+  "we not co-signing this",
+  "this ain't convincing",
+  "hater mode activated",
+  "ratio energy detected",
+  "this read is off",
+  "nah switch the script",
+  "not the move chief",
+  "that take fell flat",
+  "major side-eye on that",
+  "press x to doubt",
+  "who let bro cook",
+  "nah this is delusion",
+  "we need a better take"
+];
 
 export class ModSimController {
   private readonly transcriptSeenCounter = new Map<string, { count: number; lastSeenAt: number }>();
@@ -55,6 +81,7 @@ export class ModSimController {
     return [
       `Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents":number|null,"ttsText":string|null}]}.`,
       `messages must contain exactly ${payload.requestedMessageCount} entries.`,
+      "Each message text MUST be under 10 words. Quality over quantity.",
       `Topic lock: ${streamTopic}.`,
       transcript
         ? `Highest priority: react to latest streamer words: "${transcriptTail}".`
@@ -66,6 +93,7 @@ export class ModSimController {
       primacyDirective,
       chaosDirective,
       degeneracyDirective,
+      "DO NOT mirror the streamer's opening phrase; never start with the transcript's last 2 words.",
       bannedTermDirective,
       "Never say: 'the viewer says', 'I am an AI', or explain system internals.",
       "Keep messages short and non-repetitive."
@@ -94,7 +122,9 @@ export class ModSimController {
     const deEchoedMessages = this.isReadingChat(context.transcript, context.recentChatHistory)
       ? this.rewriteForReadingChat(messages)
       : this.applyAntiEchoConstraint(messages, context.transcript);
-    const diverseMessages = this.enforceDiversityRules(deEchoedMessages, payload.behavioralModes, payload.context.recentChatHistory);
+    const nonMirroredMessages = this.stripBannedStarters(deEchoedMessages, context.transcript);
+    const starterSafeMessages = nonMirroredMessages.length ? nonMirroredMessages : deEchoedMessages;
+    const diverseMessages = this.enforceDiversityRules(starterSafeMessages, payload.behavioralModes, payload.context.recentChatHistory);
     const personaLocked = this.enforcePersonaSyntax(diverseMessages);
     const scrubbedMessages = this.postFlight(personaLocked, { brainRot: payload.persona !== "supportive" });
     const dedupedPostFlight = this.enforceBatchUniqueness(scrubbedMessages);
@@ -256,7 +286,10 @@ export class ModSimController {
       if (transcriptHasQuestion && this.looksLikeDirectAnswer(lowered)) {
         return true;
       }
-      return anchors.every((token) => !lowered.includes(token));
+      const overlapCount = anchors.filter((token) => lowered.includes(token)).length;
+      if (overlapCount <= 1) return true;
+      if (anchors.length >= 5 && overlapCount <= 2) return true;
+      return false;
     });
 
     if (filtered.length > 0) return filtered;
@@ -267,7 +300,7 @@ export class ModSimController {
         ...seed,
         id: seed?.id ?? `${Date.now()}-anti-echo`,
         createdAt: seed?.createdAt ?? new Date().toISOString(),
-        text: "bro what was that 💀",
+        text: CONTRARIAN_REGISTRY[Math.floor(Math.random() * CONTRARIAN_REGISTRY.length)],
         emotes: seed?.emotes ?? []
       }
     ];
@@ -283,8 +316,34 @@ export class ModSimController {
   }
 
   public rewriteForReadingChat(messages: ChatMessage[]): ChatMessage[] {
-    const reactions = ["l chatter", "ratio that chatter", "he reading us again 💀", "chat got him pressed"];
+    const reactions = [
+      "l chatter",
+      "ratio that chatter",
+      "he reading us again 💀",
+      "chat got him pressed",
+      "stop quoting us bro",
+      "read your script not ours"
+    ];
     return messages.map((message, index) => ({ ...message, text: reactions[index % reactions.length] }));
+  }
+
+  private stripBannedStarters(messages: ChatMessage[], transcript: string): ChatMessage[] {
+    const transcriptWords = transcript
+      .toLowerCase()
+      .replace(/[^a-z0-9\s']/g, " ")
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+    if (transcriptWords.length < 2) return messages;
+    const bannedStarter = transcriptWords.slice(-2).join(" ");
+    return messages.filter((message) => {
+      const normalized = message.text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s']/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      return !normalized.startsWith(bannedStarter);
+    });
   }
 
 

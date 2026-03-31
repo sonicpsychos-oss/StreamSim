@@ -243,7 +243,7 @@ describe("hybrid routing and failover", () => {
         if (req.headers["x-streamsim-provider"] === "groq") {
           expect(parsed.max_completion_tokens).toBeUndefined();
         } else {
-          expect(parsed.max_completion_tokens).toBeGreaterThanOrEqual(120);
+          expect(parsed.max_completion_tokens).toBeGreaterThanOrEqual(150);
         }
         expect(parsed.temperature).toBeUndefined();
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -324,7 +324,7 @@ describe("hybrid routing and failover", () => {
         const parsed = JSON.parse(body);
         expect(parsed.model).toBe("gpt-5-mini");
         expect(parsed.max_tokens).toBeUndefined();
-        expect(parsed.max_completion_tokens).toBeGreaterThanOrEqual(120);
+        expect(parsed.max_completion_tokens).toBeGreaterThanOrEqual(150);
         expect(parsed.temperature).toBeUndefined();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
