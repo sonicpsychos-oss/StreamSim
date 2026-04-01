@@ -38,6 +38,16 @@ export class SimulationOrchestrator {
     (meta) => this.emitMeta(meta)
   );
   private recentChatHistory: string[] = [];
+  private lastSidecarCheckAt = 0;
+  private lastSidecarStatus: { ready: boolean; phase: string; progress: number; details: string; fallbackSuggested: boolean; uxAction?: string } = {
+    ready: true,
+    phase: "ready",
+    progress: 100,
+    details: "Not checked yet.",
+    fallbackSuggested: false
+  };
+  private lastProviderHealthAt = 0;
+  private lastProviderHealth: { ok: boolean; details: string } = { ok: true, details: "Not checked yet." };
   private aiStatus: {
     state: "idle" | "running" | "degraded" | "error";
     providerHealth: "unknown" | "ok" | "degraded";
@@ -250,6 +260,7 @@ export class SimulationOrchestrator {
     payload: PromptPayload,
     rawInferenceResult: string
   ): void {
+    if (process.env.STREAMSIM_VERBOSE_PIPELINE !== "1") return;
     // eslint-disable-next-line no-console
     console.log(
       `[SimulationOrchestrator][VerbosePipelineLog] route=${route} provider=${providerMode} model=${activeModel} transcript/visionTags + raw InferenceResult`
@@ -273,6 +284,7 @@ export class SimulationOrchestrator {
   private async loop(): Promise<void> {
     if (!this.running) return;
 
+    const loopStartedAt = Date.now();
     let timing = this.spooler.nextDelayMs(this.getConfig(), { volumeRms: 0.2, paceWpm: 110 });
 
     try {
@@ -286,7 +298,16 @@ export class SimulationOrchestrator {
         return;
       }
 
-      const sidecarStatus = await this.sidecar.ensureReady(config);
+      const now = Date.now();
+      const sidecarNeedsRefresh =
+        now - this.lastSidecarCheckAt > 60_000 ||
+        this.lastSidecarStatus.phase !== "ready" ||
+        !this.lastSidecarStatus.ready;
+      const sidecarStatus = sidecarNeedsRefresh ? await this.sidecar.ensureReady(config) : this.lastSidecarStatus;
+      if (sidecarNeedsRefresh) {
+        this.lastSidecarCheckAt = now;
+        this.lastSidecarStatus = sidecarStatus;
+      }
       if (!sidecarStatus.ready) {
         this.emitMeta({ warning: sidecarStatus.details, fallbackSuggested: sidecarStatus.fallbackSuggested, blocked: false, recovery: sidecarStatus.uxAction });
         this.obs.log("sidecar_status", { sidecarStatus: sidecarStatus.phase, progress: sidecarStatus.progress });
@@ -298,7 +319,14 @@ export class SimulationOrchestrator {
         this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: validation.errors.join(" | ") });
       }
 
-      const health = await provider.healthCheck(config);
+      const healthNeedsRefresh =
+        now - this.lastProviderHealthAt > 30_000 ||
+        !this.lastProviderHealth.ok;
+      const health = healthNeedsRefresh ? await provider.healthCheck(config) : this.lastProviderHealth;
+      if (healthNeedsRefresh) {
+        this.lastProviderHealthAt = now;
+        this.lastProviderHealth = health;
+      }
       if (!health.ok) {
         this.emitMeta({ warnings: [`Provider unhealthy: ${health.details}`], blocked: false });
         this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: `Provider unhealthy: ${health.details}` });
@@ -449,7 +477,7 @@ export class SimulationOrchestrator {
             droppedCount: safety.droppedCount,
             queueSize: safety.queueMessages.length
           },
-          queueMessages: safety.queueMessages,
+          queuePreview: safety.queueMessages.slice(0, 3),
           slo: {
             targetMs: 3000,
             withinTarget: latencyMs <= 3000
@@ -473,8 +501,10 @@ export class SimulationOrchestrator {
       return;
     }
 
+    const tickElapsedMs = Date.now() - loopStartedAt;
+    const nextDelayMs = Math.max(40, timing.actualDelayMs - tickElapsedMs);
     this.timer = setTimeout(() => {
       void this.loop();
-    }, timing.actualDelayMs);
+    }, nextDelayMs);
   }
 }
