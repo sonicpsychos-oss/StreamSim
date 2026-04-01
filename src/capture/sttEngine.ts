@@ -111,11 +111,11 @@ class OpenAiWhisperBackend implements SttBackend {
         signal: AbortSignal.timeout(10000)
       });
     } catch (error) {
-      throw new Error(`OpenAI Whisper request failed for ${this.endpoint}: ${(error as Error).message}`);
+      throw new Error(`OpenAI STT request failed for ${this.endpoint}: ${(error as Error).message}`);
     }
 
     if (!response.ok) {
-      throw new Error(`OpenAI Whisper STT failed (${response.status}).`);
+      throw new Error(`OpenAI STT failed (${response.status}).`);
     }
     const json = (await response.json()) as { text?: string };
     return json.text?.trim() ?? "";
@@ -203,12 +203,12 @@ export class DeviceSttEngine implements SttEngine {
       case "openai-whisper":
         return new OpenAiWhisperBackend(
           this.resolveProviderEndpoint(provider, endpoint, process.env.STREAMSIM_OPENAI_STT_ENDPOINT ?? DEFAULT_OPENAI_STT_ENDPOINT),
-          process.env.STREAMSIM_OPENAI_STT_MODEL ?? "whisper-1"
+          this.resolveOpenAiSttModel(provider)
         );
       case "gpt-4o-mini-transcribe":
         return new OpenAiWhisperBackend(
           this.resolveProviderEndpoint(provider, endpoint, process.env.STREAMSIM_OPENAI_STT_ENDPOINT ?? DEFAULT_OPENAI_STT_ENDPOINT),
-          process.env.STREAMSIM_OPENAI_STT_MODEL ?? "gpt-4o-mini-transcribe"
+          this.resolveOpenAiSttModel(provider)
         );
       default:
         return new MockSttBackend();
@@ -223,6 +223,13 @@ export class DeviceSttEngine implements SttEngine {
       return fallback;
     }
     return normalized;
+  }
+
+  private resolveOpenAiSttModel(provider: "openai-whisper" | "gpt-4o-mini-transcribe"): string {
+    if (provider === "openai-whisper") {
+      return process.env.STREAMSIM_OPENAI_WHISPER_MODEL ?? process.env.STREAMSIM_OPENAI_STT_MODEL ?? "whisper-1";
+    }
+    return process.env.STREAMSIM_OPENAI_GPT4O_TRANSCRIBE_MODEL ?? process.env.STREAMSIM_OPENAI_STT_MODEL ?? "gpt-4o-mini-transcribe";
   }
 }
 

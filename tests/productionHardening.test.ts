@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultConfig } from "../src/config/runtimeConfig.js";
 import { ComplianceLogger } from "../src/services/complianceLogger.js";
 import { sharedDeviceCapturePipeline } from "../src/capture/deviceCapturePipeline.js";
@@ -42,6 +42,14 @@ describe("sidecar + checkpointing", () => {
 });
 
 describe("real audio capture + stt pause/resume", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.STREAMSIM_OPENAI_STT_MODEL;
+    delete process.env.STREAMSIM_OPENAI_WHISPER_MODEL;
+    delete process.env.STREAMSIM_OPENAI_GPT4O_TRANSCRIBE_MODEL;
+    process.env.STREAMSIM_CLOUD_API_KEY = "test-cloud-key";
+  });
+
   it("processes actual stream chunks and respects pause/resume", async () => {
     sharedDeviceCapturePipeline.reset();
     const stt = new DeviceSttEngine("mock");
@@ -97,6 +105,55 @@ describe("real audio capture + stt pause/resume", () => {
     expect(context.transcript).toContain("baseline");
     expect(context.transcript).not.toContain("should stay muted");
     expect(context.transcript).toContain("resumed final");
+  });
+
+  it("uses provider-specific default model wiring for OpenAI cloud STT providers", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "test-cloud-key";
+    const inspectModelCalls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const form = init?.body as FormData;
+        inspectModelCalls.push(String(form.get("model")));
+        return {
+          ok: true,
+          json: async () => ({ text: "ok" })
+        } as Response;
+      })
+    );
+
+    const stt = new DeviceSttEngine("mock");
+    await stt.transcribeFrameWith("openai-whisper", undefined, Buffer.from("audio"));
+    await stt.transcribeFrameWith("gpt-4o-mini-transcribe", undefined, Buffer.from("audio"));
+
+    expect(inspectModelCalls[0]).toBe("whisper-1");
+    expect(inspectModelCalls[1]).toBe("gpt-4o-mini-transcribe");
+  });
+
+  it("supports explicit provider-specific model overrides for OpenAI cloud STT", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "test-cloud-key";
+    process.env.STREAMSIM_OPENAI_WHISPER_MODEL = "whisper-1-large-v3";
+    process.env.STREAMSIM_OPENAI_GPT4O_TRANSCRIBE_MODEL = "gpt-4o-transcribe";
+
+    const inspectModelCalls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const form = init?.body as FormData;
+        inspectModelCalls.push(String(form.get("model")));
+        return {
+          ok: true,
+          json: async () => ({ text: "ok" })
+        } as Response;
+      })
+    );
+
+    const stt = new DeviceSttEngine("mock");
+    await stt.transcribeFrameWith("openai-whisper", undefined, Buffer.from("audio"));
+    await stt.transcribeFrameWith("gpt-4o-mini-transcribe", undefined, Buffer.from("audio"));
+
+    expect(inspectModelCalls[0]).toBe("whisper-1-large-v3");
+    expect(inspectModelCalls[1]).toBe("gpt-4o-transcribe");
   });
 });
 

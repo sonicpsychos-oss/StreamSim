@@ -54,6 +54,8 @@ let latestStatusPayload = null;
 let simulationActionInFlight = false;
 let statusAutoRefreshInterval = null;
 let uiMode = "operator";
+let hasUnsavedConfigChanges = false;
+let lastConfigInteractionAtMs = 0;
 let logEntries = [];
 let previewAlertCount = 0;
 let latestDeviceVerification = {
@@ -71,6 +73,7 @@ const MIC_CHECK_MIN_SAMPLES = 12000;
 const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
 const DEFAULT_LIVE_MONITOR_VISION_SAMPLE_MS = 7000;
 const STATUS_AUTO_REFRESH_MS = 5000;
+const CONFIG_EDIT_GRACE_MS = 15000;
 const STT_DEFAULT_ENDPOINTS = {
   "local-whisper": "http://127.0.0.1:7778/stt",
   whispercpp: "http://127.0.0.1:7778/stt",
@@ -114,6 +117,17 @@ const controls = {
   overrideReason: document.getElementById("overrideReason"),
   eulaAccepted: document.getElementById("eulaAccepted")
 };
+
+function markConfigInteraction() {
+  lastConfigInteractionAtMs = Date.now();
+}
+
+function hasActiveConfigEdit() {
+  const activeElement = document.activeElement;
+  const focusedConfigControl = Object.values(controls).some((control) => control === activeElement);
+  const recentInteraction = Date.now() - lastConfigInteractionAtMs < CONFIG_EDIT_GRACE_MS;
+  return focusedConfigControl || (hasUnsavedConfigChanges && recentInteraction);
+}
 
 function setStatus(message, tone = "success") {
   statusBanner.textContent = message;
@@ -1102,7 +1116,11 @@ saveBtn.addEventListener("click", async () => {
     successText: "Config saved.",
     onRun: () => post("/api/config", getPayload())
   });
-  if (result?.config) hydrateControls(result.config);
+  if (result?.config) {
+    hasUnsavedConfigChanges = false;
+    lastConfigInteractionAtMs = 0;
+    hydrateControls(result.config);
+  }
 });
 
 startBtn.addEventListener("click", async () => {
@@ -1203,7 +1221,7 @@ saveCloudKeyBtn.addEventListener("click", async () => {
   });
   if (!saved) return;
   controls.cloudApiKey.value = "";
-  await refreshStatus();
+  await refreshStatus({ preserveUnsavedConfig: true });
 });
 
 saveDeepgramKeyBtn.addEventListener("click", async () => {
@@ -1215,17 +1233,19 @@ saveDeepgramKeyBtn.addEventListener("click", async () => {
   });
   if (!saved) return;
   controls.deepgramApiKey.value = "";
-  await refreshStatus();
+  await refreshStatus({ preserveUnsavedConfig: true });
 });
 
-async function refreshStatus() {
+async function refreshStatus({ preserveUnsavedConfig = false } = {}) {
   const response = await fetch("/api/status");
   if (!response.ok) throw new Error(`Status request failed (${response.status})`);
   const payload = await response.json();
   latestStatusPayload = payload;
   renderReadiness(payload.readiness);
   renderDiagnostics(payload);
-  hydrateControls(payload.config);
+  if (!(preserveUnsavedConfig && hasActiveConfigEdit())) {
+    hydrateControls(payload.config);
+  }
   renderOnboardingState(payload);
   if (previewViewerCount) previewViewerCount.textContent = `👥 ${payload.config.viewerCount ?? 0}`;
   summarizeRuntime(payload);
@@ -1250,7 +1270,7 @@ refreshStatusBtn.addEventListener("click", async () => {
     button: refreshStatusBtn,
     pendingText: "Refreshing status...",
     successText: "Status refreshed.",
-    onRun: () => refreshStatus()
+    onRun: () => refreshStatus({ preserveUnsavedConfig: false })
   });
 });
 
@@ -1367,6 +1387,17 @@ wizardEulaAccepted?.addEventListener("change", () => {
 
 controls.sttProvider?.addEventListener("change", () => {
   syncSttEndpointForProvider();
+});
+
+Object.values(controls).forEach((control) => {
+  control?.addEventListener("input", () => {
+    hasUnsavedConfigChanges = true;
+    markConfigInteraction();
+  });
+  control?.addEventListener("change", () => {
+    hasUnsavedConfigChanges = true;
+    markConfigInteraction();
+  });
 });
 
 [controls.viewerCount, controls.engagementMultiplier, controls.donationFrequency].forEach((input) => {
@@ -1551,10 +1582,12 @@ async function boot() {
   ensureVerifyCameraButtonActive();
   if (previewViewerCount) previewViewerCount.textContent = `👥 ${payload.config.viewerCount ?? 0}`;
   if (previewAlerts) previewAlerts.textContent = "🔔 0";
+  hasUnsavedConfigChanges = false;
+  lastConfigInteractionAtMs = 0;
   addLog("system", "info", "UI boot complete.");
   if (statusAutoRefreshInterval) clearInterval(statusAutoRefreshInterval);
   statusAutoRefreshInterval = setInterval(() => {
-    refreshStatus().catch(() => {
+    refreshStatus({ preserveUnsavedConfig: true }).catch(() => {
       /* ignore transient polling errors; next interval retries */
     });
   }, STATUS_AUTO_REFRESH_MS);
