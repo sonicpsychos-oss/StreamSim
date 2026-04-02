@@ -48,6 +48,7 @@ export class SimulationOrchestrator {
   };
   private lastProviderHealthAt = 0;
   private lastProviderHealth: { ok: boolean; details: string } = { ok: true, details: "Not checked yet." };
+  private primaryFailureStreak = 0;
   private aiStatus: {
     state: "idle" | "running" | "degraded" | "error";
     providerHealth: "unknown" | "ok" | "degraded";
@@ -383,37 +384,49 @@ export class SimulationOrchestrator {
               if (!config.safety.dropOnParseFailure) throw parseError;
             }
           }
+          this.primaryFailureStreak = 0;
         } catch (error) {
           const reason = explainInferenceFailure((error as Error).message);
           this.obs.log("reliability_recovery", { ok: false, reason });
           this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: reason });
+          this.primaryFailureStreak += 1;
 
-          try {
-            const fallbackOutput = await this.mockProvider.generate(payload, { ...config, inferenceMode: "mock-local" });
-            this.verbosePipelineLog("fallback", "mock-local", "mock-local", payload, fallbackOutput);
-            messages = this.hydrateMessages(parseInferenceOutput(fallbackOutput), "fallback-mock");
-            this.setAiStatus({
-              state: "degraded",
-              providerHealth: "degraded",
-              fallbackMode: "mock-local",
-              activeModel: "mock-local",
-              detail: `Primary inference failed; mock fallback active: ${reason}`
-            });
+          if (this.primaryFailureStreak < 2) {
             this.emitMeta({
-              warnings: [reason, "Fallback engaged: mock-local"],
-              dropped: false,
+              warnings: [`Primary inference failed (${reason}). Retrying primary provider next tick before fallback.`],
               blocked: false,
-              cloudRecovery: "degraded",
-              source: "fallback-mock",
-              provider: config.inferenceMode,
-              timeoutMs: config.provider.requestTimeoutMs,
-              retries: config.provider.maxRetries
+              cloudRecovery: "retrying-primary",
+              provider: config.inferenceMode
             });
-          } catch (fallbackError) {
-            const fallbackReason = (fallbackError as Error).message;
-            this.setAiStatus({ state: "error", providerHealth: "degraded", fallbackMode: null, detail: `Fallback failed: ${fallbackReason}` });
-            if (config.safety.dropOnParseFailure) {
-              this.emitMeta({ warning: `${reason} | fallback failed: ${fallbackReason}`, dropped: true, blocked: false, cloudRecovery: "degraded" });
+            messages = [];
+          } else {
+            try {
+              const fallbackOutput = await this.mockProvider.generate(payload, { ...config, inferenceMode: "mock-local" });
+              this.verbosePipelineLog("fallback", "mock-local", "mock-local", payload, fallbackOutput);
+              messages = this.hydrateMessages(parseInferenceOutput(fallbackOutput), "fallback-mock");
+              this.setAiStatus({
+                state: "degraded",
+                providerHealth: "degraded",
+                fallbackMode: "mock-local",
+                activeModel: "mock-local",
+                detail: `Primary inference failed; mock fallback active: ${reason}`
+              });
+              this.emitMeta({
+                warnings: [reason, "Fallback engaged: mock-local"],
+                dropped: false,
+                blocked: false,
+                cloudRecovery: "degraded",
+                source: "fallback-mock",
+                provider: config.inferenceMode,
+                timeoutMs: config.provider.requestTimeoutMs,
+                retries: config.provider.maxRetries
+              });
+            } catch (fallbackError) {
+              const fallbackReason = (fallbackError as Error).message;
+              this.setAiStatus({ state: "error", providerHealth: "degraded", fallbackMode: null, detail: `Fallback failed: ${fallbackReason}` });
+              if (config.safety.dropOnParseFailure) {
+                this.emitMeta({ warning: `${reason} | fallback failed: ${fallbackReason}`, dropped: true, blocked: false, cloudRecovery: "degraded" });
+              }
             }
           }
         }
