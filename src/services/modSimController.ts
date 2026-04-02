@@ -250,7 +250,7 @@ export class ModSimController {
       }
     });
 
-    const maxWords = 6;
+    const maxWords = 4;
     const minimumShortRatio = 0.8;
     const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
     const requiredShort = Math.ceil(deduped.length * minimumShortRatio);

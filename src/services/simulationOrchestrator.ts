@@ -38,6 +38,17 @@ export class SimulationOrchestrator {
     (meta) => this.emitMeta(meta)
   );
   private recentChatHistory: string[] = [];
+  private lastSidecarCheckAt = 0;
+  private lastSidecarStatus: { ready: boolean; phase: string; progress: number; details: string; fallbackSuggested: boolean; uxAction?: string } = {
+    ready: true,
+    phase: "ready",
+    progress: 100,
+    details: "Not checked yet.",
+    fallbackSuggested: false
+  };
+  private lastProviderHealthAt = 0;
+  private lastProviderHealth: { ok: boolean; details: string } = { ok: true, details: "Not checked yet." };
+  private primaryFailureStreak = 0;
   private aiStatus: {
     state: "idle" | "running" | "degraded" | "error";
     providerHealth: "unknown" | "ok" | "degraded";
@@ -250,6 +261,7 @@ export class SimulationOrchestrator {
     payload: PromptPayload,
     rawInferenceResult: string
   ): void {
+    if (process.env.STREAMSIM_VERBOSE_PIPELINE !== "1") return;
     // eslint-disable-next-line no-console
     console.log(
       `[SimulationOrchestrator][VerbosePipelineLog] route=${route} provider=${providerMode} model=${activeModel} transcript/visionTags + raw InferenceResult`
@@ -273,6 +285,7 @@ export class SimulationOrchestrator {
   private async loop(): Promise<void> {
     if (!this.running) return;
 
+    const loopStartedAt = Date.now();
     let timing = this.spooler.nextDelayMs(this.getConfig(), { volumeRms: 0.2, paceWpm: 110 });
 
     try {
@@ -286,7 +299,16 @@ export class SimulationOrchestrator {
         return;
       }
 
-      const sidecarStatus = await this.sidecar.ensureReady(config);
+      const now = Date.now();
+      const sidecarNeedsRefresh =
+        now - this.lastSidecarCheckAt > 60_000 ||
+        this.lastSidecarStatus.phase !== "ready" ||
+        !this.lastSidecarStatus.ready;
+      const sidecarStatus = sidecarNeedsRefresh ? await this.sidecar.ensureReady(config) : this.lastSidecarStatus;
+      if (sidecarNeedsRefresh) {
+        this.lastSidecarCheckAt = now;
+        this.lastSidecarStatus = sidecarStatus;
+      }
       if (!sidecarStatus.ready) {
         this.emitMeta({ warning: sidecarStatus.details, fallbackSuggested: sidecarStatus.fallbackSuggested, blocked: false, recovery: sidecarStatus.uxAction });
         this.obs.log("sidecar_status", { sidecarStatus: sidecarStatus.phase, progress: sidecarStatus.progress });
@@ -298,7 +320,14 @@ export class SimulationOrchestrator {
         this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: validation.errors.join(" | ") });
       }
 
-      const health = await provider.healthCheck(config);
+      const healthNeedsRefresh =
+        now - this.lastProviderHealthAt > 30_000 ||
+        !this.lastProviderHealth.ok;
+      const health = healthNeedsRefresh ? await provider.healthCheck(config) : this.lastProviderHealth;
+      if (healthNeedsRefresh) {
+        this.lastProviderHealthAt = now;
+        this.lastProviderHealth = health;
+      }
       if (!health.ok) {
         this.emitMeta({ warnings: [`Provider unhealthy: ${health.details}`], blocked: false });
         this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: `Provider unhealthy: ${health.details}` });
@@ -355,37 +384,49 @@ export class SimulationOrchestrator {
               if (!config.safety.dropOnParseFailure) throw parseError;
             }
           }
+          this.primaryFailureStreak = 0;
         } catch (error) {
           const reason = explainInferenceFailure((error as Error).message);
           this.obs.log("reliability_recovery", { ok: false, reason });
           this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: reason });
+          this.primaryFailureStreak += 1;
 
-          try {
-            const fallbackOutput = await this.mockProvider.generate(payload, { ...config, inferenceMode: "mock-local" });
-            this.verbosePipelineLog("fallback", "mock-local", "mock-local", payload, fallbackOutput);
-            messages = this.hydrateMessages(parseInferenceOutput(fallbackOutput), "fallback-mock");
-            this.setAiStatus({
-              state: "degraded",
-              providerHealth: "degraded",
-              fallbackMode: "mock-local",
-              activeModel: "mock-local",
-              detail: `Primary inference failed; mock fallback active: ${reason}`
-            });
+          if (this.primaryFailureStreak < 2) {
             this.emitMeta({
-              warnings: [reason, "Fallback engaged: mock-local"],
-              dropped: false,
+              warnings: [`Primary inference failed (${reason}). Retrying primary provider next tick before fallback.`],
               blocked: false,
-              cloudRecovery: "degraded",
-              source: "fallback-mock",
-              provider: config.inferenceMode,
-              timeoutMs: config.provider.requestTimeoutMs,
-              retries: config.provider.maxRetries
+              cloudRecovery: "retrying-primary",
+              provider: config.inferenceMode
             });
-          } catch (fallbackError) {
-            const fallbackReason = (fallbackError as Error).message;
-            this.setAiStatus({ state: "error", providerHealth: "degraded", fallbackMode: null, detail: `Fallback failed: ${fallbackReason}` });
-            if (config.safety.dropOnParseFailure) {
-              this.emitMeta({ warning: `${reason} | fallback failed: ${fallbackReason}`, dropped: true, blocked: false, cloudRecovery: "degraded" });
+            messages = [];
+          } else {
+            try {
+              const fallbackOutput = await this.mockProvider.generate(payload, { ...config, inferenceMode: "mock-local" });
+              this.verbosePipelineLog("fallback", "mock-local", "mock-local", payload, fallbackOutput);
+              messages = this.hydrateMessages(parseInferenceOutput(fallbackOutput), "fallback-mock");
+              this.setAiStatus({
+                state: "degraded",
+                providerHealth: "degraded",
+                fallbackMode: "mock-local",
+                activeModel: "mock-local",
+                detail: `Primary inference failed; mock fallback active: ${reason}`
+              });
+              this.emitMeta({
+                warnings: [reason, "Fallback engaged: mock-local"],
+                dropped: false,
+                blocked: false,
+                cloudRecovery: "degraded",
+                source: "fallback-mock",
+                provider: config.inferenceMode,
+                timeoutMs: config.provider.requestTimeoutMs,
+                retries: config.provider.maxRetries
+              });
+            } catch (fallbackError) {
+              const fallbackReason = (fallbackError as Error).message;
+              this.setAiStatus({ state: "error", providerHealth: "degraded", fallbackMode: null, detail: `Fallback failed: ${fallbackReason}` });
+              if (config.safety.dropOnParseFailure) {
+                this.emitMeta({ warning: `${reason} | fallback failed: ${fallbackReason}`, dropped: true, blocked: false, cloudRecovery: "degraded" });
+              }
             }
           }
         }
@@ -449,7 +490,7 @@ export class SimulationOrchestrator {
             droppedCount: safety.droppedCount,
             queueSize: safety.queueMessages.length
           },
-          queueMessages: safety.queueMessages,
+          queuePreview: safety.queueMessages.slice(0, 3),
           slo: {
             targetMs: 3000,
             withinTarget: latencyMs <= 3000
@@ -473,8 +514,10 @@ export class SimulationOrchestrator {
       return;
     }
 
+    const tickElapsedMs = Date.now() - loopStartedAt;
+    const nextDelayMs = Math.max(40, timing.actualDelayMs - tickElapsedMs);
     this.timer = setTimeout(() => {
       void this.loop();
-    }, timing.actualDelayMs);
+    }, nextDelayMs);
   }
 }
