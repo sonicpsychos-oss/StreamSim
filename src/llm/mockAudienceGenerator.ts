@@ -2,11 +2,116 @@ import { BiasMode, ChatMessage, PersonaMode, ProviderConditioning, SimulationCon
 import { providerConditioningForMode, RealismSignalModel, resolvePersonaCalibration } from "./realismSignals.js";
 import { IdentityManager } from "../services/identityManager.js";
 
-const supportive = ["Let's go!", "Huge improvement today", "W gameplay", "You're cooking"];
-const trolls = ["That was rough", "Skill issue", "Chat is carrying", "No way you missed that"];
-const neutral = ["What build is this?", "Any tips for new players?", "What's next?", "Clean reset"];
-const memes = ["PogChamp", "W stream", "clip it", "we're so back"];
+const supportive = [
+  "Let's go!",
+  "Huge improvement today",
+  "W gameplay",
+  "You're cooking",
+  "good comms right there",
+  "clean movement lowkey",
+  "that rotate was smart",
+  "solid patience",
+  "you locked in",
+  "that timing was crisp",
+  "big brain play",
+  "nice recovery",
+  "ok that was smooth",
+  "calm and collected",
+  "good read",
+  "that setup paid off",
+  "you adapted fast",
+  "clutch mechanics",
+  "that angle was clean",
+  "map control W",
+  "you are frying now",
+  "nice discipline",
+  "smart reset",
+  "great spacing",
+  "comeback arc"
+];
+const trolls = [
+  "That was rough",
+  "Skill issue",
+  "Chat is carrying",
+  "No way you missed that",
+  "bro swung for no reason",
+  "crosshair on vacation",
+  "this is illegal gameplay",
+  "who taught this strat",
+  "controller unplugged?",
+  "bro got jump scared",
+  "why ego peek there",
+  "L timing again",
+  "you sold that one",
+  "that was a donation",
+  "chat blinked and it was over",
+  "mid fight decision making",
+  "bro got farmed",
+  "we pretending that was planned?",
+  "respectfully that was cap",
+  "no map awareness",
+  "aim left the building",
+  "panic button gamer",
+  "that route was cursed",
+  "you trolled the round",
+  "hard throw"
+];
+const neutral = [
+  "What build is this?",
+  "Any tips for new players?",
+  "What's next?",
+  "Clean reset",
+  "what sens do you use",
+  "is this ranked",
+  "how many games in",
+  "what map is next",
+  "new patch today?",
+  "you changing loadout?",
+  "which perk is that",
+  "what keybind for crouch",
+  "any warmup routine",
+  "how long stream today",
+  "what's the winrate rn",
+  "camera looks better now",
+  "that ui update clean",
+  "what region queue",
+  "playing with randoms?",
+  "you running duos later",
+  "what fov is this",
+  "what headset is that",
+  "are comms open",
+  "new season thoughts",
+  "queue again?"
+];
+const memes = [
+  "PogChamp",
+  "W stream",
+  "clip it",
+  "we're so back",
+  "nah this is cinema",
+  "absolute scenes",
+  "typed from the void",
+  "bro entered goblin mode",
+  "main character energy",
+  "chat in shambles",
+  "this is peak",
+  "mods asleep",
+  "spam W",
+  "W chat",
+  "L take",
+  "ratio incoming",
+  "he is him",
+  "scriptwriters cooking",
+  "today is chaotic",
+  "someone timestamp this",
+  "we witnessed history",
+  "lore drop",
+  "plot twist",
+  "new emote unlocked",
+  "we are farming clips"
+];
 const emotePool = ["🔥", "😂", "👏", "W", "LUL", "Kappa", "PogChamp", "monkaS", "OMEGALUL", "L"];
+const disagreeOpeners = ["nah", "cap", "counterpoint", "idk", "nope", "wildtake"];
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -28,7 +133,7 @@ function personaPool(persona: PersonaMode): string[] {
 function withBias(text: string, bias: BiasMode, conditioning: ProviderConditioning, contrarianism: number): string {
   const disagreeWeight = Math.min(0.95, 0.25 + conditioning.volatility * 0.35 + contrarianism * 0.4);
   if (bias === "agree") return conditioning.expressiveness > 0.7 ? `${text} FRFR` : `${text} fr`;
-  if (bias === "disagree") return `nah ${text.toLowerCase()}`;
+  if (bias === "disagree") return `${pick(disagreeOpeners)} ${text.toLowerCase()}`;
   if (Math.random() < disagreeWeight) return `counterpoint: ${text.toLowerCase()}`;
   return `${text} agree`;
 }

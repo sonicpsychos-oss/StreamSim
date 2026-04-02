@@ -36,6 +36,12 @@ describe("runtime verification + monitoring UI wiring", () => {
     expect(appJs).toContain('setStatus("Camera verification complete.", "success")');
     expect(appJs).toContain("function updateMonitorAvailability(verification)");
     expect(appJs).toContain("source.className = \"source-tag\"");
+    expect(appJs).toContain("msg.username ? `${msg.username}:` : \"\"");
+    expect(appJs).toContain("function pushLiveVisionSample()");
+    expect(appJs).toContain("await post(\"/api/capture/vision-sample\", { dataUrl })");
+    expect(appJs).toContain("DEFAULT_LIVE_MONITOR_VISION_SAMPLE_MS = 7000");
+    expect(appJs).toContain("function restartLiveMonitorVisionSampling()");
+    expect(appJs).toContain("vision snapshots every ${Math.round(sampleMs / 1000)}s");
   });
 
   it("keeps runtime verification and live monitor markup IDs in index.html", () => {

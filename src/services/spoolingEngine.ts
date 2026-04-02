@@ -1,6 +1,8 @@
 import { SimulationConfig, ToneSnapshot } from "../core/types.js";
 
 const MIN_DELAY_MS = 60;
+const MIN_DRIP_SPACING_MS = 35;
+const MAX_DRIP_WINDOW_MS = 900;
 
 export interface SpoolTiming {
   targetMps: number;
@@ -33,5 +35,20 @@ export class SpoolingEngine {
     const actualDelayMs = Math.max(MIN_DELAY_MS, Math.floor(baseDelayMs * (1 + jitter)));
 
     return { targetMps, baseDelayMs, actualDelayMs };
+  }
+
+  public batchOffsetsMs(batchSize: number, tickDelayMs: number): number[] {
+    if (batchSize <= 0) return [];
+    if (batchSize === 1) return [0];
+
+    const dripWindowMs = Math.min(Math.max(MIN_DELAY_MS * batchSize, tickDelayMs), MAX_DRIP_WINDOW_MS);
+    const baseSpacing = Math.max(MIN_DRIP_SPACING_MS, Math.floor(dripWindowMs / batchSize));
+    const offsets = [0];
+    for (let i = 1; i < batchSize; i += 1) {
+      const jitter = 0.75 + Math.random() * 0.5;
+      const spacing = Math.max(MIN_DRIP_SPACING_MS, Math.floor(baseSpacing * jitter));
+      offsets.push(offsets[i - 1] + spacing);
+    }
+    return offsets;
   }
 }

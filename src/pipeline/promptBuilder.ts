@@ -25,6 +25,32 @@ const PITY_BAIT_PATTERNS = [
   /\bchat\s*i\s*am\s*washed\b/i
 ];
 const BENIGN_SELF_TALK_PATTERNS = [/\bgood\s+job\b/i, /\bnice\s+job\b/i, /\bwell\s+played\b/i];
+const GESTURE_SIGNAL_PATTERNS: Array<{ pattern: RegExp; tags: string[] }> = [
+  { pattern: /\b(middle\s*finger|flipping\s*off|flip(?:ped)?\s*off|giving\s*the\s*finger)\b/i, tags: ["gesture_middle_finger", "aggressive", "disrespect"] },
+  { pattern: /\b(heart\s*hands|hand\s*heart|heart\s*gesture|finger\s*heart)\b/i, tags: ["gesture_heart_hands", "affectionate", "supportive"] },
+  { pattern: /\b(thumbs?\s*up)\b/i, tags: ["gesture_thumbs_up", "approval"] },
+  { pattern: /\b(peace\s*sign|v\s*sign)\b/i, tags: ["gesture_peace_sign", "calm"] }
+];
+const VISION_SEMANTIC_PATTERNS: Array<{ pattern: RegExp; tags: string[] }> = [
+  { pattern: /\b(smil(?:e|ing)|grin(?:ning)?)\b/i, tags: ["positive_expression"] },
+  { pattern: /\b(laugh(?:ing)?|chuckl(?:e|ing)|giggl(?:e|ing))\b/i, tags: ["laughing", "humor_energy"] },
+  { pattern: /\b(frown(?:ing)?|upset|annoyed|frustrated|angry|mad)\b/i, tags: ["negative_expression", "frustrated"] },
+  { pattern: /\b(focused|locked\s*in|concentrating|serious\s*face)\b/i, tags: ["focused_expression"] },
+  { pattern: /\b(confused|puzzled)\b/i, tags: ["confused_expression"] },
+  { pattern: /\b(yawn(?:ing)?|sleepy|tired|exhausted)\b/i, tags: ["low_energy"] },
+  { pattern: /\b(leaning\s*in|leans?\s*forward)\b/i, tags: ["engaged_posture"] },
+  { pattern: /\b(leaning\s*back|laid\s*back|reclined)\b/i, tags: ["relaxed_posture"] },
+  { pattern: /\b(reading\s*chat|looking\s*at\s*chat|eyes?\s*on\s*chat)\b/i, tags: ["chat_engagement"] },
+  { pattern: /\b(adjust(?:ing)?\s*(?:headset|mic)|fix(?:ing)?\s*(?:headset|mic))\b/i, tags: ["equipment_adjustment"] },
+  { pattern: /\b(drinking|sipp(?:ing)?|water\s*bottle|energy\s*drink)\b/i, tags: ["drinking"] },
+  { pattern: /\b(eating|snack(?:ing)?)\b/i, tags: ["eating"] },
+  { pattern: /\b(waving|wave\s*to\s*chat)\b/i, tags: ["greeting"] },
+  { pattern: /\b(clapping|applaud(?:ing)?)\b/i, tags: ["celebration"] },
+  { pattern: /\b(dancing|head\s*bobb(?:ing)?|nodd(?:ing)?)\b/i, tags: ["hype_motion"] },
+  { pattern: /\b(dim|dark|low\s*light)\b/i, tags: ["dim_lighting"] },
+  { pattern: /\b(bright|well\s*lit)\b/i, tags: ["bright_lighting"] },
+  { pattern: /\b(rgb|neon|led)\b/i, tags: ["rgb_lighting"] }
+];
 
 export function checkFishingState(transcript: string, vibe?: string, intent?: string): FishingState {
   const normalized = transcript.trim();
@@ -34,7 +60,7 @@ export function checkFishingState(transcript: string, vibe?: string, intent?: st
   const isBragging = BRAGGING_PATTERNS.some((regex) => regex.test(normalized));
   const isPityBait = PITY_BAIT_PATTERNS.some((regex) => regex.test(normalized));
   const isBenignSelfTalk = BENIGN_SELF_TALK_PATTERNS.some((regex) => regex.test(normalized));
-  const confidentOrArrogant = vibe === "arrogant" || vibe === "confident";
+  const isArrogant = vibe === "arrogant";
   const inquiryIntent = intent === "inquiry";
   const hasValidationSignal = isAskingLeadingQ || isBragging || isPityBait;
 
@@ -42,11 +68,18 @@ export function checkFishingState(transcript: string, vibe?: string, intent?: st
     return "OFF";
   }
 
+  if (!isArrogant && !hasValidationSignal) {
+    return "OFF";
+  }
+  if (isArrogant && !hasValidationSignal) {
+    return "STANDARD_CONTRARIAN";
+  }
+
   let confidenceScore = 0;
   if (isAskingLeadingQ) confidenceScore += 2;
   if (isBragging || isPityBait) confidenceScore += 1;
   if (inquiryIntent) confidenceScore += 1;
-  if (confidentOrArrogant) confidenceScore += 1;
+  if (isArrogant) confidenceScore += 2;
 
   if ((isAskingLeadingQ || isPityBait) && confidenceScore >= 4) {
     return "AGGRESSIVE_SUBVERSION";
@@ -62,6 +95,19 @@ export function checkFishingState(transcript: string, vibe?: string, intent?: st
 function detectSituationalTags(context: StreamContext): string[] {
   const tags = new Set<string>(context.visionTags.map((tag) => tag.trim().toLowerCase()).filter(Boolean));
   const transcript = context.transcript.toLowerCase();
+  const visionText = context.visionTags.join(" ").toLowerCase();
+
+  for (const signal of GESTURE_SIGNAL_PATTERNS) {
+    if (signal.pattern.test(visionText)) {
+      signal.tags.forEach((tag) => tags.add(tag));
+    }
+  }
+  for (const signal of VISION_SEMANTIC_PATTERNS) {
+    if (signal.pattern.test(visionText)) {
+      signal.tags.forEach((tag) => tags.add(tag));
+    }
+  }
+
   if (/\b(lmao|lmfao|haha|😭|💀|funny)\b/.test(transcript)) tags.add("funny");
   if (/\b(laugh|laughing)\b/.test(transcript)) tags.add("laughing");
   if (/\b(sarcasm|sarcastic|yeah right|sure buddy)\b/.test(transcript)) tags.add("sarcastic");
@@ -78,12 +124,19 @@ function mapBehavioralModes(situationalTags: string[]): string[] {
   if (situationalTags.some((tag) => ["funny", "laughing"].includes(tag))) modes.add("laughter");
   if (situationalTags.some((tag) => ["disrespect", "sassy"].includes(tag))) modes.add("drama");
   if (situationalTags.includes("sarcastic")) modes.add("cap");
+  if (situationalTags.some((tag) => ["affectionate", "supportive", "gesture_heart_hands"].includes(tag))) modes.add("support");
+  if (situationalTags.some((tag) => ["approval", "gesture_thumbs_up", "gesture_peace_sign", "calm"].includes(tag))) modes.add("approval");
+  if (situationalTags.some((tag) => ["aggressive", "gesture_middle_finger"].includes(tag))) modes.add("conflict");
+  if (situationalTags.some((tag) => ["focused_expression", "engaged_posture", "chat_engagement"].includes(tag))) modes.add("focus");
+  if (situationalTags.some((tag) => ["hype_motion", "celebration", "humor_energy"].includes(tag))) modes.add("hype");
+  if (situationalTags.some((tag) => ["negative_expression", "frustrated", "confused_expression"].includes(tag))) modes.add("tilt");
+  if (situationalTags.some((tag) => ["relaxed_posture", "low_energy"].includes(tag))) modes.add("chill");
   if (modes.size === 0) modes.add("default");
   return Array.from(modes);
 }
 
 export function buildPromptPayload(config: SimulationConfig, context: StreamContext): PromptPayload {
-  const requestedMessageCount = Math.max(2, Math.min(8, Math.floor(Math.sqrt(config.viewerCount) / 18) + 1));
+  const requestedMessageCount = Math.max(5, Math.min(11, Math.floor(Math.sqrt(config.viewerCount) / 14) + 4));
   const situationalTags = detectSituationalTags(context);
   const behavioralModes = mapBehavioralModes(situationalTags);
 

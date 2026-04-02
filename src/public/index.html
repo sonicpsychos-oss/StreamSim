@@ -3,185 +3,273 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>StreamSim Control Center</title>
+    <title>StreamSim Simulation Instrument</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="layout">
       <section class="panel controls">
-        <h1>StreamSim Control Center</h1>
-
-        <section class="onboarding-panel" id="onboardingPanel">
-          <div class="onboarding-head">
-            <h2>Quick Start Onboarding</h2>
-            <span id="onboardingPill" class="pill pending">Pending</span>
+        <header class="topbar">
+          <div>
+            <h1>StreamSim Control Center</h1>
+            <p class="subtle">Guided simulation workflow with full developer visibility.</p>
           </div>
-          <ol class="onboarding-steps">
-            <li>Choose a provider mode and stream profile (defaults to full AI pipeline).</li>
-            <li>Run readiness + performance checks.</li>
-            <li>Accept EULA to unlock simulation start.</li>
-          </ol>
-          <div class="wizard-inline-controls">
-            <label class="eula"><input id="wizardEulaAccepted" type="checkbox" /> I accept the simulation EULA/compliance terms</label>
-            <div class="buttons">
-              <button id="runReadiness" type="button">Run Readiness</button>
-              <button id="completeWizard" type="button" class="primary">Complete onboarding</button>
+          <div class="topbar-actions">
+            <label class="mode-switch">Mode
+              <select id="uiMode">
+                <option value="operator">Operator</option>
+                <option value="developer">Developer</option>
+              </select>
+            </label>
+            <span id="systemStateBadge" class="state-pill idle">IDLE</span>
+          </div>
+        </header>
+
+        <div class="workflow-stack">
+          <section class="control-group sticky-run workflow-section" id="sectionRun" open>
+            <div class="run-header">
+              <h3>Primary Actions</h3>
+              <span class="pill neutral">Play</span>
             </div>
-          </div>
-        </section>
+            <div class="buttons sticky-actions">
+              <button id="start" type="button" class="primary">Start Simulation</button>
+              <button id="stop" type="button">Stop</button>
+              <button id="triggerTestDonation" type="button">Trigger Donation</button>
+              <button id="simulateViewerSpike" type="button">Simulate Spike</button>
+            </div>
+            <p id="statusBanner" class="status-banner" aria-live="polite">Ready.</p>
+          </section>
 
-        <section class="control-group">
-          <h3>Stream Profile</h3>
-          <div class="grid compact-grid">
-            <label>Viewer Count <input id="viewerCount" type="number" min="1" value="100" /></label>
-            <label>Engagement Multiplier <input id="engagementMultiplier" type="number" step="0.1" value="1" /></label>
-            <label>Donation Frequency <input id="donationFrequency" type="number" step="0.01" min="0" max="1" value="0.08" /></label>
-            <label>Persona
-              <select id="persona">
-                <option value="supportive">Supportive</option>
-                <option value="trolls">Trolls</option>
-                <option value="meme-lords">Meme-lords</option>
-                <option value="neutral">Neutral</option>
-              </select>
-            </label>
-            <label>Bias
-              <select id="bias">
-                <option value="split">Split</option>
-                <option value="agree">Agree</option>
-                <option value="disagree">Disagree</option>
-              </select>
-            </label>
-            <label>Inference Mode
-              <select id="inferenceMode">
-                <option value="mock-local">Mock Local</option>
-                <option value="mock-cloud">Mock Cloud</option>
-                <option value="ollama">Ollama</option>
-                <option value="lmstudio">LM Studio</option>
-                <option value="openai">OpenAI</option>
-                <option value="groq">Groq</option>
-              </select>
-            </label>
-          </div>
-        </section>
+          <details class="control-group workflow-section" id="sectionConfigure" open>
+            <summary><span>Core Controls</span><span class="pill neutral">Profile</span></summary>
+            <div class="grid compact-grid">
+              <label>Viewer Count
+                <input id="viewerCount" type="range" min="1" max="5000" value="100" />
+                <span class="range-value" id="viewerCountValue">100</span>
+              </label>
+              <label>Engagement Multiplier
+                <input id="engagementMultiplier" type="range" min="0.1" max="3" step="0.1" value="1" />
+                <span class="range-value" id="engagementMultiplierValue">1.0</span>
+              </label>
+              <label>Donation Frequency
+                <input id="donationFrequency" type="range" min="0" max="1" step="0.01" value="0.08" />
+                <span class="range-value" id="donationFrequencyValue">0.08</span>
+              </label>
+            </div>
+            <details class="advanced-controls">
+              <summary><span>Advanced</span><span class="pill neutral">Collapsed</span></summary>
+              <div class="grid compact-grid">
+              <label>Persona
+                <select id="persona">
+                  <option value="supportive">Supportive</option>
+                  <option value="trolls">Trolls</option>
+                  <option value="meme-lords">Meme-lords</option>
+                  <option value="neutral">Neutral</option>
+                </select>
+              </label>
+              <label>Bias
+                <select id="bias">
+                  <option value="split">Split</option>
+                  <option value="agree">Agree</option>
+                  <option value="disagree">Disagree</option>
+                </select>
+              </label>
+              <label>Inference Mode
+                <select id="inferenceMode">
+                  <option value="mock-local">Mock Local</option>
+                  <option value="mock-cloud">Mock Cloud</option>
+                  <option value="ollama">Ollama</option>
+                  <option value="lmstudio">LM Studio</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="groq">Groq</option>
+                </select>
+              </label>
+              </div>
+            </details>
+          </details>
 
-        <details class="control-group">
-          <summary>Provider + Capture Settings</summary>
-          <div class="grid">
-            <label>Local endpoint <input id="localEndpoint" type="text" value="http://127.0.0.1:11434" /></label>
-            <label>Local model <input id="localModel" type="text" value="llama3.1:8b-instruct-q4_K_M" /></label>
-            <label>Cloud endpoint <input id="cloudEndpoint" type="text" value="https://api.openai.com/v1/chat/completions" /></label>
-            <label>Cloud model <input id="cloudModel" type="text" value="gpt-5.4-nano-2026-03-17" /></label>
-            <label>Request timeout ms <input id="requestTimeoutMs" type="number" min="1000" max="120000" value="30000" /></label>
-            <label>Max retries <input id="maxRetries" type="number" min="0" max="5" value="1" /></label>
-            <label><input id="ttsEnabled" type="checkbox" checked /> TTS Enabled</label>
-            <label>TTS Path
-              <select id="ttsMode">
-                <option value="local">Local TTS</option>
-                <option value="cloud">Cloud TTS</option>
-                <option value="off">Off</option>
-              </select>
-            </label>
-            <label>TTS Provider
-              <select id="ttsProvider">
-                <option value="local">Local (no synth call)</option>
-                <option value="deepgram_aura">Deepgram Aura (Luna)</option>
-                <option value="openai">OpenAI TTS</option>
-              </select>
-            </label>
-            <label><input id="visionEnabled" type="checkbox" checked /> Vision Capture Enabled</label>
-            <label><input id="useRealCapture" type="checkbox" /> Use real capture endpoints</label>
-            <label>Vision Interval (seconds) <input id="visionIntervalSec" type="number" min="5" max="120" value="25" /></label>
-            <label>STT Provider
-              <select id="sttProvider">
-                <option value="local-whisper">Local Whisper (localhost)</option>
-                <option value="mock">Mock STT</option>
-                <option value="whispercpp">Whisper.cpp (custom endpoint)</option>
-                <option value="deepgram">Deepgram</option>
-                <option value="openai-whisper">OpenAI Whisper (cloud)</option>
-                <option value="gpt-4o-mini-transcribe">OpenAI GPT-4o mini transcribe (cloud)</option>
-              </select>
-            </label>
-            <label>STT endpoint <input id="sttEndpoint" type="text" value="http://127.0.0.1:7778/stt" /></label>
-            <label>Vision endpoint <input id="visionEndpoint" type="text" value="http://127.0.0.1:7778/vision-tags" /></label>
-            <label><input id="audioIntelligenceEnabled" type="checkbox" checked /> Audio Intelligence Enabled</label>
-          </div>
-        </details>
+          <details class="control-group workflow-section system-status-group" id="sectionSystemStatus">
+            <summary><span>System Status</span><span id="connectStatusPill" class="pill neutral">Partial</span></summary>
+            <div class="buttons utility-actions">
+              <button id="save" type="button">Save Config</button>
+              <button id="refreshStatus" type="button">Refresh Status</button>
+              <button id="verifyMic" type="button">Verify Microphone</button>
+              <button id="verifyCamera" type="button" disabled>Verify Camera</button>
+              <button id="openOverlayWindow" type="button">Open Transparent Chat Window</button>
+            </div>
+            <details class="workflow-subsection" id="sectionSetup" open>
+              <summary><span>Setup</span><span id="onboardingPill" class="pill pending">Pending</span></summary>
+              <section class="onboarding-panel" id="onboardingPanel">
+                <ol class="onboarding-steps">
+                  <li>Choose provider mode and stream profile.</li>
+                  <li>Run readiness + performance checks.</li>
+                  <li>Accept EULA to unlock simulation start.</li>
+                </ol>
+                <div class="wizard-inline-controls">
+                  <label class="eula"><input id="wizardEulaAccepted" type="checkbox" /> I accept the simulation EULA/compliance terms</label>
+                  <div class="buttons">
+                    <button id="runReadiness" type="button">Run Readiness</button>
+                    <button id="completeWizard" type="button" class="primary">Complete onboarding</button>
+                  </div>
+                  <ul id="readinessList"></ul>
+                </div>
+              </section>
+            </details>
 
-        <details class="control-group">
-          <summary>Safety, Moderation, and Security</summary>
-          <div class="grid">
-            <label>Safety drop policy
-              <select id="dropPolicy">
-                <option value="drop">Drop flagged content</option>
-                <option value="censor">Censor flagged content</option>
-              </select>
-            </label>
-            <label><input id="slowMode" type="checkbox" /> Slow Mode</label>
-            <label><input id="emoteOnly" type="checkbox" /> Emote-Only</label>
-            <label><input id="allowDiagnostics" type="checkbox" /> Allow diagnostics export</label>
-            <label><input id="allowNonLocalSidecarOverride" type="checkbox" /> Allow non-local sidecar override</label>
-            <label>Override reason <input id="overrideReason" type="text" placeholder="Required if override enabled" /></label>
-            <label class="eula"><input id="eulaAccepted" type="checkbox" /> I accept the simulation EULA/compliance terms</label>
-          </div>
-        </details>
+            <details class="workflow-subsection" id="sectionConnect">
+              <summary><span>Connect</span><span class="pill neutral">Network</span></summary>
+              <div class="grid">
+              <label>Local endpoint <input id="localEndpoint" type="text" value="http://127.0.0.1:11434" /></label>
+              <label>Local model <input id="localModel" type="text" value="llama3.1:8b-instruct-q4_K_M" /></label>
+              <label>Cloud endpoint <input id="cloudEndpoint" type="text" value="https://api.openai.com/v1/chat/completions" /></label>
+              <label>Cloud model <input id="cloudModel" type="text" value="gpt-5.4-nano-2026-03-17" /></label>
+              <label>Request timeout ms <input id="requestTimeoutMs" type="number" min="1000" max="120000" value="30000" /></label>
+              <label>Max retries <input id="maxRetries" type="number" min="0" max="5" value="1" /></label>
+              <label><input id="ttsEnabled" type="checkbox" checked /> TTS Enabled</label>
+              <label>TTS Path
+                <select id="ttsMode">
+                  <option value="local">Local TTS</option>
+                  <option value="cloud">Cloud TTS</option>
+                  <option value="off">Off</option>
+                </select>
+              </label>
+              <label>TTS Provider
+                <select id="ttsProvider">
+                  <option value="local">Local (no synth call)</option>
+                  <option value="deepgram_aura">Deepgram Aura (Luna)</option>
+                  <option value="openai">OpenAI TTS</option>
+                </select>
+              </label>
+              <label><input id="visionEnabled" type="checkbox" checked /> Vision Capture Enabled</label>
+              <label><input id="useRealCapture" type="checkbox" /> Use real capture endpoints</label>
+              <label>Vision Provider
+                <select id="visionProvider">
+                  <option value="local">Local (moondream/ollama sidecar)</option>
+                  <option value="openai">Cloud (OpenAI)</option>
+                </select>
+              </label>
+              <label>Vision Interval (seconds) <input id="visionIntervalSec" type="number" min="5" max="120" value="7" /></label>
+              <label>STT Provider
+                <select id="sttProvider">
+                  <option value="local-whisper">Local Whisper (localhost)</option>
+                  <option value="mock">Mock STT</option>
+                  <option value="whispercpp">Whisper.cpp (custom endpoint)</option>
+                  <option value="deepgram">Deepgram</option>
+                  <option value="openai-whisper">OpenAI Whisper (cloud)</option>
+                  <option value="gpt-4o-mini-transcribe">OpenAI GPT-4o mini transcribe (cloud)</option>
+                </select>
+              </label>
+              <label>STT endpoint <input id="sttEndpoint" type="text" value="http://127.0.0.1:7778/stt" /></label>
+              <label>Vision endpoint <input id="visionEndpoint" type="text" value="http://127.0.0.1:7778/vision-tags" /></label>
+              <label><input id="audioIntelligenceEnabled" type="checkbox" checked /> Audio Intelligence Enabled</label>
+              </div>
+            </details>
 
-        <details class="control-group">
-          <summary>Secrets + Maintenance</summary>
-          <div class="grid">
-            <label>Cloud API key <input id="cloudApiKey" type="password" placeholder="sk-..." /></label>
-            <label>Deepgram API key <input id="deepgramApiKey" type="password" placeholder="dg_..." /></label>
-          </div>
-          <div class="buttons">
-            <button id="saveCloudKey" type="button">Save Cloud Key</button>
-            <button id="saveDeepgramKey" type="button">Save Deepgram Key</button>
-            <button id="rebindAudio" type="button">Rebind Audio</button>
-            <button id="sidecarCancel" type="button">Cancel Sidecar Pull</button>
-            <button id="sidecarResume" type="button">Resume Sidecar Pull</button>
-            <button id="applyOverride" type="button">Apply Override</button>
-          </div>
-        </details>
+            <details class="workflow-subsection" id="sectionVerify">
+            <summary><span>Verify</span><span class="pill neutral">Status Cards</span></summary>
+            <h3>Runtime Verification</h3>
+            <div id="statusCards" class="status-cards"></div>
+            <label class="live-monitor-toggle"><input id="liveMonitorEnabled" type="checkbox" /> Enable live camera + voice monitor</label>
+            <p id="liveMonitorStatus" class="monitor-status">Live monitor disabled.</p>
+            <p id="sttCaptionStatus" class="monitor-status">Run Verify Microphone to start mic/STT check.</p>
+            <div id="sttCaptionPreview" class="caption-preview" aria-live="polite">No speech captured yet.</div>
+            <div class="live-monitor-grid">
+              <div class="live-frame" id="liveFrame">
+                <span id="liveBadge" class="live-badge">OFFLINE</span>
+                <video id="liveVideo" autoplay playsinline muted></video>
+              </div>
+              <canvas id="voiceMeter" width="280" height="80" aria-label="Voice meter"></canvas>
+            </div>
+            <ul id="deviceChecks">
+              <li>Mic/Camera checks not run yet.</li>
+            </ul>
 
-        <div class="buttons sticky-actions">
-          <button id="save" type="button">Save Config</button>
-          <button id="start" type="button" class="primary">Start Simulation</button>
-          <button id="stop" type="button">Stop</button>
-          <button id="refreshStatus" type="button">Refresh Status</button>
-          <button id="verifyMic" type="button">Verify Microphone</button>
-          <button id="verifyCamera" type="button" disabled>Verify Camera</button>
-          <button id="openOverlayWindow" type="button">Open Transparent Chat Window</button>
+            <div class="dev-only" data-mode-visible="developer">
+              <pre id="runtimeSummary">Runtime status pending...</pre>
+              <p><strong>AI Health</strong> <span id="aiActiveModelLabel">(model: n/a)</span></p>
+              <pre id="aiHealthSummary">AI health pending...</pre>
+              <pre id="ttsHealthSummary">TTS health pending...</pre>
+              <pre id="sttHealthSummary">STT health pending...</pre>
+              <pre id="apiKeyHealthSummary">API key status pending...</pre>
+              <pre id="visionHealthSummary">Vision health pending...</pre>
+              <pre id="diagnosticsSummary"></pre>
+              <pre id="meta"></pre>
+            </div>
+            </details>
+          </details>
+
+          <details class="control-group workflow-section" id="sectionSecurity" data-mode-visible="developer">
+            <summary><span>Safety, Moderation, and Security</span><span class="pill neutral">Developer</span></summary>
+            <div class="grid">
+              <label>Safety drop policy
+                <select id="dropPolicy">
+                  <option value="drop">Drop flagged content</option>
+                  <option value="censor">Censor flagged content</option>
+                </select>
+              </label>
+              <label><input id="slowMode" type="checkbox" /> Slow Mode</label>
+              <label><input id="emoteOnly" type="checkbox" /> Emote-Only</label>
+              <label><input id="allowDiagnostics" type="checkbox" /> Allow diagnostics export</label>
+              <label><input id="allowNonLocalSidecarOverride" type="checkbox" /> Allow non-local sidecar override</label>
+              <label>Override reason <input id="overrideReason" type="text" placeholder="Required if override enabled" /></label>
+              <label class="eula"><input id="eulaAccepted" type="checkbox" /> I accept the simulation EULA/compliance terms</label>
+            </div>
+            <div class="buttons">
+              <button id="applyOverride" type="button">Apply Override</button>
+            </div>
+          </details>
+
+          <details class="control-group workflow-section" id="sectionSecrets" data-mode-visible="developer">
+            <summary><span>Secrets + Maintenance</span><span class="pill neutral">Developer</span></summary>
+            <div class="grid">
+              <label>Cloud API key <input id="cloudApiKey" type="password" placeholder="sk-..." /></label>
+              <label>Deepgram API key <input id="deepgramApiKey" type="password" placeholder="dg_..." /></label>
+            </div>
+            <div class="buttons">
+              <button id="saveCloudKey" type="button">Save Cloud Key</button>
+              <button id="saveDeepgramKey" type="button">Save Deepgram Key</button>
+              <button id="rebindAudio" type="button">Rebind Audio</button>
+              <button id="sidecarCancel" type="button">Cancel Sidecar Pull</button>
+              <button id="sidecarResume" type="button">Resume Sidecar Pull</button>
+            </div>
+          </details>
+
         </div>
-        <p id="statusBanner" class="status-banner" aria-live="polite">Ready.</p>
-        <section class="control-group">
-          <h3>Runtime Verification</h3>
-          <pre id="runtimeSummary">Runtime status pending...</pre>
-          <p><strong>AI Health</strong> <span id="aiActiveModelLabel">(model: n/a)</span></p>
-          <pre id="aiHealthSummary">AI health pending...</pre>
-          <pre id="ttsHealthSummary">TTS health pending...</pre>
-          <pre id="sttHealthSummary">STT health pending...</pre>
-          <label class="live-monitor-toggle"><input id="liveMonitorEnabled" type="checkbox" /> Enable live camera + voice monitor</label>
-          <p id="liveMonitorStatus" class="monitor-status">Live monitor disabled.</p>
-          <p id="sttCaptionStatus" class="monitor-status">Run Verify Microphone to start mic/STT check.</p>
-          <div id="sttCaptionPreview" class="caption-preview" aria-live="polite">No speech captured yet.</div>
-          <div class="live-monitor-grid">
-            <video id="liveVideo" autoplay playsinline muted></video>
-            <canvas id="voiceMeter" width="280" height="80" aria-label="Voice meter"></canvas>
-          </div>
-          <ul id="deviceChecks">
-            <li>Mic/Camera checks not run yet.</li>
-          </ul>
-        </section>
-
-        <pre id="diagnosticsSummary"></pre>
-        <ul id="readinessList"></ul>
-        <pre id="meta"></pre>
       </section>
 
       <section class="panel overlay transparent-ready" id="overlay">
         <div class="watermark">Powered by StreamSim</div>
-        <h2>Overlay Preview</h2>
+        <div class="preview-header">
+          <h2>Live Preview</h2>
+          <div class="preview-stats">
+            <span id="previewViewerCount">👥 0</span>
+            <span id="previewAlerts">🔔 0</span>
+          </div>
+        </div>
+        <div class="preview-actions">
+          <button id="sendTestChat" type="button">Send Test Chat</button>
+        </div>
         <div id="chat"></div>
       </section>
     </main>
+
+    <aside id="logsDrawer" class="logs-drawer" data-mode-visible="developer">
+      <button id="logsToggle" class="logs-toggle" type="button">Logs ▲</button>
+      <div id="logsPanel" class="logs-panel hidden">
+        <div class="logs-toolbar">
+          <select id="logFilter">
+            <option value="all">All</option>
+            <option value="system">System</option>
+            <option value="ai">AI</option>
+            <option value="stt">STT</option>
+            <option value="tts">TTS</option>
+            <option value="network">Network</option>
+          </select>
+          <input id="logSearch" type="text" placeholder="Search logs" />
+        </div>
+        <pre id="logsContent">No logs yet.</pre>
+      </div>
+    </aside>
 
     <script type="module" src="/app.js"></script>
   </body>

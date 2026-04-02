@@ -10,9 +10,18 @@ import { ObservabilityLogger } from "./observability.js";
 import { SidecarManager } from "./sidecarManager.js";
 import { SpoolingEngine } from "./spoolingEngine.js";
 import { MockInferenceProvider } from "../llm/mockInferenceProvider.js";
-import { IdentityManager } from "./identityManager.js";
+import { ModSimController } from "./modSimController.js";
 import { sharedDeviceCapturePipeline } from "../capture/deviceCapturePipeline.js";
 import { sharedTextToSpeechService } from "./tts/textToSpeechService.js";
+import { VisionPollingService } from "./visionPollingService.js";
+import { systemPromptForPayload } from "../llm/realInferenceProvider.js";
+
+export function explainInferenceFailure(reason: string): string {
+  if (reason.includes("Unexpected end of JSON input")) {
+    return "OpenAI cloud response was truncated (broken JSON package).";
+  }
+  return reason;
+}
 
 export class SimulationOrchestrator {
   private readonly spooler = new SpoolingEngine();
@@ -23,8 +32,23 @@ export class SimulationOrchestrator {
   private readonly obs = new ObservabilityLogger();
   private readonly sidecar = new SidecarManager();
   private readonly mockProvider = new MockInferenceProvider();
-  private readonly identityManager = new IdentityManager();
+  private readonly modSim = new ModSimController();
+  private readonly visionService = new VisionPollingService(
+    () => this.getConfig(),
+    (meta) => this.emitMeta(meta)
+  );
   private recentChatHistory: string[] = [];
+  private lastSidecarCheckAt = 0;
+  private lastSidecarStatus: { ready: boolean; phase: string; progress: number; details: string; fallbackSuggested: boolean; uxAction?: string } = {
+    ready: true,
+    phase: "ready",
+    progress: 100,
+    details: "Not checked yet.",
+    fallbackSuggested: false
+  };
+  private lastProviderHealthAt = 0;
+  private lastProviderHealth: { ok: boolean; details: string } = { ok: true, details: "Not checked yet." };
+  private primaryFailureStreak = 0;
   private aiStatus: {
     state: "idle" | "running" | "degraded" | "error";
     providerHealth: "unknown" | "ok" | "degraded";
@@ -52,12 +76,14 @@ export class SimulationOrchestrator {
   public start(): void {
     if (this.running) return;
     this.running = true;
+    this.visionService.start();
     this.setAiStatus({ state: "running", detail: "Simulation loop started.", fallbackMode: null });
     void this.loop();
   }
 
   public stop(): void {
     this.running = false;
+    this.visionService.stop();
     this.setAiStatus({ state: "idle", detail: "Simulation stopped." });
     if (this.timer) {
       clearTimeout(this.timer);
@@ -70,6 +96,7 @@ export class SimulationOrchestrator {
     this.audioState.stopTts();
     sharedSttEngine.resume();
     sharedDeviceCapturePipeline.reset();
+    this.modSim.reset();
   }
 
   public cancelSidecarPull(): void {
@@ -122,8 +149,26 @@ export class SimulationOrchestrator {
   }
 
   private hydrateMessages(messages: ChatMessage[], source: ChatMessage["source"]): ChatMessage[] {
-    const tagged = messages.map((message) => ({ ...message, source: message.source ?? source ?? "unknown" }));
-    return this.identityManager.assignToMessages(tagged);
+    return messages.map((message) => ({ ...message, source: message.source ?? source ?? "unknown" }));
+  }
+
+  private emitMessagesWithDrip(messages: ChatMessage[], timing: { actualDelayMs: number }, config: SimulationConfig, tone: { volumeRms: number; paceWpm: number }): void {
+    if (messages.length <= 1) {
+      this.emitMessages(messages);
+      return;
+    }
+
+    const offsets = this.spooler.batchOffsetsMs(messages.length, timing.actualDelayMs);
+    messages.forEach((message, index) => {
+      const delayMs = offsets[index] ?? 0;
+      setTimeout(() => {
+        if (!this.running) return;
+        const streamTone = { volumeRms: tone.volumeRms, paceWpm: tone.paceWpm };
+        const refreshedTiming = this.spooler.nextDelayMs(config, streamTone);
+        this.emitMessages([{ ...message, createdAt: new Date().toISOString() }]);
+        this.emitMeta({ spooling: { mode: "drip", index, batchSize: messages.length, delayMs, nextDelayMs: refreshedTiming.actualDelayMs } });
+      }, delayMs);
+    });
   }
 
   private resolveActiveModelName(config: SimulationConfig): string {
@@ -186,77 +231,27 @@ export class SimulationOrchestrator {
   }
 
   private isReadingChat(transcript: string, recentChatHistory: string[]): boolean {
-    if (!transcript.trim() || recentChatHistory.length === 0) return false;
-    const transcriptTokens = this.tokenizeForOverlap(transcript);
-    if (!transcriptTokens.size) return false;
-    const historyTokens = this.tokenizeForOverlap(recentChatHistory.join(" "));
-    if (!historyTokens.size) return false;
-    const overlapCount = Array.from(transcriptTokens).filter((token) => historyTokens.has(token)).length;
-    return overlapCount / transcriptTokens.size >= 0.45;
+    return this.modSim.isReadingChat(transcript, recentChatHistory);
   }
 
   private rewriteForReadingChat(messages: ChatMessage[]): ChatMessage[] {
-    const reactions = ["l chatter", "ratio that chatter", "he reading us again 💀", "chat got him pressed", "stop farming chat lines"];
-    return messages.map((message, index) => ({ ...message, text: reactions[index % reactions.length] }));
+    return this.modSim.rewriteForReadingChat(messages);
   }
 
   private applyAntiEchoConstraint(messages: ChatMessage[], transcript: string): ChatMessage[] {
-    const anchors = this.transcriptAnchorTerms(transcript);
-    if (!anchors.length) return messages;
+    return this.modSim.applyAntiEchoConstraint(messages, transcript);
+  }
 
-    const filtered = messages.filter((message) => {
-      const lowered = message.text.toLowerCase();
-      if (!lowered.trim()) return true;
-      const overlap = anchors.filter((token) => lowered.includes(token));
-      return overlap.length === 0;
-    });
-
-    if (filtered.length > 0) return filtered;
-    const seed = messages[0];
-    return [this.antiEchoFallback(seed?.id ?? `${Date.now()}-anti-echo`, seed?.createdAt ?? new Date().toISOString())];
+  private enforcePersonaSyntax(messages: ChatMessage[]): ChatMessage[] {
+    return this.modSim.enforcePersonaSyntax(messages);
   }
 
   private enforceDiversityRules(messages: ChatMessage[], behavioralModes: string[]): ChatMessage[] {
-    const slangCooldownWords = ["lowkey", "bet", "cooked", "fr"];
-    const slangAlternatives: Record<string, string[]> = {
-      lowkey: ["ngl", "tbh", "honestly"],
-      bet: ["aight", "say less", "ok then"],
-      cooked: ["chalked", "donezo", "gg"],
-      fr: ["facts", "real", "deadass"]
-    };
-    const recentUsage = new Map<string, number>();
+    return this.modSim.enforceDiversityRules(messages, behavioralModes);
+  }
 
-    const remapped = messages.map((message, index) => {
-      let text = message.text;
-      for (const word of slangCooldownWords) {
-        const pattern = new RegExp(`\\b${word}\\b`, "i");
-        if (!pattern.test(text)) continue;
-        const lastIndex = recentUsage.get(word);
-        if (lastIndex !== undefined && index - lastIndex <= 10) {
-          const alternatives = slangAlternatives[word];
-          text = text.replace(pattern, alternatives[(index + word.length) % alternatives.length]);
-        } else {
-          recentUsage.set(word, index);
-        }
-      }
-      return { ...message, text };
-    });
-
-    if (remapped.length < 2) return remapped;
-
-    if (behavioralModes.includes("thirst")) {
-      remapped[0] = { ...remapped[0], text: "gyatt respectfully 😳" };
-      remapped[1] = { ...remapped[1], text: "simps in chat stand up" };
-      return remapped;
-    }
-
-    const supportiveSignal = /\b(yes|yup|we hear u|w audio|mic w|facts|same|true|good)\b/i;
-    if (supportiveSignal.test(remapped[0].text) && supportiveSignal.test(remapped[1].text)) {
-      const contrastReplies = ["nah chat trolling today", "bro that take is wild", "off topic but who ate my snacks", "skill issue detected 🤨"];
-      remapped[1] = { ...remapped[1], text: contrastReplies[Math.floor(Math.random() * contrastReplies.length)] };
-    }
-
-    return remapped;
+  private applyTranscriptDecay(context: PromptPayload["context"]): PromptPayload["context"] {
+    return this.modSim.applyTranscriptDecay(context);
   }
 
   private verbosePipelineLog(
@@ -266,6 +261,7 @@ export class SimulationOrchestrator {
     payload: PromptPayload,
     rawInferenceResult: string
   ): void {
+    if (process.env.STREAMSIM_VERBOSE_PIPELINE !== "1") return;
     // eslint-disable-next-line no-console
     console.log(
       `[SimulationOrchestrator][VerbosePipelineLog] route=${route} provider=${providerMode} model=${activeModel} transcript/visionTags + raw InferenceResult`
@@ -289,6 +285,7 @@ export class SimulationOrchestrator {
   private async loop(): Promise<void> {
     if (!this.running) return;
 
+    const loopStartedAt = Date.now();
     let timing = this.spooler.nextDelayMs(this.getConfig(), { volumeRms: 0.2, paceWpm: 110 });
 
     try {
@@ -296,14 +293,22 @@ export class SimulationOrchestrator {
       const captureProvider = createCaptureProvider(config);
       const provider = createInferenceProvider(config.inferenceMode);
       const startedAt = Date.now();
-
       if (!config.compliance.eulaAccepted) {
         this.emitMeta({ warning: "EULA must be accepted before simulation starts." });
         this.running = false;
         return;
       }
 
-      const sidecarStatus = await this.sidecar.ensureReady(config);
+      const now = Date.now();
+      const sidecarNeedsRefresh =
+        now - this.lastSidecarCheckAt > 60_000 ||
+        this.lastSidecarStatus.phase !== "ready" ||
+        !this.lastSidecarStatus.ready;
+      const sidecarStatus = sidecarNeedsRefresh ? await this.sidecar.ensureReady(config) : this.lastSidecarStatus;
+      if (sidecarNeedsRefresh) {
+        this.lastSidecarCheckAt = now;
+        this.lastSidecarStatus = sidecarStatus;
+      }
       if (!sidecarStatus.ready) {
         this.emitMeta({ warning: sidecarStatus.details, fallbackSuggested: sidecarStatus.fallbackSuggested, blocked: false, recovery: sidecarStatus.uxAction });
         this.obs.log("sidecar_status", { sidecarStatus: sidecarStatus.phase, progress: sidecarStatus.progress });
@@ -315,7 +320,14 @@ export class SimulationOrchestrator {
         this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: validation.errors.join(" | ") });
       }
 
-      const health = await provider.healthCheck(config);
+      const healthNeedsRefresh =
+        now - this.lastProviderHealthAt > 30_000 ||
+        !this.lastProviderHealth.ok;
+      const health = healthNeedsRefresh ? await provider.healthCheck(config) : this.lastProviderHealth;
+      if (healthNeedsRefresh) {
+        this.lastProviderHealthAt = now;
+        this.lastProviderHealth = health;
+      }
       if (!health.ok) {
         this.emitMeta({ warnings: [`Provider unhealthy: ${health.details}`], blocked: false });
         this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: `Provider unhealthy: ${health.details}` });
@@ -325,10 +337,11 @@ export class SimulationOrchestrator {
 
       const captureStarted = Date.now();
       const capturedContext = await captureProvider.getContext(config);
-      const context = {
+      const contextWithHistory = {
         ...capturedContext,
         recentChatHistory: this.recentChatHistory.slice(0, 20)
       };
+      const context = this.modSim.preFlight(contextWithHistory);
       const captureLatencyMs = Date.now() - captureStarted;
 
       timing = this.spooler.nextDelayMs(config, context.tone);
@@ -336,6 +349,7 @@ export class SimulationOrchestrator {
       if (this.audioState.canListenToMic()) {
         sharedSttEngine.resume();
         const payload = buildPromptPayload(config, context);
+        payload.systemPrompt = `${this.modSim.generatePrompt(payload)} ${systemPromptForPayload(payload)}`;
         let messages: ChatMessage[] = [];
 
         const inferenceStarted = Date.now();
@@ -370,47 +384,56 @@ export class SimulationOrchestrator {
               if (!config.safety.dropOnParseFailure) throw parseError;
             }
           }
+          this.primaryFailureStreak = 0;
         } catch (error) {
-          const reason = (error as Error).message;
+          const reason = explainInferenceFailure((error as Error).message);
           this.obs.log("reliability_recovery", { ok: false, reason });
           this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: reason });
+          this.primaryFailureStreak += 1;
 
-          try {
-            const fallbackOutput = await this.mockProvider.generate(payload, { ...config, inferenceMode: "mock-local" });
-            this.verbosePipelineLog("fallback", "mock-local", "mock-local", payload, fallbackOutput);
-            messages = this.hydrateMessages(parseInferenceOutput(fallbackOutput), "fallback-mock");
-            this.setAiStatus({
-              state: "degraded",
-              providerHealth: "degraded",
-              fallbackMode: "mock-local",
-              activeModel: "mock-local",
-              detail: `Primary inference failed; mock fallback active: ${reason}`
-            });
+          if (this.primaryFailureStreak < 2) {
             this.emitMeta({
-              warnings: [reason, "Fallback engaged: mock-local"],
-              dropped: false,
+              warnings: [`Primary inference failed (${reason}). Retrying primary provider next tick before fallback.`],
               blocked: false,
-              cloudRecovery: "degraded",
-              source: "fallback-mock",
-              provider: config.inferenceMode,
-              timeoutMs: config.provider.requestTimeoutMs,
-              retries: config.provider.maxRetries
+              cloudRecovery: "retrying-primary",
+              provider: config.inferenceMode
             });
-          } catch (fallbackError) {
-            const fallbackReason = (fallbackError as Error).message;
-            this.setAiStatus({ state: "error", providerHealth: "degraded", fallbackMode: null, detail: `Fallback failed: ${fallbackReason}` });
-            if (config.safety.dropOnParseFailure) {
-              this.emitMeta({ warning: `${reason} | fallback failed: ${fallbackReason}`, dropped: true, blocked: false, cloudRecovery: "degraded" });
+            messages = [];
+          } else {
+            try {
+              const fallbackOutput = await this.mockProvider.generate(payload, { ...config, inferenceMode: "mock-local" });
+              this.verbosePipelineLog("fallback", "mock-local", "mock-local", payload, fallbackOutput);
+              messages = this.hydrateMessages(parseInferenceOutput(fallbackOutput), "fallback-mock");
+              this.setAiStatus({
+                state: "degraded",
+                providerHealth: "degraded",
+                fallbackMode: "mock-local",
+                activeModel: "mock-local",
+                detail: `Primary inference failed; mock fallback active: ${reason}`
+              });
+              this.emitMeta({
+                warnings: [reason, "Fallback engaged: mock-local"],
+                dropped: false,
+                blocked: false,
+                cloudRecovery: "degraded",
+                source: "fallback-mock",
+                provider: config.inferenceMode,
+                timeoutMs: config.provider.requestTimeoutMs,
+                retries: config.provider.maxRetries
+              });
+            } catch (fallbackError) {
+              const fallbackReason = (fallbackError as Error).message;
+              this.setAiStatus({ state: "error", providerHealth: "degraded", fallbackMode: null, detail: `Fallback failed: ${fallbackReason}` });
+              if (config.safety.dropOnParseFailure) {
+                this.emitMeta({ warning: `${reason} | fallback failed: ${fallbackReason}`, dropped: true, blocked: false, cloudRecovery: "degraded" });
+              }
             }
           }
         }
         const inferenceLatencyMs = Date.now() - inferenceStarted;
 
-        const deEchoedMessages = this.isReadingChat(context.transcript, context.recentChatHistory)
-          ? this.rewriteForReadingChat(messages)
-          : this.applyAntiEchoConstraint(messages, context.transcript);
-        const diverseMessages = this.enforceDiversityRules(deEchoedMessages, payload.behavioralModes);
-        const safety = applySafetyPolicy(diverseMessages, config);
+        const modSimMessages = this.modSim.process(messages, payload);
+        const safety = applySafetyPolicy(modSimMessages, config);
         const safeMessages = safety.safeMessages;
         this.recentChatHistory = [...safeMessages.map((message) => message.text), ...this.recentChatHistory].slice(0, 40);
 
@@ -439,7 +462,7 @@ export class SimulationOrchestrator {
           }
         });
 
-        this.emitMessages(safeMessages);
+        this.emitMessagesWithDrip(safeMessages, timing, config, context.tone);
         const latencyMs = Date.now() - startedAt;
         this.obs.log("pipeline_tick", {
           inferenceMode: config.inferenceMode,
@@ -467,7 +490,7 @@ export class SimulationOrchestrator {
             droppedCount: safety.droppedCount,
             queueSize: safety.queueMessages.length
           },
-          queueMessages: safety.queueMessages,
+          queuePreview: safety.queueMessages.slice(0, 3),
           slo: {
             targetMs: 3000,
             withinTarget: latencyMs <= 3000
@@ -491,8 +514,10 @@ export class SimulationOrchestrator {
       return;
     }
 
+    const tickElapsedMs = Date.now() - loopStartedAt;
+    const nextDelayMs = Math.max(40, timing.actualDelayMs - tickElapsedMs);
     this.timer = setTimeout(() => {
       void this.loop();
-    }, timing.actualDelayMs);
+    }, nextDelayMs);
   }
 }

@@ -15,9 +15,12 @@ export const defaultConfig: SimulationConfig = {
   inferenceMode: "openai",
   capture: {
     visionEnabled: true,
-    visionIntervalSec: 25,
+    visionIntervalSec: 7,
+    visionProvider: "local",
     useRealCapture: true,
-    sttEndpoint: process.env.STREAMSIM_DEEPGRAM_ENDPOINT ?? "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&filler_words=true&punctuate=true&sentiment=true&topics=true&intents=true",
+    sttEndpoint:
+      process.env.STREAMSIM_DEEPGRAM_ENDPOINT ??
+      "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&filler_words=true&punctuate=true&sentiment=true&topics=true&intents=true&utterance_end_ms=3000",
     sttProvider: process.env.SIM_DEFAULT_STT === "deepgram_nova_2" ? "deepgram" : "local-whisper",
     visionEndpoint: "http://127.0.0.1:7778/vision-tags"
   },
@@ -109,6 +112,7 @@ export function sanitizeConfig(input: unknown): SimulationConfig {
     capture: {
       visionEnabled: asBoolean(capture.visionEnabled, defaultConfig.capture.visionEnabled),
       visionIntervalSec: Math.max(5, Math.min(120, Math.floor(asNumber(capture.visionIntervalSec, defaultConfig.capture.visionIntervalSec)))),
+      visionProvider: capture.visionProvider === "openai" || capture.visionProvider === "local" ? capture.visionProvider : defaultConfig.capture.visionProvider,
       useRealCapture: asBoolean(capture.useRealCapture, defaultConfig.capture.useRealCapture),
       sttEndpoint: asString(capture.sttEndpoint, defaultConfig.capture.sttEndpoint),
       sttProvider:

@@ -239,7 +239,13 @@ describe("hybrid routing and failover", () => {
       req.on("end", () => {
         const parsed = JSON.parse(body);
         expect(parsed.messages[1].role).toBe("user");
-        expect(parsed.temperature).toBe(0.8);
+        expect(parsed.max_tokens).toBeUndefined();
+        if (req.headers["x-streamsim-provider"] === "groq") {
+          expect(parsed.max_completion_tokens).toBeUndefined();
+        } else {
+          expect(parsed.max_completion_tokens).toBeGreaterThanOrEqual(220);
+        }
+        expect(parsed.temperature).toBeUndefined();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
       });
@@ -303,7 +309,7 @@ describe("hybrid routing and failover", () => {
     await server.close();
   });
 
-  it("omits temperature for GPT-5 family cloud models", async () => {
+  it("applies hardware brevity token limits for GPT-5 family cloud models", async () => {
     process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
     const server = await withTestServer((req, res) => {
       if (req.method !== "POST") {
@@ -317,6 +323,8 @@ describe("hybrid routing and failover", () => {
       req.on("end", () => {
         const parsed = JSON.parse(body);
         expect(parsed.model).toBe("gpt-5-mini");
+        expect(parsed.max_tokens).toBeUndefined();
+        expect(parsed.max_completion_tokens).toBeGreaterThanOrEqual(220);
         expect(parsed.temperature).toBeUndefined();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
@@ -383,6 +391,58 @@ describe("hybrid routing and failover", () => {
     await server.close();
   });
 
+  it("retries once without response_format when strict schema is rejected", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
+    const bodies: Array<Record<string, unknown>> = [];
+    const server = await withTestServer((req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+
+      let body = "";
+      req.on("data", (chunk: Buffer) => (body += chunk.toString("utf8")));
+      req.on("end", () => {
+        const parsed = JSON.parse(body) as Record<string, unknown>;
+        bodies.push(parsed);
+        if (bodies.length === 1) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: {
+                message:
+                  "Invalid schema for response_format 'streamsim_chat_batch': required must include every property key"
+              }
+            })
+          );
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ choices: [{ message: { content: '{"messages":[]}' } }] }));
+      });
+    });
+
+    const provider = new HybridInferenceProvider("openai");
+    const config = { ...defaultConfig, provider: { ...defaultConfig.provider, cloudEndpoint: server.url, cloudModel: "gpt-5.4-nano-2026-03-17", maxRetries: 0 } };
+    const payload = {
+      persona: "supportive" as const,
+      bias: "agree" as const,
+      emoteOnly: false,
+      viewerCount: 10,
+      requestedMessageCount: 1,
+      situationalTags: [],
+      behavioralModes: ["default"],
+      context: { transcript: "can you hear me?", tone: { volumeRms: 0.5, paceWpm: 140 }, visionTags: ["monitor"], recentChatHistory: [], timestamp: new Date().toISOString() }
+    };
+
+    await expect(provider.generate(payload, config)).resolves.toContain("messages");
+    expect(bodies).toHaveLength(2);
+    expect((bodies[0] as { response_format?: unknown }).response_format).toBeDefined();
+    expect((bodies[1] as { response_format?: unknown }).response_format).toBeUndefined();
+    await server.close();
+  });
+
   it("includes context.transcript and anti-generic reactive instructions in system prompt", async () => {
     process.env.STREAMSIM_CLOUD_API_KEY = "abc123";
     const server = await withTestServer((req, res) => {
@@ -403,8 +463,8 @@ describe("hybrid routing and failover", () => {
         expect(systemPrompt).toMatch(/Prioritize the most recent ~10 seconds/i);
         expect(systemPrompt).toMatch(/Current Stream Topic:/i);
         expect(systemPrompt).toMatch(/Do not output generic filler/i);
-        expect(systemPrompt).toMatch(/60%\+ of messages must be under 5 words/i);
-        expect(systemPrompt).toMatch(/drop F in the chat|drop \[X\]|spam \[X\]|type \[X\]/i);
+        expect(systemPrompt).toMatch(/80% of messages must be under 4 words|at least 80% of messages must be under 4 words/i);
+        expect(systemPrompt).toMatch(/drop F now|drop \[X\]|spam \[X\]|type \[X\]/i);
         expect(userPayload.context.transcript).toBe("can you hear me?");
 
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -493,6 +553,16 @@ describe("device capture pipeline + security + observability schema", () => {
     expect(ctxImmediateFollowup.visionTags).toEqual(["keyboard", "ring light"]);
   });
 
+  it("does not overwrite latest vision tags when an empty vision payload arrives", () => {
+    const pipeline = new DeviceCapturePipeline();
+    pipeline.ingestVisionSample({ tags: ["keyboard", "ring light"] });
+    pipeline.ingestVisionSample({ tags: [] });
+
+    const config = { ...defaultConfig, capture: { ...defaultConfig.capture, visionEnabled: true } };
+    const ctx = pipeline.getContext(config);
+    expect(ctx.visionTags).toEqual(["keyboard", "ring light"]);
+  });
+
   it("redacts auth and key material", () => {
     const redacted = redactSecrets({ authorization: "Bearer super-secret", api_key: "123", token: "abc" }) as Record<string, string>;
     expect(JSON.stringify(redacted)).not.toContain("super-secret");
@@ -505,7 +575,7 @@ describe("device capture pipeline + security + observability schema", () => {
     expect(isValidObservabilityEvent({ event: 1, at: "x" })).toBe(false);
   });
 
-  it("normalizes endpoint STT/vision response shapes into capture context", async () => {
+  it("normalizes endpoint STT response while vision state is decoupled", async () => {
     const stt = await withTestServer((_req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ text: "hello from endpoint", tone: { volumeRms: 0.7, paceWpm: 150 } }));
@@ -529,7 +599,7 @@ describe("device capture pipeline + security + observability schema", () => {
     });
 
     expect(ctx.transcript).toContain("hello from endpoint");
-    expect(ctx.visionTags).toEqual(["desk", "camera"]);
+    expect(ctx.visionTags).toEqual([]);
     await stt.close();
     await vision.close();
   });

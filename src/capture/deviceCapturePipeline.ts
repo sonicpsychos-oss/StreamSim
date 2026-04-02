@@ -40,9 +40,15 @@ export class DeviceCapturePipeline {
 
   public ingestVisionSample(sample: { tags?: string[] }): void {
     const tags = Array.isArray(sample.tags) ? sample.tags.filter((tag) => typeof tag === "string" && tag.trim().length > 0).slice(0, 8) : [];
+    if (tags.length === 0 && this.lastVisionSample) {
+      // Preserve the last known-good sample when callers send placeholder/empty payloads.
+      return;
+    }
     this.lastVisionSample = { tags, capturedAt: Date.now() };
-    // eslint-disable-next-line no-console
-    console.log("[DeviceCapturePipeline] Saved latest vision tags", { tags, capturedAt: this.lastVisionSample.capturedAt });
+    if (tags.length > 0) {
+      // eslint-disable-next-line no-console
+      console.log("[DeviceCapturePipeline] Saved latest vision tags", { tags, capturedAt: this.lastVisionSample.capturedAt });
+    }
   }
 
   public ingestIntelligenceSample(sample: Pick<StreamContext, "vibe" | "topic" | "intent" | "isCommand" | "intentScore">): void {
@@ -55,11 +61,12 @@ export class DeviceCapturePipeline {
     };
   }
 
-  public getContext(config: SimulationConfig): StreamContext {
+  public getContext(config: SimulationConfig, options?: { transcriptWindowMs?: number }): StreamContext {
     this.pruneOldMicFrames();
 
+    const transcriptWindowMs = options?.transcriptWindowMs ?? this.transcriptWindowMs;
     const transcript = this.micFrames
-      .filter((frame) => Date.now() - frame.capturedAt <= this.transcriptWindowMs)
+      .filter((frame) => Date.now() - frame.capturedAt <= transcriptWindowMs)
       .map((frame) => frame.transcriptChunk)
       .filter(Boolean)
       .join(" ")
@@ -78,6 +85,7 @@ export class DeviceCapturePipeline {
       transcript,
       tone,
       visionTags,
+      visionCapturedAt: this.lastVisionSample ? new Date(this.lastVisionSample.capturedAt).toISOString() : undefined,
       vibe: this.lastIntelligenceSample?.vibe,
       topic: this.lastIntelligenceSample?.topic,
       intent: this.lastIntelligenceSample?.intent,
@@ -94,11 +102,13 @@ export class DeviceCapturePipeline {
     this.lastIntelligenceSample = null;
   }
 
-  public diagnostics(): { micPaused: boolean; bufferedFrames: number; hasVisionSample: boolean } {
+  public diagnostics(): { micPaused: boolean; bufferedFrames: number; hasVisionSample: boolean; latestVisionTagCount: number; latestVisionCapturedAt: number | null } {
     return {
       micPaused: this.micPaused,
       bufferedFrames: this.micFrames.length,
-      hasVisionSample: Boolean(this.lastVisionSample)
+      hasVisionSample: Boolean(this.lastVisionSample),
+      latestVisionTagCount: this.lastVisionSample?.tags.length ?? 0,
+      latestVisionCapturedAt: this.lastVisionSample?.capturedAt ?? null
     };
   }
 

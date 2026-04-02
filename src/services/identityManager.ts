@@ -2,29 +2,29 @@ import { ChatMessage } from "../core/types.js";
 import { loadBanlist } from "../security/banlistRegistry.js";
 
 const ADJECTIVES = [
-  "Salty", "Sleepy", "Turbo", "Pixel", "Glitch", "Cyber", "Stealth", "Macro", "Laggy", "Sweaty", "Cracked", "Hardcore", "Legendary",
-  "Hype", "Sus", "Pog", "Cursed", "Random", "Spicy", "Yeet", "Maximum", "Absolute", "Chill", "Golden", "Radiant", "Gloom", "Mellow",
-  "Cozy", "Lunar", "Velvet", "Honest", "Quiet", "Sneaky", "Savage", "Primal", "Ancient", "Hyper", "Neon", "Frozen", "Electric", "Shadow",
-  "Iron", "Toxic", "Mega", "Ultra", "Infinite", "Bitter", "Fluffy", "Grumpy", "Wild", "Calm", "Brave", "Fancy", "Clumsy", "Dorky",
-  "Funky", "Jolly", "Lucky", "Misty", "Nerdy", "Odd", "Proud", "Shady", "Silly", "Tame", "Vast", "Witty", "Young", "Zesty", "Astral",
-  "Blazing", "Cobalt", "Dusty", "Eerie", "Fierce", "Gilded", "Hollow", "Icy", "Jaded", "Keen", "Lucid", "Mystic", "Noble", "Opal",
-  "Pale", "Quartz", "Rustic", "Solar", "Tidal", "Urban", "Vivid", "Worn", "Xenon", "Amber", "Bold", "Crisp", "Dire", "Elite", "Faded", "Grand"
+  "salty", "sleepy", "turbo", "pixel", "glitch", "cyber", "stealth", "macro", "laggy", "sweaty", "cracked", "hardcore", "legendary",
+  "hype", "sus", "pog", "cursed", "random", "spicy", "yeet", "maximum", "absolute", "chill", "golden", "radiant", "gloom", "mellow",
+  "cozy", "lunar", "velvet", "honest", "quiet", "sneaky", "savage", "primal", "ancient", "hyper", "neon", "frozen", "electric", "shadow",
+  "iron", "toxic", "mega", "ultra", "infinite", "bitter", "fluffy", "grumpy", "wild", "calm", "brave", "fancy", "clumsy", "dorky",
+  "funky", "jolly", "lucky", "misty", "nerdy", "odd", "proud", "shady", "silly", "tame", "vast", "witty", "young", "zesty", "astral",
+  "blazing", "cobalt", "dusty", "eerie", "fierce", "gilded", "hollow", "icy", "jaded", "keen", "lucid", "mystic", "noble", "opal",
+  "pale", "quartz", "rustic", "solar", "tidal", "urban", "vivid", "worn", "xenon", "amber", "bold", "crisp", "dire", "elite", "faded", "grand"
 ] as const;
 
 const NOUNS = [
-  "Bot", "Frame", "Ping", "Keybind", "Console", "Controller", "Sprite", "Buff", "Nerf", "Carry", "Clutch", "Goblin", "Gremlin", "Meme",
-  "Troll", "Noob", "Whale", "Simp", "Main", "Alt", "Panda", "Sloth", "Wizard", "Tea", "Rain", "Vibe", "Cloud", "Moon", "Fern", "Slime",
-  "Ghost", "Rex", "Raptor", "Falcon", "Kraken", "Fox", "Badger", "Viper", "Knight", "Rogue", "Titan", "Wolf", "Scrub", "Pilot", "Captain",
-  "Legend", "Myth", "Hero", "Villain", "Scout", "Guard", "Beast", "Bird", "Cat", "Dog", "Dragon", "Fish", "Horse", "Lion", "Mouse",
-  "Shark", "Snake", "Tiger", "Zebra", "Bloom", "Blaze", "Bolt", "Core", "Dust", "Edge", "Flame", "Gear", "Heart", "Ink", "Jet", "Kite",
-  "Leaf", "Mist", "Night", "Orb", "Pulse", "Quill", "Reef", "Star", "Thorn", "Unit", "Void", "Wave", "Yard", "Zone", "Atom", "Beam",
-  "Chip", "Disk", "Echo", "Flux", "Grid", "Halo", "Icon", "Jolt"
+  "bot", "frame", "ping", "keybind", "console", "controller", "sprite", "buff", "nerf", "carry", "clutch", "goblin", "gremlin", "meme",
+  "troll", "noob", "whale", "simp", "main", "alt", "panda", "sloth", "wizard", "tea", "rain", "vibe", "cloud", "moon", "fern", "slime",
+  "ghost", "rex", "raptor", "falcon", "kraken", "fox", "badger", "viper", "knight", "rogue", "titan", "wolf", "scrub", "pilot", "captain",
+  "legend", "myth", "hero", "villain", "scout", "guard", "beast", "bird", "cat", "dog", "dragon", "fish", "horse", "lion", "mouse",
+  "shark", "snake", "tiger", "zebra", "bloom", "blaze", "bolt", "core", "dust", "edge", "flame", "gear", "heart", "ink", "jet", "kite",
+  "leaf", "mist", "night", "orb", "pulse", "quill", "reef", "star", "thorn", "unit", "void", "wave", "yard", "zone", "atom", "beam",
+  "chip", "disk", "echo", "flux", "grid", "halo", "icon", "jolt"
 ] as const;
 
 const RARE_SINGLES = [
-  "Vesper", "Zenith", "Kael", "Echo", "Jinx", "Riot", "Flux", "Cipher", "Ghost", "Onyx", "Rogue", "Sola", "Nova", "Raven", "Ash", "Blade",
-  "Neon", "Frost", "Grimm", "Rune", "Lynx", "Nyx", "Pax", "Quill", "Rhys", "Sage", "Trix", "Vale", "Wren", "Xane", "Yuri", "Zane", "Aero",
-  "Bane", "Crux", "Dash", "Ezra", "Finn", "Glee", "Hawk", "Ion", "Jax", "Kite", "Lux", "Miro", "Nero", "Odin", "Pike", "Quinn", "Reed"
+  "vesper", "zenith", "kael", "echo", "jinx", "riot", "flux", "cipher", "ghost", "onyx", "rogue", "sola", "nova", "raven", "ash", "blade",
+  "neon", "frost", "grimm", "rune", "lynx", "nyx", "pax", "quill", "rhys", "sage", "trix", "vale", "wren", "xane", "yuri", "zane", "aero",
+  "bane", "crux", "dash", "ezra", "finn", "glee", "hawk", "ion", "jax", "kite", "lux", "miro", "nero", "odin", "pike", "quinn", "reed"
 ] as const;
 
 const USERNAME_BLACKLIST = ["angrybannedword", "offensive", "slur"] as const;
@@ -85,6 +85,41 @@ export class IdentityManager {
     return `${Math.floor(Math.random() * 99) + 1}`;
   }
 
+  private legacyTokenCase(token: string): string {
+    const styleRoll = Math.random() * 100;
+    if (styleRoll <= 30) return token;
+    if (styleRoll <= 55) return token.charAt(0).toUpperCase() + token.slice(1);
+    if (styleRoll <= 72) return token.toUpperCase();
+    if (styleRoll <= 88) return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+
+    const letters = token.split("");
+    for (let i = 0; i < letters.length; i += 1) {
+      if (/[a-z]/i.test(letters[i]) && this.randomChance(45)) {
+        letters[i] = this.randomChance(50) ? letters[i].toUpperCase() : letters[i].toLowerCase();
+      }
+    }
+    return letters.join("");
+  }
+
+  private generateLegacyIdentity(adj: string, noun: string): string {
+    const separatorRoll = Math.random() * 100;
+    let separator = "";
+    if (separatorRoll > 35 && separatorRoll <= 65) separator = "_";
+    else if (separatorRoll > 65 && separatorRoll <= 80) separator = ".";
+
+    let core = `${this.legacyTokenCase(adj)}${separator}${this.legacyTokenCase(noun)}`;
+    if (this.randomChance(25)) core = `${core}${this.randomChance(50) ? "X" : "x"}`;
+
+    const numberSuffixRoll = Math.random() * 100;
+    if (numberSuffixRoll <= 35) core = `${core}${this.generateNumberSuffix()}`;
+    else if (numberSuffixRoll <= 55) core = `${core}${Math.floor(Math.random() * 900) + 100}`;
+
+    if (this.randomChance(20)) core = `${this.randomChance(50) ? "xX" : "Xx"}${core}`;
+    if (this.randomChance(15)) core = `${core}${this.randomChance(50) ? "Xx" : "xX"}`;
+
+    return core;
+  }
+
   private passesSafetyFilter(username: string): boolean {
     const normalized = username.toLowerCase();
     return !this.banTerms.some((term) => normalized.includes(term));
@@ -93,29 +128,32 @@ export class IdentityManager {
   private createNewIdentity(): string {
     const tierRoll = Math.random() * 100;
 
-    // Tier 3: OG handles (5%)
-    if (tierRoll <= 5) {
-      return pick(RARE_SINGLES);
-    }
-
     const adj = pick(ADJECTIVES);
     const noun = pick(NOUNS);
 
-    // Tier 2: Established (25%)
-    if (tierRoll <= 30) {
+    // Legacy throwback names with caps + numbers (~4%)
+    if (tierRoll <= 4) {
+      return this.generateLegacyIdentity(adj, noun);
+    }
+
+    // Tier 3: modern single-word handles (35%)
+    if (tierRoll <= 40) {
+      const single = pick(RARE_SINGLES);
+      return this.randomChance(35) ? `${single}${Math.floor(Math.random() * 90) + 10}` : single;
+    }
+
+    // Tier 2: mostly clean compounds (35%)
+    if (tierRoll <= 75) {
       return `${adj}${noun}`;
     }
 
-    // Tier 1: Common (70%)
+    // Tier 1: legacy separator/suffix handles (25%)
     const separatorRoll = Math.random() * 100;
     let separator = "";
     if (separatorRoll > 40 && separatorRoll <= 80) separator = "_";
     else if (separatorRoll > 80) separator = ".";
 
-    let base = `${adj}${separator}${noun}`;
-    if (this.randomChance(50)) {
-      base = base.toLowerCase();
-    }
+    const base = `${adj}${separator}${noun}`;
 
     let suffix = this.generateNumberSuffix();
     if (separator !== "_" && this.randomChance(30)) {

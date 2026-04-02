@@ -148,4 +148,154 @@ describe("anti-echo constraint", () => {
     expect(diverse[0].text).toContain("gyatt");
     expect(diverse[1].text).toContain("simps");
   });
+
+  it("keeps full phrases instead of force-trimming most messages to 3 words", () => {
+    const orchestrator = makeOrchestrator();
+    const input: ChatMessage[] = [
+      {
+        id: "1",
+        username: "user1",
+        text: "this sentence should stay fully readable and not be cut",
+        emotes: [],
+        donationCents: null,
+        ttsText: null,
+        createdAt: new Date().toISOString()
+      }
+    ];
+    const normalized = (orchestrator as any).enforcePersonaSyntax(input);
+    expect(normalized[0].text.split(/\s+/).length).toBeGreaterThan(3);
+  });
+
+  it("rewrites duplicate nearby messages to improve diversity", () => {
+    const orchestrator = makeOrchestrator();
+    const input: ChatMessage[] = [
+      {
+        id: "1",
+        username: "user1",
+        text: "mic check passed",
+        emotes: [],
+        donationCents: null,
+        ttsText: null,
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: "2",
+        username: "user2",
+        text: "mic check passed",
+        emotes: [],
+        donationCents: null,
+        ttsText: null,
+        createdAt: new Date().toISOString()
+      }
+    ];
+    const diverse = (orchestrator as any).enforceDiversityRules(input, ["default"]);
+    expect(diverse[1].text.toLowerCase()).not.toBe("mic check passed");
+  });
+
+  it("prevents viewer messages from mirroring streamer-style leading 'we' phrasing", () => {
+    const orchestrator = makeOrchestrator();
+    const input: ChatMessage[] = [
+      {
+        id: "1",
+        username: "user1",
+        text: "We are live now",
+        emotes: [],
+        donationCents: null,
+        ttsText: null,
+        createdAt: new Date().toISOString()
+      }
+    ];
+    const normalized = (orchestrator as any).enforcePersonaSyntax(input);
+    expect(normalized[0].text).toBe("you live now");
+  });
+
+  it("enforces starter diversity and brevity ratio across batches", () => {
+    const orchestrator = makeOrchestrator();
+    const input: ChatMessage[] = [
+      { id: "1", username: "u1", text: "ngl this is kinda too long for chat pace", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() },
+      { id: "2", username: "u2", text: "ngl we are still talking way too much here", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() },
+      { id: "3", username: "u3", text: "lowkey another sentence that should be shorter", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() },
+      { id: "4", username: "u4", text: "lowkey one more heavy sentence for test", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() },
+      { id: "5", username: "u5", text: "bro this one stays long too", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() }
+    ];
+    const diverse = (orchestrator as any).enforceDiversityRules(input, ["default"]);
+    expect(diverse[1].text.split(/\s+/)[0]).not.toBe("ngl");
+    const shortCount = diverse.filter((message: ChatMessage) => message.text.trim().split(/\s+/).length <= 4).length;
+    expect(shortCount).toBeGreaterThanOrEqual(4);
+  });
+
+  it("keeps transcript context stable even after repeated identical lines", () => {
+    const orchestrator = makeOrchestrator();
+    const baseContext = {
+      transcript: "same line from streamer",
+      tone: { volumeRms: 0.4, paceWpm: 120 },
+      visionTags: [],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    };
+
+    const first = (orchestrator as any).applyTranscriptDecay(baseContext);
+    const second = (orchestrator as any).applyTranscriptDecay(baseContext);
+    const third = (orchestrator as any).applyTranscriptDecay(baseContext);
+    const fourth = (orchestrator as any).applyTranscriptDecay(baseContext);
+
+    expect(first.transcript).toBe("same line from streamer");
+    expect(second.transcript).toBe("same line from streamer");
+    expect(third.transcript).toBe("same line from streamer");
+    expect(fourth.transcript).toBe("");
+  });
+
+  it("allows direct short answers on question transcripts even with overlap tokens", () => {
+    const orchestrator = makeOrchestrator();
+    const input: ChatMessage[] = [
+      {
+        id: "1",
+        username: "user1",
+        text: "2 fingers",
+        emotes: [],
+        donationCents: null,
+        ttsText: null,
+        createdAt: new Date().toISOString()
+      }
+    ];
+
+    const filtered = (orchestrator as any).applyAntiEchoConstraint(input, "how many fingers am i holding up?");
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].text).toContain("2");
+  });
+
+  it("deduplicates repeated lines after post-flight cleanup", () => {
+    const orchestrator = makeOrchestrator();
+    const context = {
+      transcript: "",
+      tone: { volumeRms: 0.2, paceWpm: 110 },
+      visionTags: [],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    };
+    const payload = {
+      persona: "neutral" as const,
+      bias: "split" as const,
+      emoteOnly: false,
+      viewerCount: 100,
+      streamTopic: "Just Chatting",
+      context,
+      situationalTags: [],
+      behavioralModes: ["default"],
+      requestedMessageCount: 3,
+      personaCalibration: { positivity: 0.5, sarcasm: 0.5, contrarianism: 0.5 },
+      providerConditioning: { providerClass: "mock", expressiveness: 0.5, volatility: 0.5, policyStrictness: 0.5 }
+    };
+
+    const processed = (orchestrator as any).modSim.process(
+      [
+        { id: "1", username: "a", text: "bro what was that 💀", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() },
+        { id: "2", username: "b", text: "bro what was that 💀", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() },
+        { id: "3", username: "c", text: "bro what was that 💀", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() }
+      ],
+      payload
+    );
+    const normalized = processed.map((msg: ChatMessage) => msg.text.toLowerCase().replace(/\s+/g, " ").trim());
+    expect(new Set(normalized).size).toBeGreaterThan(1);
+  });
 });

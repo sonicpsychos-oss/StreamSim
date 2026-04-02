@@ -9,16 +9,37 @@ const aiHealthSummary = document.getElementById("aiHealthSummary");
 const aiActiveModelLabel = document.getElementById("aiActiveModelLabel");
 const ttsHealthSummary = document.getElementById("ttsHealthSummary");
 const sttHealthSummary = document.getElementById("sttHealthSummary");
+const apiKeyHealthSummary = document.getElementById("apiKeyHealthSummary");
+const visionHealthSummary = document.getElementById("visionHealthSummary");
 const liveMonitorEnabled = document.getElementById("liveMonitorEnabled");
 const liveMonitorStatus = document.getElementById("liveMonitorStatus");
 const liveVideo = document.getElementById("liveVideo");
 const voiceMeter = document.getElementById("voiceMeter");
 const sttCaptionStatus = document.getElementById("sttCaptionStatus");
 const sttCaptionPreview = document.getElementById("sttCaptionPreview");
+const uiModeSelect = document.getElementById("uiMode");
+const systemStateBadge = document.getElementById("systemStateBadge");
+const statusCards = document.getElementById("statusCards");
+const connectStatusPill = document.getElementById("connectStatusPill");
+const logsToggleBtn = document.getElementById("logsToggle");
+const logsPanel = document.getElementById("logsPanel");
+const logsContent = document.getElementById("logsContent");
+const logFilter = document.getElementById("logFilter");
+const logSearch = document.getElementById("logSearch");
+const previewViewerCount = document.getElementById("previewViewerCount");
+const previewAlerts = document.getElementById("previewAlerts");
+const sendTestChatBtn = document.getElementById("sendTestChat");
+const triggerTestDonationBtn = document.getElementById("triggerTestDonation");
+const simulateViewerSpikeBtn = document.getElementById("simulateViewerSpike");
+const liveFrame = document.getElementById("liveFrame");
+const liveBadge = document.getElementById("liveBadge");
+const overlayEl = document.getElementById("overlay");
 
 let liveMonitorStream = null;
 let liveMonitorAudioContext = null;
 let liveMonitorMeterInterval = null;
+let liveMonitorVisionInterval = null;
+let liveMonitorVisionCanvas = null;
 let micCheckStream = null;
 let micCheckAudioContext = null;
 let micCheckMeterInterval = null;
@@ -31,6 +52,12 @@ let micCheckProbeInFlight = false;
 let latestCaptionText = "";
 let latestStatusPayload = null;
 let simulationActionInFlight = false;
+let statusAutoRefreshInterval = null;
+let uiMode = "operator";
+let hasUnsavedConfigChanges = false;
+let lastConfigInteractionAtMs = 0;
+let logEntries = [];
+let previewAlertCount = 0;
 let latestDeviceVerification = {
   micPermission: false,
   cameraPermission: false,
@@ -44,10 +71,13 @@ const MIC_CHECK_PROBE_SECONDS = 3.5;
 const MIC_CHECK_BUFFER_SECONDS = 8;
 const MIC_CHECK_MIN_SAMPLES = 12000;
 const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
+const DEFAULT_LIVE_MONITOR_VISION_SAMPLE_MS = 7000;
+const STATUS_AUTO_REFRESH_MS = 5000;
+const CONFIG_EDIT_GRACE_MS = 15000;
 const STT_DEFAULT_ENDPOINTS = {
   "local-whisper": "http://127.0.0.1:7778/stt",
   whispercpp: "http://127.0.0.1:7778/stt",
-  deepgram: "https://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&filler_words=true&punctuate=true&sentiment=true&topics=true&intents=true",
+  deepgram: "https://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&filler_words=true&punctuate=true&sentiment=true&topics=true&intents=true&utterance_end_ms=3000",
   "openai-whisper": "https://api.openai.com/v1/audio/transcriptions",
   "gpt-4o-mini-transcribe": "https://api.openai.com/v1/audio/transcriptions",
   mock: "http://127.0.0.1:7778/stt"
@@ -75,6 +105,7 @@ const controls = {
   ttsMode: document.getElementById("ttsMode"),
   ttsProvider: document.getElementById("ttsProvider"),
   visionEnabled: document.getElementById("visionEnabled"),
+  visionProvider: document.getElementById("visionProvider"),
   useRealCapture: document.getElementById("useRealCapture"),
   visionIntervalSec: document.getElementById("visionIntervalSec"),
   sttProvider: document.getElementById("sttProvider"),
@@ -87,10 +118,22 @@ const controls = {
   eulaAccepted: document.getElementById("eulaAccepted")
 };
 
+function markConfigInteraction() {
+  lastConfigInteractionAtMs = Date.now();
+}
+
+function hasActiveConfigEdit() {
+  const activeElement = document.activeElement;
+  const focusedConfigControl = Object.values(controls).some((control) => control === activeElement);
+  const recentInteraction = Date.now() - lastConfigInteractionAtMs < CONFIG_EDIT_GRACE_MS;
+  return focusedConfigControl || (hasUnsavedConfigChanges && recentInteraction);
+}
+
 function setStatus(message, tone = "success") {
   statusBanner.textContent = message;
   statusBanner.classList.remove("success", "warn", "error");
   statusBanner.classList.add(tone);
+  addLog("system", tone === "error" ? "error" : tone === "warn" ? "warn" : "info", message);
 }
 
 function setLiveMonitorStatus(message, tone = "warn") {
@@ -105,11 +148,47 @@ function setCaptionStatus(message, tone = "warn") {
   sttCaptionStatus.textContent = message;
   sttCaptionStatus.classList.remove("ok", "warn", "error");
   sttCaptionStatus.classList.add(tone);
+  addLog("stt", tone === "error" ? "error" : "info", message);
 }
 
 function setCaptionPreview(text) {
   if (!sttCaptionPreview) return;
   sttCaptionPreview.textContent = text?.trim() || "No speech captured yet.";
+}
+
+function setMode(nextMode) {
+  uiMode = nextMode === "developer" ? "developer" : "operator";
+  document.body.dataset.uiMode = uiMode;
+  if (uiModeSelect) uiModeSelect.value = uiMode;
+  localStorage.setItem("streamsim-ui-mode", uiMode);
+}
+
+function addLog(area, level, message) {
+  const timestamp = new Date().toLocaleTimeString();
+  logEntries.unshift({ area, level, message, timestamp });
+  if (logEntries.length > 200) logEntries = logEntries.slice(0, 200);
+  renderLogs();
+}
+
+function renderLogs() {
+  if (!logsContent) return;
+  const filter = logFilter?.value || "all";
+  const query = (logSearch?.value || "").toLowerCase().trim();
+  const rows = logEntries
+    .filter((entry) => (filter === "all" ? true : entry.area === filter))
+    .filter((entry) => (!query ? true : `${entry.area} ${entry.level} ${entry.message}`.toLowerCase().includes(query)))
+    .slice(0, 80)
+    .map((entry) => `[${entry.timestamp}] [${entry.area.toUpperCase()}] ${entry.level.toUpperCase()} — ${entry.message}`);
+  logsContent.textContent = rows.length ? rows.join("\n") : "No logs yet.";
+}
+
+function updateRangeLabels() {
+  const viewerValue = document.getElementById("viewerCountValue");
+  const engagementValue = document.getElementById("engagementMultiplierValue");
+  const donationValue = document.getElementById("donationFrequencyValue");
+  if (viewerValue) viewerValue.textContent = controls.viewerCount.value;
+  if (engagementValue) engagementValue.textContent = Number(controls.engagementMultiplier.value).toFixed(1);
+  if (donationValue) donationValue.textContent = Number(controls.donationFrequency.value).toFixed(2);
 }
 
 function encodePcm16Wav(samples, sampleRate) {
@@ -156,6 +235,11 @@ function arrayBufferToBase64(buffer) {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withEventDelay(min = 200, max = 500) {
+  const ms = Math.round(min + Math.random() * Math.max(0, max - min));
+  await wait(ms);
 }
 
 async function confirmCameraFrames(stream) {
@@ -353,13 +437,57 @@ function stopLiveMonitor() {
     void liveMonitorAudioContext.close();
     liveMonitorAudioContext = null;
   }
+  if (liveMonitorVisionInterval) {
+    clearInterval(liveMonitorVisionInterval);
+    liveMonitorVisionInterval = null;
+  }
   if (liveMonitorStream) {
     liveMonitorStream.getTracks().forEach((track) => track.stop());
     liveMonitorStream = null;
   }
+  liveMonitorVisionCanvas = null;
   if (liveVideo) liveVideo.srcObject = null;
+  if (liveFrame) liveFrame.classList.remove("active");
+  if (liveBadge) {
+    liveBadge.textContent = "OFFLINE";
+    liveBadge.classList.remove("live");
+  }
   drawVoiceMeter(0);
   setLiveMonitorStatus("Live monitor disabled.", "warn");
+}
+
+async function pushLiveVisionSample() {
+  if (!liveVideo || !liveMonitorStream) return;
+  const width = Math.max(256, Math.min(320, liveVideo.videoWidth || 640));
+  const height = Math.max(144, Math.min(180, liveVideo.videoHeight || 360));
+  if (!liveMonitorVisionCanvas) {
+    liveMonitorVisionCanvas = document.createElement("canvas");
+  }
+  liveMonitorVisionCanvas.width = width;
+  liveMonitorVisionCanvas.height = height;
+  const ctx = liveMonitorVisionCanvas.getContext("2d");
+  if (!ctx) return;
+  ctx.drawImage(liveVideo, 0, 0, width, height);
+  const dataUrl = liveMonitorVisionCanvas.toDataURL("image/jpeg", 0.55);
+  await post("/api/capture/vision-sample", { dataUrl });
+}
+
+function getLiveMonitorVisionSampleMs() {
+  const configuredIntervalSec = Number(controls.visionIntervalSec?.value);
+  const safeIntervalSec = Number.isFinite(configuredIntervalSec)
+    ? Math.max(5, Math.min(120, Math.floor(configuredIntervalSec)))
+    : Math.round(DEFAULT_LIVE_MONITOR_VISION_SAMPLE_MS / 1000);
+  return safeIntervalSec * 1000;
+}
+
+function restartLiveMonitorVisionSampling() {
+  if (!liveMonitorStream) return;
+  if (liveMonitorVisionInterval) clearInterval(liveMonitorVisionInterval);
+  const sampleMs = getLiveMonitorVisionSampleMs();
+  liveMonitorVisionInterval = setInterval(() => {
+    void pushLiveVisionSample();
+  }, sampleMs);
+  setLiveMonitorStatus(`Camera and microphone active for live monitor (vision snapshots every ${Math.round(sampleMs / 1000)}s).`, "ok");
 }
 
 async function startLiveMonitor() {
@@ -370,6 +498,11 @@ async function startLiveMonitor() {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
   liveMonitorStream = stream;
   if (liveVideo) liveVideo.srcObject = stream;
+  if (liveFrame) liveFrame.classList.add("active");
+  if (liveBadge) {
+    liveBadge.textContent = "LIVE";
+    liveBadge.classList.add("live");
+  }
 
   const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextCtor) {
@@ -394,8 +527,8 @@ async function startLiveMonitor() {
     const rms = Math.sqrt(sum / samples.length);
     drawVoiceMeter(Math.min(1, rms * 3.2));
   }, 90);
-
-  setLiveMonitorStatus("Camera and microphone active for live monitor.", "ok");
+  restartLiveMonitorVisionSampling();
+  void pushLiveVisionSample();
   return true;
 }
 
@@ -408,6 +541,24 @@ function setSimulationActionPending(isPending) {
   simulationActionInFlight = isPending;
   if (startBtn) startBtn.disabled = isPending;
   if (stopBtn) stopBtn.disabled = isPending;
+  setSystemStateBadge();
+}
+
+function setSystemStateBadge(payload = latestStatusPayload) {
+  if (!systemStateBadge) return;
+  let state = "IDLE";
+  let stateClass = "idle";
+  if (simulationActionInFlight || payload?.ai?.state === "running") {
+    state = "LIVE";
+    stateClass = "running";
+  }
+  if (String(statusBanner?.className || "").includes("error")) {
+    state = "STOPPED";
+    stateClass = "error";
+  }
+  systemStateBadge.textContent = state;
+  systemStateBadge.classList.remove("idle", "running", "error");
+  systemStateBadge.classList.add(stateClass);
 }
 
 async function runAction({ button, pendingText, successText, onRun }) {
@@ -442,6 +593,7 @@ function getPayload() {
     ttsProvider: controls.ttsProvider.value,
     capture: {
       visionEnabled: controls.visionEnabled.checked,
+      visionProvider: controls.visionProvider.value,
       useRealCapture: controls.useRealCapture.checked,
       visionIntervalSec: Number(controls.visionIntervalSec.value),
       sttProvider: controls.sttProvider.value,
@@ -492,6 +644,7 @@ function hydrateControls(config) {
   controls.ttsMode.value = config.ttsMode ?? "local";
   controls.ttsProvider.value = config.ttsProvider ?? "local";
   controls.visionEnabled.checked = config.capture.visionEnabled;
+  controls.visionProvider.value = config.capture.visionProvider ?? "local";
   controls.useRealCapture.checked = config.capture.useRealCapture;
   controls.visionIntervalSec.value = config.capture.visionIntervalSec;
   controls.sttProvider.value = config.capture.sttProvider ?? "local-whisper";
@@ -502,6 +655,7 @@ function hydrateControls(config) {
   controls.allowNonLocalSidecarOverride.checked = config.security.allowNonLocalSidecarOverride;
   controls.eulaAccepted.checked = config.compliance.eulaAccepted;
   if (wizardEulaAccepted) wizardEulaAccepted.checked = config.compliance.eulaAccepted;
+  updateRangeLabels();
 }
 
 function syncSttEndpointForProvider() {
@@ -521,6 +675,8 @@ function renderOnboardingState(payload) {
     onboardingPill.classList.toggle("complete", onboardingDone);
     onboardingPill.classList.toggle("pending", !onboardingDone);
   }
+  const setupSection = document.getElementById("sectionSetup");
+  if (setupSection) setupSection.open = !onboardingDone;
 }
 
 function syncEulaCheckboxes(source) {
@@ -657,6 +813,127 @@ function summarizeSttHealth(payload) {
     `STT ready: ${ready ? "yes" : "no"}`,
     `Detail: ${detail}`
   ].join("\n");
+}
+
+function summarizeVisionHealth(payload) {
+  if (!visionHealthSummary) return;
+  const capture = payload.config?.capture ?? {};
+  const enabled = Boolean(capture.visionEnabled);
+  const provider = capture.visionProvider ?? "local";
+  const useRealCapture = Boolean(capture.useRealCapture);
+  const endpoint = capture.visionEndpoint ?? "n/a";
+  const hasVisionSample = Boolean(payload.privacy?.captureBuffer?.hasVisionSample);
+  const latestVisionTagCount = Number(payload.privacy?.captureBuffer?.latestVisionTagCount ?? 0);
+  const hasCloudKey = Boolean(payload.secrets?.hasCloudKey);
+
+  let ready = true;
+  let detail = "ready";
+  if (!enabled) {
+    detail = "vision capture disabled";
+  } else if (!useRealCapture) {
+    detail = "simulated capture mode (real vision polling optional)";
+  } else if (!endpoint.startsWith("http")) {
+    ready = false;
+    detail = "Vision endpoint must be a valid URL";
+  } else if (provider === "openai" && !hasCloudKey) {
+    ready = false;
+    detail = "OpenAI vision selected but no cloud API key is stored";
+  }
+
+  const sampleStatus = enabled
+    ? hasVisionSample
+      ? latestVisionTagCount > 0
+        ? "latest sample present"
+        : "sample present, awaiting tag extraction"
+      : "waiting for first sample"
+    : "not collecting";
+  const detailWithHint = sampleStatus === "waiting for first sample" && enabled && useRealCapture
+    ? `${detail}; run Start Simulation and confirm the vision endpoint is producing tags (webcam permission alone does not populate visionTags).`
+    : sampleStatus === "sample present, awaiting tag extraction"
+      ? `${detail}; camera frames are arriving but provider parsing returned no tags yet. Check meta warnings/providerResponse/rawText for diagnosis.`
+      : detail;
+
+  visionHealthSummary.textContent = [
+    `Vision enabled: ${enabled ? "yes" : "no"}`,
+    `Vision provider: ${provider}`,
+    `Capture mode: ${useRealCapture ? "real" : "simulated"}`,
+    `Vision ready: ${ready ? "yes" : "no"}`,
+    `Sample state: ${sampleStatus}`,
+    `Detail: ${detailWithHint}`
+  ].join("\n");
+}
+
+function summarizeApiKeyHealth(payload) {
+  if (!apiKeyHealthSummary) return;
+  const config = payload?.config ?? {};
+  const capture = config.capture ?? {};
+  const secrets = payload?.secrets ?? {};
+
+  const hasCloudKey = Boolean(secrets.hasCloudKey);
+  const hasDeepgramKey = Boolean(secrets.hasDeepgramKey);
+  const ttsEnabled = Boolean(config.ttsEnabled) && (config.ttsMode ?? "local") !== "off";
+  const ttsProvider = config.ttsProvider ?? "local";
+  const sttProvider = capture.sttProvider ?? "mock";
+  const useRealCapture = Boolean(capture.useRealCapture);
+  const audioIntelligenceEnabled = Boolean(config.audioIntelligence?.enabled);
+
+  const ttsKeyRequired = ttsEnabled && (ttsProvider === "openai" || ttsProvider === "deepgram_aura");
+  const ttsKeyStatus = !ttsKeyRequired
+    ? "not required"
+    : ttsProvider === "deepgram_aura"
+      ? hasDeepgramKey ? "present (Deepgram)" : "missing (Deepgram)"
+      : hasCloudKey ? "present (cloud)" : "missing (cloud)";
+
+  const sttKeyRequired = useRealCapture && (sttProvider === "deepgram" || sttProvider === "openai-whisper" || sttProvider === "gpt-4o-mini-transcribe");
+  const sttKeyStatus = !sttKeyRequired
+    ? "not required"
+    : sttProvider === "deepgram"
+      ? hasDeepgramKey ? "present (Deepgram)" : "missing (Deepgram)"
+      : hasCloudKey ? "present (cloud)" : "missing (cloud)";
+
+  const audioIntelligenceKeyRequired = audioIntelligenceEnabled && useRealCapture && sttProvider === "deepgram";
+  const audioIntelligenceKeyStatus = !audioIntelligenceKeyRequired
+    ? "not required"
+    : hasDeepgramKey ? "present (Deepgram)" : "missing (Deepgram)";
+
+  apiKeyHealthSummary.textContent = [
+    `TTS API key: ${ttsKeyStatus}`,
+    `STT API key: ${sttKeyStatus}`,
+    `Audio intelligence API key: ${audioIntelligenceKeyStatus}`,
+    `Cloud key detected: ${hasCloudKey ? "yes" : "no"}`,
+    `Deepgram key detected: ${hasDeepgramKey ? "yes" : "no"}`
+  ].join("\n");
+}
+
+function deriveCardTone(statusText) {
+  const normalized = String(statusText || "").toLowerCase();
+  if (normalized.includes("missing") || normalized.includes("failed") || normalized.includes("error") || normalized.includes("no")) return "error";
+  if (normalized.includes("waiting") || normalized.includes("degraded") || normalized.includes("optional") || normalized.includes("simulated")) return "warn";
+  if (normalized.includes("off") || normalized.includes("disabled") || normalized.includes("inactive")) return "inactive";
+  return "ok";
+}
+
+function renderStatusCards(payload) {
+  if (!statusCards) return;
+  const cards = [
+    { label: "AI", summary: payload?.ai?.providerHealth ?? "unknown", detail: payload?.ai?.detail ?? "pending" },
+    { label: "STT", summary: (sttHealthSummary?.textContent || "").split("\n")[2] ?? "pending", detail: (sttHealthSummary?.textContent || "").split("\n")[3] ?? "" },
+    { label: "TTS", summary: (ttsHealthSummary?.textContent || "").split("\n")[2] ?? "pending", detail: (ttsHealthSummary?.textContent || "").split("\n")[3] ?? "" },
+    { label: "Vision", summary: (visionHealthSummary?.textContent || "").split("\n")[4] ?? "pending", detail: (visionHealthSummary?.textContent || "").split("\n")[5] ?? "" },
+    { label: "Microphone", summary: latestDeviceVerification.micPermission ? "ready" : "not verified", detail: latestCaptionText ? `Latest: ${latestCaptionText}` : "Run Verify Microphone" },
+    { label: "Camera", summary: latestDeviceVerification.cameraPermission ? "ready" : "not verified", detail: latestDeviceVerification.cameraFailureReason ?? "Run Verify Camera" },
+    { label: "Network", summary: diagnosticsSummary?.textContent?.includes("pending") ? "pending" : diagnosticsSummary.textContent.split("\n")[1] ?? "pending", detail: "Boot diagnostics probe" },
+    { label: "Credentials", summary: (apiKeyHealthSummary?.textContent || "").includes("missing") ? "partial" : "ready", detail: "Cloud + Deepgram key checks" }
+  ];
+
+  statusCards.innerHTML = "";
+  cards.forEach((card) => {
+    const article = document.createElement("article");
+    const tone = deriveCardTone(`${card.summary} ${card.detail}`);
+    article.className = `status-card ${tone}`;
+    article.innerHTML = `<h4>${card.label}</h4><p>${card.summary}</p><p>${card.detail}</p>`;
+    statusCards.appendChild(article);
+  });
 }
 
 function renderDeviceChecks(result) {
@@ -839,7 +1116,11 @@ saveBtn.addEventListener("click", async () => {
     successText: "Config saved.",
     onRun: () => post("/api/config", getPayload())
   });
-  if (result?.config) hydrateControls(result.config);
+  if (result?.config) {
+    hasUnsavedConfigChanges = false;
+    lastConfigInteractionAtMs = 0;
+    hydrateControls(result.config);
+  }
 });
 
 startBtn.addEventListener("click", async () => {
@@ -940,7 +1221,7 @@ saveCloudKeyBtn.addEventListener("click", async () => {
   });
   if (!saved) return;
   controls.cloudApiKey.value = "";
-  await refreshStatus();
+  await refreshStatus({ preserveUnsavedConfig: true });
 });
 
 saveDeepgramKeyBtn.addEventListener("click", async () => {
@@ -952,22 +1233,35 @@ saveDeepgramKeyBtn.addEventListener("click", async () => {
   });
   if (!saved) return;
   controls.deepgramApiKey.value = "";
-  await refreshStatus();
+  await refreshStatus({ preserveUnsavedConfig: true });
 });
 
-async function refreshStatus() {
+async function refreshStatus({ preserveUnsavedConfig = false } = {}) {
   const response = await fetch("/api/status");
   if (!response.ok) throw new Error(`Status request failed (${response.status})`);
   const payload = await response.json();
   latestStatusPayload = payload;
   renderReadiness(payload.readiness);
   renderDiagnostics(payload);
-  hydrateControls(payload.config);
+  if (!(preserveUnsavedConfig && hasActiveConfigEdit())) {
+    hydrateControls(payload.config);
+  }
   renderOnboardingState(payload);
+  if (previewViewerCount) previewViewerCount.textContent = `👥 ${payload.config.viewerCount ?? 0}`;
   summarizeRuntime(payload);
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
   summarizeSttHealth(payload);
+  summarizeApiKeyHealth(payload);
+  summarizeVisionHealth(payload);
+  renderStatusCards(payload);
+  setSystemStateBadge(payload);
+  const hasMissingKey = (apiKeyHealthSummary?.textContent || "").includes("missing");
+  if (connectStatusPill) {
+    connectStatusPill.textContent = hasMissingKey ? "Partial" : "Connected";
+    connectStatusPill.classList.toggle("pending", hasMissingKey);
+    connectStatusPill.classList.toggle("complete", !hasMissingKey);
+  }
   return payload;
 }
 
@@ -976,7 +1270,7 @@ refreshStatusBtn.addEventListener("click", async () => {
     button: refreshStatusBtn,
     pendingText: "Refreshing status...",
     successText: "Status refreshed.",
-    onRun: () => refreshStatus()
+    onRun: () => refreshStatus({ preserveUnsavedConfig: false })
   });
 });
 
@@ -1078,6 +1372,8 @@ completeWizardBtn.addEventListener("click", async () => {
   summarizeAiHealth(status);
   summarizeTtsHealth(status);
   summarizeSttHealth(status);
+  summarizeApiKeyHealth(status);
+  summarizeVisionHealth(status);
 });
 
 
@@ -1091,6 +1387,44 @@ wizardEulaAccepted?.addEventListener("change", () => {
 
 controls.sttProvider?.addEventListener("change", () => {
   syncSttEndpointForProvider();
+});
+
+Object.values(controls).forEach((control) => {
+  control?.addEventListener("input", () => {
+    hasUnsavedConfigChanges = true;
+    markConfigInteraction();
+  });
+  control?.addEventListener("change", () => {
+    hasUnsavedConfigChanges = true;
+    markConfigInteraction();
+  });
+});
+
+[controls.viewerCount, controls.engagementMultiplier, controls.donationFrequency].forEach((input) => {
+  input?.addEventListener("input", updateRangeLabels);
+});
+
+uiModeSelect?.addEventListener("change", () => {
+  setMode(uiModeSelect.value);
+});
+
+logsToggleBtn?.addEventListener("click", () => {
+  logsPanel?.classList.toggle("hidden");
+});
+
+logFilter?.addEventListener("change", renderLogs);
+logSearch?.addEventListener("input", renderLogs);
+
+window.addEventListener("keydown", (event) => {
+  if (!(event.metaKey || event.ctrlKey)) return;
+  if (event.key.toLowerCase() === "d") {
+    event.preventDefault();
+    setMode(uiMode === "developer" ? "operator" : "developer");
+  }
+  if (event.key.toLowerCase() === "l") {
+    event.preventDefault();
+    logsPanel?.classList.toggle("hidden");
+  }
 });
 
 liveMonitorEnabled?.addEventListener("change", async () => {
@@ -1112,21 +1446,26 @@ liveMonitorEnabled?.addEventListener("change", async () => {
   }
 });
 
+controls.visionIntervalSec?.addEventListener("change", () => {
+  restartLiveMonitorVisionSampling();
+});
+
 window.addEventListener("beforeunload", () => {
   stopLiveMonitor();
   stopMicVerificationCheck();
+  if (statusAutoRefreshInterval) clearInterval(statusAutoRefreshInterval);
 });
 
 const events = new EventSource("/api/events");
-events.addEventListener("messages", (event) => {
-  const messages = JSON.parse(event.data);
+function renderIncomingMessages(messages) {
   messages.forEach((msg) => {
     const item = document.createElement("div");
     item.className = "chat-msg";
+    item.style.animationDelay = `${Math.round(40 + Math.random() * 160)}ms`;
 
     const user = document.createElement("span");
     user.className = "user";
-    user.textContent = msg.username;
+    user.textContent = msg.username ? `${msg.username}:` : "";
 
     const messageText = document.createElement("span");
     messageText.textContent = msg.text || msg.emotes.join(" ");
@@ -1135,7 +1474,10 @@ events.addEventListener("messages", (event) => {
 
     const source = document.createElement("span");
     source.className = "source-tag";
-    source.textContent = msg.source ?? "unknown";
+    source.textContent = "ⓘ";
+    source.title = `message source: ${msg.source ?? "unknown"}`;
+    source.setAttribute("aria-label", source.title);
+    source.dataset.source = msg.source ?? "unknown";
     item.append(source);
 
     if (msg.donationCents) {
@@ -1143,15 +1485,30 @@ events.addEventListener("messages", (event) => {
       donation.className = "donation";
       donation.textContent = `$${(msg.donationCents / 100).toFixed(2)}`;
       item.append(donation);
+      item.classList.add("is-donation", "is-event");
     }
+    if (msg.source === "system") item.classList.add("is-event");
 
     chatEl.prepend(item);
     while (chatEl.children.length > 22) chatEl.lastChild.remove();
+    addLog("system", "event", `${msg.source ?? "unknown"} message from ${msg.username ?? "anon"}`);
   });
+}
+
+events.addEventListener("messages", (event) => {
+  const messages = JSON.parse(event.data);
+  renderIncomingMessages(messages);
 });
 
 events.addEventListener("meta", (event) => {
   const meta = JSON.parse(event.data);
+  const visionTags = Array.isArray(meta?.vision?.tags) ? meta.vision.tags.filter((tag) => typeof tag === "string") : null;
+  if (latestStatusPayload && latestStatusPayload.privacy?.captureBuffer && visionTags) {
+    latestStatusPayload.privacy.captureBuffer.hasVisionSample = true;
+    latestStatusPayload.privacy.captureBuffer.latestVisionTagCount = visionTags.length;
+    latestStatusPayload.privacy.captureBuffer.latestVisionCapturedAt = Date.now();
+    summarizeVisionHealth(latestStatusPayload);
+  }
   if (meta?.queueMessages) {
     meta.queuePreview = meta.queueMessages.slice(0, 3);
     delete meta.queueMessages;
@@ -1160,9 +1517,44 @@ events.addEventListener("meta", (event) => {
   const recovery = meta.cloudRecovery ? `Recovery=${meta.cloudRecovery}` : "";
   const banner = warningLines.length ? `⚠️ ${warningLines.join(" | ")} ${recovery}`.trim() + "\n" : "";
   metaEl.textContent = `${banner}${JSON.stringify(meta, null, 2)}`;
+  if (warningLines.length) addLog("network", "warn", warningLines.join(" | "));
+});
+
+sendTestChatBtn?.addEventListener("click", () => {
+  void (async () => {
+    await withEventDelay();
+    renderIncomingMessages([{ username: "test_user", text: "This is a test chat message", emotes: [], source: "test" }]);
+  })();
+});
+
+triggerTestDonationBtn?.addEventListener("click", () => {
+  void (async () => {
+    await withEventDelay();
+    previewAlertCount += 1;
+    if (previewAlerts) previewAlerts.textContent = `🔔 ${previewAlertCount}`;
+    overlayEl?.classList.add("event-pulse");
+    setTimeout(() => overlayEl?.classList.remove("event-pulse"), 520);
+    renderIncomingMessages([{ username: "donor42", text: "Great stream!", donationCents: 500, emotes: [], source: "test" }]);
+  })();
+});
+
+simulateViewerSpikeBtn?.addEventListener("click", () => {
+  void (async () => {
+    await withEventDelay();
+    const current = Number(controls.viewerCount.value);
+    const boosted = Math.min(5000, current + 250);
+    controls.viewerCount.value = String(boosted);
+    updateRangeLabels();
+    if (previewViewerCount) previewViewerCount.textContent = `👥 ${boosted}`;
+    overlayEl?.classList.add("event-pulse");
+    setTimeout(() => overlayEl?.classList.remove("event-pulse"), 520);
+    renderIncomingMessages([{ username: "system", text: `Viewer spike detected: +${boosted - current}`, emotes: [], source: "system" }]);
+    addLog("system", "event", `Viewer spike simulated to ${boosted}`);
+  })();
 });
 
 async function boot() {
+  setMode(localStorage.getItem("streamsim-ui-mode") || "operator");
   const response = await fetch("/api/status");
   const payload = await response.json();
   latestStatusPayload = payload;
@@ -1174,6 +1566,10 @@ async function boot() {
   summarizeAiHealth(payload);
   summarizeTtsHealth(payload);
   summarizeSttHealth(payload);
+  summarizeApiKeyHealth(payload);
+  summarizeVisionHealth(payload);
+  renderStatusCards(payload);
+  setSystemStateBadge(payload);
   latestDeviceVerification = { micPermission: false, cameraPermission: false, hasMicDevice: false, hasCameraDevice: false, cameraPermissionState: "unknown", cameraFailureReason: null };
   if (liveMonitorEnabled) {
     liveMonitorEnabled.checked = false;
@@ -1184,6 +1580,17 @@ async function boot() {
   setCaptionPreview("No speech captured yet.");
   setCaptionStatus("Run Verify Microphone to start mic/STT check.", "warn");
   ensureVerifyCameraButtonActive();
+  if (previewViewerCount) previewViewerCount.textContent = `👥 ${payload.config.viewerCount ?? 0}`;
+  if (previewAlerts) previewAlerts.textContent = "🔔 0";
+  hasUnsavedConfigChanges = false;
+  lastConfigInteractionAtMs = 0;
+  addLog("system", "info", "UI boot complete.");
+  if (statusAutoRefreshInterval) clearInterval(statusAutoRefreshInterval);
+  statusAutoRefreshInterval = setInterval(() => {
+    refreshStatus({ preserveUnsavedConfig: true }).catch(() => {
+      /* ignore transient polling errors; next interval retries */
+    });
+  }, STATUS_AUTO_REFRESH_MS);
 }
 
 void boot();

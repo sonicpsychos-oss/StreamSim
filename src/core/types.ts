@@ -9,6 +9,7 @@ export type FishingState = "OFF" | "STANDARD_CONTRARIAN" | "AGGRESSIVE_SUBVERSIO
 export interface CaptureConfig {
   visionEnabled: boolean;
   visionIntervalSec: number;
+  visionProvider: "local" | "openai";
   useRealCapture: boolean;
   sttEndpoint: string;
   sttProvider: "mock" | "local-whisper" | "whispercpp" | "deepgram" | "openai-whisper" | "gpt-4o-mini-transcribe";
@@ -95,6 +96,7 @@ export interface StreamContext {
   transcript: string;
   tone: ToneSnapshot;
   visionTags: string[];
+  visionCapturedAt?: string;
   vibe?: SimulatedVibe;
   topic?: string;
   intent?: string;
@@ -103,6 +105,7 @@ export interface StreamContext {
   fishingState?: FishingState;
   recentChatHistory: string[];
   timestamp: string;
+  bannedTerms?: string[];
 }
 
 export interface PromptPayload {
@@ -117,6 +120,7 @@ export interface PromptPayload {
   requestedMessageCount: number;
   personaCalibration: PersonaCalibration;
   providerConditioning: ProviderConditioning;
+  systemPrompt?: string;
 }
 
 export type MessageSource = "real-inference" | "mock-inference" | "mock-audience" | "fallback-mock" | "unknown";
