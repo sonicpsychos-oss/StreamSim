@@ -1,113 +1,151 @@
 # StreamSim System Component Map
 
-The component map below groups concrete code modules into execution domains and shows how responsibilities are partitioned.
+This map is an up-to-date module inventory grouped by runtime domain, with edges showing the dominant call/data paths.
 
 ```mermaid
 flowchart TB
-  subgraph CLIENT[Client Surfaces]
-    controlCenter[src/public/index.html + app.js\nControl Center]
-    overlayView[src/public/overlay.html + overlay.js\nChat Overlay]
+  %% ===== Presentation =====
+  subgraph PRESENTATION[Presentation Layer]
+    uiControl["src/public/index.html<br/>src/public/app.js"]
+    uiOverlay["src/public/overlay.html<br/>src/public/overlay.js"]
+    uiStyles["src/public/styles.css"]
   end
 
-  subgraph ENTRY[Service Entry]
-    server[src/server.ts\nHTTP + SSE + orchestration endpoints]
+  %% ===== Entry/API =====
+  subgraph ENTRY[Entry and Transport]
+    server["src/server.ts"]
+    sse["Server-Sent Events<br/>messages/meta/watermark"]
   end
 
-  subgraph CONFIG[Configuration & Policy]
-    runtime[src/config/runtimeConfig.ts]
-    store[src/config/configStore.ts]
-    migrations[src/config/configMigrations.ts]
-    compliance[src/services/complianceGate.ts + complianceLogger.ts]
-    trace[src/services/nfrTraceGate.ts + readinessChecks.ts]
+  %% ===== Config + policy =====
+  subgraph POLICY[Configuration, Compliance, Readiness]
+    runtimeCfg["src/config/runtimeConfig.ts"]
+    configStore["src/config/configStore.ts"]
+    configMigrations["src/config/configMigrations.ts"]
+    complianceGate["src/services/complianceGate.ts"]
+    complianceLogger["src/services/complianceLogger.ts"]
+    readinessChecks["src/services/readinessChecks.ts"]
+    nfrTraceGate["src/services/nfrTraceGate.ts"]
+    bootDiag["src/services/bootDiagnostics.ts"]
   end
 
-  subgraph CAPTURE[Capture & Signal Processing]
-    sttEngine[src/capture/sttEngine.ts]
-    captureProviders[src/capture/captureProviders.ts]
-    devicePipeline[src/capture/deviceCapturePipeline.ts]
-    realism[src/llm/realismSignals.ts]
-    dgIntelligence[src/services/intelligence/deepgramIntelligence.ts]
+  %% ===== Security =====
+  subgraph SECURITY[Security and Diagnostics]
+    secretStore["src/security/secretStore.ts"]
+    banlistRegistry["src/security/banlistRegistry.ts"]
+    banlistData["src/security/banlist-source-of-truth.json"]
+    diagnostics["src/security/diagnostics.ts"]
   end
 
-  subgraph PIPELINE[Prompt / Context Pipeline]
-    context[src/pipeline/contextAssembler.ts]
-    prompt[src/pipeline/promptBuilder.ts]
-    parser[src/pipeline/outputParser.ts]
+  %% ===== Capture =====
+  subgraph CAPTURE[Capture and Intelligence]
+    captureProviders["src/capture/captureProviders.ts"]
+    sttEngine["src/capture/sttEngine.ts"]
+    devicePipeline["src/capture/deviceCapturePipeline.ts"]
+    deepgramIntel["src/services/intelligence/deepgramIntelligence.ts"]
   end
 
-  subgraph INFERENCE[Inference Routing]
-    factory[src/llm/providerFactory.ts]
-    hybrid[src/llm/realInferenceProvider.ts\nHybrid local/cloud + retries]
-    mock[src/llm/mockInferenceProvider.ts]
-    audience[src/llm/mockAudienceGenerator.ts]
-    sidecar[src/services/sidecarManager.ts]
+  %% ===== Pipeline =====
+  subgraph PIPELINE[Prompt and Parsing Pipeline]
+    contextAssembler["src/pipeline/contextAssembler.ts"]
+    promptBuilder["src/pipeline/promptBuilder.ts"]
+    outputParser["src/pipeline/outputParser.ts"]
   end
 
+  %% ===== Inference =====
+  subgraph INFERENCE[Inference Providers]
+    providerFactory["src/llm/providerFactory.ts"]
+    hybridProvider["src/llm/realInferenceProvider.ts"]
+    mockProvider["src/llm/mockInferenceProvider.ts"]
+    mockAudience["src/llm/mockAudienceGenerator.ts"]
+    realismSignals["src/llm/realismSignals.ts"]
+    sidecarMgr["src/services/sidecarManager.ts"]
+  end
+
+  %% ===== Runtime orchestration =====
   subgraph RUNTIME[Simulation Runtime]
-    orchestrator[src/services/simulationOrchestrator.ts]
-    spool[src/services/spoolingEngine.ts]
-    identity[src/services/identityManager.ts]
-    tts[src/services/tts/textToSpeechService.ts + deepgramTTS.ts]
-    audio[src/core/audioStateManager.ts]
-    safety[src/core/safetyFilter.ts]
-    observability[src/services/observability.ts + bootDiagnostics.ts]
-    workload[src/services/workloadRunner.ts]
+    orchestrator["src/services/simulationOrchestrator.ts"]
+    spooler["src/services/spoolingEngine.ts"]
+    identityManager["src/services/identityManager.ts"]
+    audioState["src/core/audioStateManager.ts"]
+    safetyFilter["src/core/safetyFilter.ts"]
+    coreTypes["src/core/types.ts"]
+    observability["src/services/observability.ts"]
+    workloadRunner["src/services/workloadRunner.ts"]
   end
 
-  subgraph SECURITY[Security & Secrets]
-    banlist[src/security/banlistRegistry.ts + banlist-source-of-truth.json]
-    diagnostics[src/security/diagnostics.ts]
-    secrets[src/security/secretStore.ts]
+  %% ===== TTS =====
+  subgraph TTS[Text-to-Speech]
+    ttsService["src/services/tts/textToSpeechService.ts"]
+    deepgramTTS["src/services/tts/deepgramTTS.ts"]
   end
 
-  controlCenter --> server
-  overlayView --> server
+  %% ===== Scripted quality gates =====
+  subgraph OPS[Operational Scripts]
+    ciSlo["scripts/check-slo.ts"]
+    ciTraces["scripts/capture-nfr-traces.ts"]
+    ciRelease["scripts/check-release-checklist.ts"]
+  end
 
-  server --> runtime
-  server --> store
-  store --> migrations
-  runtime --> compliance
-  runtime --> trace
+  %% ===== Dominant edges =====
+  uiControl --> server
+  uiOverlay --> sse
+  server --> sse
 
+  server --> runtimeCfg
+  server --> configStore
+  configStore --> configMigrations
+  server --> complianceGate
+  server --> complianceLogger
+  server --> readinessChecks
+  server --> bootDiag
+
+  server --> secretStore
+  server --> banlistRegistry
+  banlistRegistry --> banlistData
+  server --> diagnostics
+
+  server --> orchestrator
   orchestrator --> captureProviders
   captureProviders --> sttEngine
-  sttEngine --> devicePipeline
-  devicePipeline --> realism
-  devicePipeline --> dgIntelligence
+  captureProviders --> devicePipeline
+  captureProviders --> deepgramIntel
+  deepgramIntel --> devicePipeline
 
-  devicePipeline --> context
-  context --> prompt
-  prompt --> factory
-  factory --> hybrid
-  factory --> mock
-  hybrid --> sidecar
+  devicePipeline --> contextAssembler
+  contextAssembler --> promptBuilder
+  promptBuilder --> providerFactory
+  providerFactory --> hybridProvider
+  providerFactory --> mockProvider
+  mockProvider --> mockAudience
 
-  hybrid --> parser
-  mock --> audience
-  audience --> parser
+  hybridProvider --> sidecarMgr
+  hybridProvider --> outputParser
+  mockProvider --> outputParser
 
-  parser --> safety
-  safety --> identity
-  identity --> spool
-  spool --> overlayView
+  outputParser --> safetyFilter
+  safetyFilter --> identityManager
+  identityManager --> spooler
+  spooler --> sse
 
-  spool --> tts
-  tts --> audio
-  audio --> sttEngine
+  spooler --> ttsService
+  ttsService --> deepgramTTS
+  ttsService --> audioState
+  audioState --> sttEngine
 
-  runtime --> observability
-  runtime --> workload
+  orchestrator --> observability
+  workloadRunner --> orchestrator
+  coreTypes --> orchestrator
 
-  identity --> banlist
-  safety --> banlist
-  orchestrator --> secrets
-  secrets --> diagnostics
+  ciSlo --> nfrTraceGate
+  ciTraces --> nfrTraceGate
+  ciRelease --> readinessChecks
+  realismSignals --> devicePipeline
 ```
 
-## Legend
+## Reading guide
 
-- **Simulation Runtime**: Real-time control loop and post-inference shaping.
-- **Capture & Signal Processing**: Raw multimodal ingestion + derived behavioral intelligence.
-- **Inference Routing**: Abstraction layer that chooses local/cloud/mock providers.
-- **Configuration & Policy**: Runtime config, migration, compliance, and release gates.
-- **Security & Secrets**: Banlist governance and key handling.
+- **ENTRY + POLICY + SECURITY** define startup gates and legal/safety constraints.
+- **CAPTURE + PIPELINE + INFERENCE** transform live input into structured model prompts and robustly parse outputs.
+- **RUNTIME + TTS** enforce anti-loop audio behavior and realistic chat pacing/identity shaping.
+- **OPS scripts** validate SLO, trace quality, and release readiness outside the hot path.

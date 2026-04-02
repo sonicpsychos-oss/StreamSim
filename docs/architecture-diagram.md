@@ -1,107 +1,119 @@
 # StreamSim Architectural Diagram
 
-This diagram captures the end-to-end runtime architecture across capture, intelligence, inference routing, safety, anti-echo/glaze controls, identity assignment, spooling, rendering, and observability.
+This diagram reflects the current runtime architecture and control flow, including onboarding/readiness gates, secret management, Deepgram intelligence enrichment, hybrid inference routing, anti-echo/glaze shaping, and TTS deafen safeguards.
 
 ```mermaid
 flowchart LR
-  %% External actors
-  streamer([Streamer / Mic + Camera])
-  viewerUI([Control Center UI])
-  overlay([Overlay UI / OBS Capture])
-
-  %% Runtime configuration + APIs
-  subgraph API[Server & Runtime API Layer]
-    server["server.ts<br/>Express + SSE"]
-    configStore["Runtime Config<br/>configStore/runtimeConfig"]
-    readiness["Readiness + Compliance + NFR gates"]
+  %% ===== Client surfaces =====
+  subgraph CLIENT[Client Surfaces]
+    controlUI["Control Center UI<br/>index.html + app.js"]
+    overlayUI["Overlay UI<br/>overlay.html + overlay.js"]
   end
 
-  %% Core orchestration
-  subgraph ORCH[Simulation Control Plane]
-    orchestrator[SimulationOrchestrator]
-    sidecar["SidecarManager<br/>Local model pull and control"]
-    observability[ObservabilityLogger]
-    audioState["AudioStateManager<br/>Anti-Echo deafen state"]
+  %% ===== API + policy =====
+  subgraph API[API and Policy Layer]
+    server["Express Server<br/>src/server.ts"]
+    configStore["ConfigStore + RuntimeConfig<br/>load/merge/save"]
+    compliance["Compliance Gate + Logger<br/>EULA reconcile + audit events"]
+    readiness["Readiness Checks<br/>startup blockers + diagnostics"]
+    bootDiag["Boot Diagnostics<br/>hardware profile + tier recommendation"]
+    secrets["SecretStore<br/>cloud/deepgram keychain"]
+    banDiag["Banlist Diagnostics<br/>banlist health/reporting"]
   end
 
-  %% Capture and intelligence
-  subgraph CAPTURE[Capture + Context Intelligence]
-    stt[STT Engine + Providers]
-    device["DeviceCapturePipeline<br/>rolling mic + vision buffers"]
-    deepgramIntel["Deepgram Intelligence Mapper<br/>sentiment/topic/intent to vibe"]
-    contextAsm[Context Assembler]
-    promptBuilder[Prompt Builder]
+  %% ===== Capture and context =====
+  subgraph CAPTURE[Capture, STT, Vision, Intelligence]
+    captureProvider["Capture Provider Router<br/>mock | device | endpoint"]
+    sttEngine["STT Engine<br/>mock/local/deepgram/openai"]
+    devicePipeline["DeviceCapturePipeline<br/>rolling transcript + tone + vision"]
+    dgIntel["Deepgram Intelligence Mapper<br/>sentiment/intents/topics -> vibe"]
+    contextAssembler["Context Assembler"]
+    promptBuilder["Prompt Builder"]
   end
 
-  %% Inference
+  %% ===== Orchestration =====
+  subgraph ORCH[Simulation Orchestration]
+    orchestrator["SimulationOrchestrator<br/>loop, status, fallback"]
+    sidecar["SidecarManager<br/>install/start/pull/resume/cancel"]
+    observability["ObservabilityLogger<br/>tick, malformed, recovery metrics"]
+  end
+
+  %% ===== Inference =====
   subgraph INFER[Hybrid Inference Plane]
-    providerFactory[ProviderFactory]
-    hybrid["HybridInferenceProvider<br/>local/cloud routing + retries"]
-    localLLM[(Ollama / LM Studio)]
-    cloudLLM[(OpenAI / Groq)]
-    mockLLM[(Mock Provider)]
+    providerFactory["Provider Factory"]
+    hybridProvider["HybridInferenceProvider<br/>validate + health + retry"]
+    localLLM[("Local Inference<br/>Ollama / LM Studio")]
+    cloudLLM[("Cloud Inference<br/>OpenAI / Groq")]
+    fallbackMock[("Fallback Mock Provider")]
+    parser["Output Parser<br/>JSON parse + malformed classification"]
   end
 
-  %% Post-inference and rendering
-  subgraph RENDER[Safety + Persona Realism + Rendering]
-    parser["Output Parser<br/>JSON recovery"]
-    antiEcho[Anti-Echo + Read-Chat detection]
-    glaze[Behavior diversity / anti-glaze rules]
-    safety["Safety Filter<br/>banlist + compliance"]
-    identity["Identity Manager<br/>safe username assignment"]
-    spooler["Spooling Engine<br/>burst timing + pacing"]
-    tts["TTS Service<br/>Deepgram TTS + playback"]
+  %% ===== Post-processing + delivery =====
+  subgraph DELIVERY[Safety, Identity, Spooling, TTS]
+    antiEcho["Anti-Echo + Read-Chat Rewriter"]
+    antiGlaze["Diversity and Anti-Glaze Rules"]
+    safetyFilter["Safety Filter<br/>drop policy + banlist checks"]
+    identityMgr["Identity Manager<br/>safe username assignment"]
+    spooler["Spooling Engine<br/>Poisson jitter + pacing"]
+    ttsService["TextToSpeechService<br/>OpenAI / Deepgram Aura"]
+    audioState["AudioStateManager<br/>deafen / watchdog reset"]
+    sse["SSE Stream<br/>messages + meta + watermark"]
   end
 
-  %% Primary flow
-  streamer --> stt
-  streamer --> device
-  stt --> device
-  device --> deepgramIntel
-  deepgramIntel --> contextAsm
-  device --> contextAsm
-  contextAsm --> promptBuilder
-  promptBuilder --> orchestrator
-
-  viewerUI --> server
+  %% ===== Primary API/control flow =====
+  controlUI -->|config/start/stop/onboarding/secrets| server
   server --> configStore
-  configStore --> orchestrator
-  readiness --> server
+  server --> compliance
+  server --> readiness
+  server --> bootDiag
+  server --> secrets
+  server --> banDiag
 
+  %% ===== Runtime loop =====
+  server --> orchestrator
   orchestrator --> sidecar
-  orchestrator --> providerFactory
-  providerFactory --> hybrid
-  hybrid --> localLLM
-  hybrid --> cloudLLM
-  hybrid --> mockLLM
+  orchestrator --> captureProvider
+  captureProvider --> sttEngine
+  captureProvider --> devicePipeline
+  captureProvider --> dgIntel
+  dgIntel --> devicePipeline
+  devicePipeline --> contextAssembler
+  contextAssembler --> promptBuilder
+  promptBuilder --> providerFactory
+  providerFactory --> hybridProvider
+
+  hybridProvider --> localLLM
+  hybridProvider --> cloudLLM
+  hybridProvider -. provider failure .-> fallbackMock
 
   localLLM --> parser
   cloudLLM --> parser
-  mockLLM --> parser
+  fallbackMock --> parser
 
   parser --> antiEcho
-  antiEcho --> glaze
-  glaze --> safety
-  safety --> identity
-  identity --> spooler
-  spooler --> overlay
+  antiEcho --> antiGlaze
+  antiGlaze --> safetyFilter
+  safetyFilter --> identityMgr
+  identityMgr --> spooler
+  spooler --> sse
+  sse --> overlayUI
 
+  %% ===== TTS / anti-loop =====
+  spooler --> ttsService
+  ttsService --> audioState
+  audioState -. pause/resume STT .-> sttEngine
+  audioState --> orchestrator
+
+  %% ===== Observability =====
   orchestrator --> observability
-  stt -. deafen while TTS .-> audioState
-  tts --> audioState
-  audioState -. pause/resume .-> stt
-
-  spooler --> tts
-  tts --> overlay
-
-  server --> overlay
-  orchestrator --> server
+  observability --> sse
+  server --> sse
 ```
 
-## Flow Notes
+## Current behavior represented
 
-1. **SimulationOrchestrator** is the control hub that drives loop timing, AI status, sidecar activity, and meta events.
-2. **DeviceCapturePipeline + Deepgram Intelligence** enrich transcript/tone/vision with vibe/topic/intent signals.
-3. **HybridInferenceProvider** performs model routing (local vs cloud), timeout-aware retries, and fallback candidate selection.
-4. **Output hardening** then applies parser recovery, anti-echo constraints, anti-glaze/diversity rules, safety filtering, identity assignment, and stochastic spooling.
-5. **AudioStateManager + TTS** enforce anti-feedback behavior so STT does not ingest generated playback.
+1. **Start is gated** by EULA state, readiness checks, and required cloud/deepgram keys before `SimulationOrchestrator.start()` can run.
+2. **Capture is provider-routed** (`mock`, `device`, or endpoint polling), with Deepgram intelligence mapped into vibe/topic/intent fields when Deepgram STT data is present.
+3. **Inference is hybrid and resilient**: validation + health checks + retry hooks on the primary provider, with mock fallback when provider generation fails.
+4. **Post-inference shaping** applies anti-echo/read-chat rewrite, anti-glaze diversity normalization, safety filtering, identity assignment, and paced spooling.
+5. **TTS anti-loop protection** pauses STT during playback and uses watchdog reset paths to prevent stale deafen state.
