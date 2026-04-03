@@ -16,6 +16,9 @@ import { sharedTextToSpeechService } from "./tts/textToSpeechService.js";
 import { VisionPollingService } from "./visionPollingService.js";
 import { systemPromptForPayload } from "../llm/realInferenceProvider.js";
 
+const INFERENCE_STALL_BUDGET_MS = 7000;
+const PRIMARY_FAILURES_BEFORE_FALLBACK = 3;
+
 export function explainInferenceFailure(reason: string): string {
   if (reason.includes("Unexpected end of JSON input")) {
     return "OpenAI cloud response was truncated (broken JSON package).";
@@ -282,6 +285,21 @@ export class SimulationOrchestrator {
     });
   }
 
+  private async runPrimaryInferenceWithBudget(
+    provider: ReturnType<typeof createInferenceProvider>,
+    payload: PromptPayload,
+    config: SimulationConfig,
+    onRetryProgress?: (attempt: number, reason: string) => void
+  ): Promise<string> {
+    const boundedTimeoutMs = Math.max(2500, Math.min(config.provider.requestTimeoutMs, INFERENCE_STALL_BUDGET_MS));
+    return Promise.race([
+      provider.generate(payload, config, onRetryProgress),
+      new Promise<string>((_, reject) => {
+        setTimeout(() => reject(new Error(`Primary inference exceeded ${boundedTimeoutMs}ms stall budget.`)), boundedTimeoutMs);
+      })
+    ]);
+  }
+
   private async loop(): Promise<void> {
     if (!this.running) return;
 
@@ -361,7 +379,7 @@ export class SimulationOrchestrator {
           detail: `Generating via ${config.inferenceMode}.`
         });
         try {
-          const rawOutput = await provider.generate(payload, config, (attempt, reason) => {
+          const rawOutput = await this.runPrimaryInferenceWithBudget(provider, payload, config, (attempt, reason) => {
             const recovery = this.cloudRecoveryMeta(attempt, config.provider.maxRetries, reason);
             this.emitMeta({ warnings: [recovery.message], cloudRecovery: recovery.phase, blocked: recovery.blocking });
           });
@@ -374,7 +392,7 @@ export class SimulationOrchestrator {
             this.obs.log("malformed_json_counter", { malformedClass, action, stage: "first_pass" });
 
             if ((action === "repair" || action === "regenerate") && config.safety.regenerateOnMalformedJson) {
-              const retryOutput = await provider.generate(payload, config);
+              const retryOutput = await this.runPrimaryInferenceWithBudget(provider, payload, config);
               messages = this.hydrateMessages(parseInferenceOutput(retryOutput), "real-inference");
               this.emitMeta({ warnings: [`Malformed inference JSON recovered via ${action} fallback.`], blocked: false, malformedClass, action });
               this.obs.log("malformed_json_counter", { malformedClass, action, stage: "recovered" });
@@ -391,9 +409,11 @@ export class SimulationOrchestrator {
           this.setAiStatus({ state: "degraded", providerHealth: "degraded", detail: reason });
           this.primaryFailureStreak += 1;
 
-          if (this.primaryFailureStreak < 2) {
+          if (this.primaryFailureStreak < PRIMARY_FAILURES_BEFORE_FALLBACK) {
             this.emitMeta({
-              warnings: [`Primary inference failed (${reason}). Retrying primary provider next tick before fallback.`],
+              warnings: [
+                `Primary inference failed (${reason}). Retrying primary provider next tick before fallback (${this.primaryFailureStreak}/${PRIMARY_FAILURES_BEFORE_FALLBACK - 1}).`
+              ],
               blocked: false,
               cloudRecovery: "retrying-primary",
               provider: config.inferenceMode
