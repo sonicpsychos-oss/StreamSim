@@ -158,9 +158,10 @@ describe("real audio capture + stt pause/resume", () => {
     expect(inspectModelCalls[1]).toBe("gpt-4o-transcribe");
   });
 
-  it("prefers cloud API key for STT authorization when both cloud and OpenAI-specific env keys are present", async () => {
+  it("uses cloud API key for STT authorization even when OpenAI-specific env keys are set", async () => {
     process.env.STREAMSIM_CLOUD_API_KEY = "cloud-key-that-might-be-non-openai";
     process.env.STREAMSIM_OPENAI_API_KEY = "openai-stt-key";
+    process.env.OPENAI_API_KEY = "openai-global-key";
     const authHeaders: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -178,14 +179,13 @@ describe("real audio capture + stt pause/resume", () => {
     expect(authHeaders[0]).toBe("Bearer cloud-key-that-might-be-non-openai");
   });
 
-  it("falls back to OPENAI_API_KEY for STT when cloud key is unavailable", async () => {
+  it("fails STT auth when cloud key is unavailable, even if OpenAI-specific env keys exist", async () => {
     delete process.env.STREAMSIM_CLOUD_API_KEY;
+    process.env.STREAMSIM_OPENAI_API_KEY = "openai-specific-key";
     process.env.OPENAI_API_KEY = "openai-global-key";
-    const authHeaders: string[] = [];
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (_url: string, init?: RequestInit) => {
-        authHeaders.push(String((init?.headers as Record<string, string>).Authorization));
+      vi.fn(async () => {
         return {
           ok: true,
           json: async () => ({ text: "ok" })
@@ -194,8 +194,9 @@ describe("real audio capture + stt pause/resume", () => {
     );
 
     const stt = new DeviceSttEngine("mock");
-    await stt.transcribeFrameWith("gpt-4o-mini-transcribe", undefined, Buffer.from("audio"));
-    expect(authHeaders[0]).toBe("Bearer openai-global-key");
+    await expect(stt.transcribeFrameWith("gpt-4o-mini-transcribe", undefined, Buffer.from("audio"))).rejects.toThrow(
+      "Cloud API key missing. Save Cloud API key in Secrets + Maintenance."
+    );
   });
 
   it("retries STT auth with OpenAI-specific env key if cloud key is rejected", async () => {
