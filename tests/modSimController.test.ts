@@ -23,3 +23,26 @@ describe("ModSimController postFlight word cap", () => {
     expect(result[0].text.endsWith("legendary")).toBe(true);
   });
 });
+
+describe("ModSimController reading-chat detection", () => {
+  it("requires stronger overlap before triggering reading-chat rewrites", () => {
+    const modSim = new ModSimController();
+    expect(modSim.isReadingChat("chat chat chat", ["chat said this already"])).toBe(false);
+    expect(
+      modSim.isReadingChat(
+        "you said same strategy and same angle again today",
+        ["same strategy worked", "that angle was fine", "you said this earlier"]
+      )
+    ).toBe(true);
+  });
+
+  it("uses diversified rewrite phrases that avoid old obvious fallback-looking lines", () => {
+    const modSim = new ModSimController();
+    const rewritten = modSim.rewriteForReadingChat([
+      { id: "1", username: "", text: "a", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() },
+      { id: "2", username: "", text: "b", emotes: [], donationCents: null, ttsText: null, createdAt: new Date().toISOString() }
+    ]);
+    expect(rewritten[0].text).not.toMatch(/stop quoting us bro|he reading us again|patch notes unchanged|npc dialogue loop|quote simulator maxed/i);
+    expect(rewritten[1].text).not.toMatch(/stop quoting us bro|he reading us again|patch notes unchanged|npc dialogue loop|quote simulator maxed/i);
+  });
+});

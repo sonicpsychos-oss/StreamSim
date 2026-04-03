@@ -136,7 +136,7 @@ function mapBehavioralModes(situationalTags: string[]): string[] {
 }
 
 export function buildPromptPayload(config: SimulationConfig, context: StreamContext): PromptPayload {
-  const requestedMessageCount = Math.max(5, Math.min(11, Math.floor(Math.sqrt(config.viewerCount) / 14) + 4));
+  const requestedMessageCount = resolveRequestedMessageCount(config.viewerCount);
   const situationalTags = detectSituationalTags(context);
   const behavioralModes = mapBehavioralModes(situationalTags);
 
@@ -158,4 +158,12 @@ export function buildPromptPayload(config: SimulationConfig, context: StreamCont
     personaCalibration: resolvePersonaCalibration(config.persona),
     providerConditioning: providerConditioningForMode(config.inferenceMode)
   };
+}
+
+function resolveRequestedMessageCount(viewerCount: number): number {
+  const viewers = Math.max(1, Math.floor(viewerCount));
+  if (viewers <= 200) return Math.max(5, Math.min(8, Math.floor(Math.sqrt(viewers) / 8) + 4));
+  if (viewers <= 1_000) return Math.max(7, Math.min(12, Math.floor(Math.sqrt(viewers) / 5) + 3));
+  if (viewers <= 5_000) return Math.max(10, Math.min(20, Math.floor(Math.sqrt(viewers) / 4) + 4));
+  return Math.max(12, Math.min(28, Math.floor(Math.sqrt(viewers) / 3.5) + 6));
 }
