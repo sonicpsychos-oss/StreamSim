@@ -197,6 +197,34 @@ describe("real audio capture + stt pause/resume", () => {
     await stt.transcribeFrameWith("gpt-4o-mini-transcribe", undefined, Buffer.from("audio"));
     expect(authHeaders[0]).toBe("Bearer openai-global-key");
   });
+
+  it("retries STT auth with cloud key if OpenAI-specific env key is stale", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "working-cloud-key";
+    process.env.STREAMSIM_OPENAI_API_KEY = "stale-openai-key";
+    const authHeaders: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        authHeaders.push(String((init?.headers as Record<string, string>).Authorization));
+        if (authHeaders.length === 1) {
+          return {
+            ok: false,
+            status: 401,
+            json: async () => ({ error: "unauthorized" })
+          } as Response;
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ text: "ok" })
+        } as Response;
+      })
+    );
+
+    const stt = new DeviceSttEngine("mock");
+    await stt.transcribeFrameWith("openai-whisper", undefined, Buffer.from("audio"));
+    expect(authHeaders).toEqual(["Bearer stale-openai-key", "Bearer working-cloud-key"]);
+  });
 });
 
 describe("overlay/privacy/compliance", () => {
