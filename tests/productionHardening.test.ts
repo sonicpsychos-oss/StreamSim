@@ -198,6 +198,34 @@ describe("real audio capture + stt pause/resume", () => {
       "Cloud API key missing. Save Cloud API key in Secrets + Maintenance."
     );
   });
+
+  it("retries STT auth with OpenAI-specific env key if cloud key is rejected", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "cloud-key-that-401s";
+    process.env.STREAMSIM_OPENAI_API_KEY = "fallback-openai-key";
+    const authHeaders: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        authHeaders.push(String((init?.headers as Record<string, string>).Authorization));
+        if (authHeaders.length === 1) {
+          return {
+            ok: false,
+            status: 401,
+            json: async () => ({ error: "unauthorized" })
+          } as Response;
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ text: "ok" })
+        } as Response;
+      })
+    );
+
+    const stt = new DeviceSttEngine("mock");
+    await stt.transcribeFrameWith("openai-whisper", undefined, Buffer.from("audio"));
+    expect(authHeaders).toEqual(["Bearer cloud-key-that-401s", "Bearer fallback-openai-key"]);
+  });
 });
 
 describe("overlay/privacy/compliance", () => {
