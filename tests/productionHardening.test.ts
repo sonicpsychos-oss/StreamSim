@@ -158,7 +158,7 @@ describe("real audio capture + stt pause/resume", () => {
     expect(inspectModelCalls[1]).toBe("gpt-4o-transcribe");
   });
 
-  it("uses OpenAI-specific API key envs for STT authorization when present", async () => {
+  it("prefers cloud API key for STT authorization when both cloud and OpenAI-specific env keys are present", async () => {
     process.env.STREAMSIM_CLOUD_API_KEY = "cloud-key-that-might-be-non-openai";
     process.env.STREAMSIM_OPENAI_API_KEY = "openai-stt-key";
     const authHeaders: string[] = [];
@@ -175,11 +175,11 @@ describe("real audio capture + stt pause/resume", () => {
 
     const stt = new DeviceSttEngine("mock");
     await stt.transcribeFrameWith("openai-whisper", undefined, Buffer.from("audio"));
-    expect(authHeaders[0]).toBe("Bearer openai-stt-key");
+    expect(authHeaders[0]).toBe("Bearer cloud-key-that-might-be-non-openai");
   });
 
-  it("falls back to OPENAI_API_KEY for STT when STREAMSIM_OPENAI_API_KEY is unset", async () => {
-    process.env.STREAMSIM_CLOUD_API_KEY = "cloud-fallback";
+  it("falls back to OPENAI_API_KEY for STT when cloud key is unavailable", async () => {
+    delete process.env.STREAMSIM_CLOUD_API_KEY;
     process.env.OPENAI_API_KEY = "openai-global-key";
     const authHeaders: string[] = [];
     vi.stubGlobal(
@@ -198,9 +198,9 @@ describe("real audio capture + stt pause/resume", () => {
     expect(authHeaders[0]).toBe("Bearer openai-global-key");
   });
 
-  it("retries STT auth with cloud key if OpenAI-specific env key is stale", async () => {
-    process.env.STREAMSIM_CLOUD_API_KEY = "working-cloud-key";
-    process.env.STREAMSIM_OPENAI_API_KEY = "stale-openai-key";
+  it("retries STT auth with OpenAI-specific env key if cloud key is rejected", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "cloud-key-that-401s";
+    process.env.STREAMSIM_OPENAI_API_KEY = "fallback-openai-key";
     const authHeaders: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -223,7 +223,7 @@ describe("real audio capture + stt pause/resume", () => {
 
     const stt = new DeviceSttEngine("mock");
     await stt.transcribeFrameWith("openai-whisper", undefined, Buffer.from("audio"));
-    expect(authHeaders).toEqual(["Bearer stale-openai-key", "Bearer working-cloud-key"]);
+    expect(authHeaders).toEqual(["Bearer cloud-key-that-401s", "Bearer fallback-openai-key"]);
   });
 });
 

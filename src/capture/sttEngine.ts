@@ -93,7 +93,8 @@ class OpenAiWhisperBackend implements SttBackend {
   constructor(private readonly endpoint: string, private readonly model: string, private readonly apiKeyOverride?: string) {}
 
   public async transcribe(frame: Buffer): Promise<string> {
-    const primaryApiKey = this.apiKeyOverride ?? this.secretStore.getCloudApiKey();
+    const cloudApiKey = this.secretStore.getCloudApiKey();
+    const primaryApiKey = cloudApiKey || this.apiKeyOverride;
     if (!primaryApiKey) throw new Error("Cloud API key missing. Save Cloud API key in Secrets + Maintenance.");
 
     const form = new FormData();
@@ -103,10 +104,13 @@ class OpenAiWhisperBackend implements SttBackend {
     form.append("response_format", "json");
 
     let response = await this.requestTranscription(form, primaryApiKey);
-    if (response.status === 401 && this.apiKeyOverride) {
-      const cloudApiKey = this.secretStore.getCloudApiKey();
-      if (cloudApiKey && cloudApiKey !== this.apiKeyOverride) {
-        response = await this.requestTranscription(form, cloudApiKey);
+    if (response.status === 401) {
+      const retryKey =
+        primaryApiKey === cloudApiKey
+          ? this.apiKeyOverride
+          : cloudApiKey;
+      if (retryKey && retryKey !== primaryApiKey) {
+        response = await this.requestTranscription(form, retryKey);
       }
     }
 
