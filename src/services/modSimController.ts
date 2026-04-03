@@ -328,6 +328,10 @@ export class ModSimController {
           .replace(/[^a-z0-9\s']/g, " ")
           .replace(/\s+/g, " ")
           .trim();
+        if (!normalizedLine) return false;
+        const historyWords = normalizedLine.split(" ").filter(Boolean);
+        if (historyWords.length < 3) return false;
+        if (normalizedLine.length < 12) return false;
         return normalizedLine.includes(normalizedTranscript) || normalizedTranscript.includes(normalizedLine);
       });
       if (exactQuoted) return true;
