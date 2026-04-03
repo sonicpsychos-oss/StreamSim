@@ -90,10 +90,10 @@ class DeepgramBackend implements SttBackend {
 class OpenAiWhisperBackend implements SttBackend {
   private readonly secretStore = new SecretStore();
 
-  constructor(private readonly endpoint: string, private readonly model: string, private readonly apiKeyOverride?: string) {}
+  constructor(private readonly endpoint: string, private readonly model: string) {}
 
   public async transcribe(frame: Buffer): Promise<string> {
-    const apiKey = this.apiKeyOverride ?? this.secretStore.getCloudApiKey();
+    const apiKey = this.secretStore.getCloudApiKey();
     if (!apiKey) throw new Error("Cloud API key missing. Save Cloud API key in Secrets + Maintenance.");
 
     const form = new FormData();
@@ -102,17 +102,7 @@ class OpenAiWhisperBackend implements SttBackend {
     form.append("model", this.model);
     form.append("response_format", "json");
 
-    let response: Response;
-    try {
-      response = await fetch(this.endpoint, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: form,
-        signal: AbortSignal.timeout(10000)
-      });
-    } catch (error) {
-      throw new Error(`OpenAI STT request failed for ${this.endpoint}: ${(error as Error).message}`);
-    }
+    const response = await this.requestTranscription(form, apiKey);
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -124,6 +114,19 @@ class OpenAiWhisperBackend implements SttBackend {
     }
     const json = (await response.json()) as { text?: string };
     return json.text?.trim() ?? "";
+  }
+
+  private async requestTranscription(form: FormData, apiKey: string): Promise<Response> {
+    try {
+      return await fetch(this.endpoint, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: form,
+        signal: AbortSignal.timeout(10000)
+      });
+    } catch (error) {
+      throw new Error(`OpenAI STT request failed for ${this.endpoint}: ${(error as Error).message}`);
+    }
   }
 }
 
@@ -208,14 +211,12 @@ export class DeviceSttEngine implements SttEngine {
       case "openai-whisper":
         return new OpenAiWhisperBackend(
           this.resolveProviderEndpoint(provider, endpoint, process.env.STREAMSIM_OPENAI_STT_ENDPOINT ?? DEFAULT_OPENAI_STT_ENDPOINT),
-          this.resolveOpenAiSttModel(provider),
-          this.resolveOpenAiSttApiKey()
+          this.resolveOpenAiSttModel(provider)
         );
       case "gpt-4o-mini-transcribe":
         return new OpenAiWhisperBackend(
           this.resolveProviderEndpoint(provider, endpoint, process.env.STREAMSIM_OPENAI_STT_ENDPOINT ?? DEFAULT_OPENAI_STT_ENDPOINT),
-          this.resolveOpenAiSttModel(provider),
-          this.resolveOpenAiSttApiKey()
+          this.resolveOpenAiSttModel(provider)
         );
       default:
         return new MockSttBackend();
@@ -239,9 +240,6 @@ export class DeviceSttEngine implements SttEngine {
     return process.env.STREAMSIM_OPENAI_GPT4O_TRANSCRIBE_MODEL ?? process.env.STREAMSIM_OPENAI_STT_MODEL ?? "gpt-4o-mini-transcribe";
   }
 
-  private resolveOpenAiSttApiKey(): string | undefined {
-    return process.env.STREAMSIM_OPENAI_API_KEY ?? process.env.OPENAI_API_KEY;
-  }
 }
 
 export const sharedSttEngine = new DeviceSttEngine((process.env.STREAMSIM_STT_PROVIDER as SttProviderKind | undefined) ?? "mock");
