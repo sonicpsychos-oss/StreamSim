@@ -4,7 +4,7 @@ import { mergeConfig, sanitizeConfig } from "../src/config/runtimeConfig.js";
 import { classifyMalformedOutput, parseInferenceOutput, repairInferenceOutput } from "../src/pipeline/outputParser.js";
 import { buildPromptPayload, checkFishingState } from "../src/pipeline/promptBuilder.js";
 import { explainInferenceFailure } from "../src/services/simulationOrchestrator.js";
-import { HybridInferenceProvider } from "../src/llm/realInferenceProvider.js";
+import { HybridInferenceProvider, systemPromptForPayload } from "../src/llm/realInferenceProvider.js";
 
 describe("runtime config", () => {
   it("clamps invalid values and supports nested sections", () => {
@@ -101,7 +101,7 @@ describe("output parser", () => {
 
 
 describe("prompt payload", () => {
-  it("requests between 5 and 11 messages based on viewer count", () => {
+  it("scales requested message count with viewer count up to higher-room caps", () => {
     const low = buildPromptPayload(defaultConfig, {
       transcript: "",
       tone: { volumeRms: 0.1, paceWpm: 90 },
@@ -116,10 +116,18 @@ describe("prompt payload", () => {
       recentChatHistory: [],
       timestamp: new Date().toISOString()
     });
+    const medium = buildPromptPayload({ ...defaultConfig, viewerCount: 2_000 }, {
+      transcript: "",
+      tone: { volumeRms: 0.1, paceWpm: 90 },
+      visionTags: [],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    });
 
     expect(low.requestedMessageCount).toBeGreaterThanOrEqual(5);
-    expect(low.requestedMessageCount).toBeLessThanOrEqual(11);
-    expect(high.requestedMessageCount).toBe(11);
+    expect(low.requestedMessageCount).toBeLessThanOrEqual(8);
+    expect(medium.requestedMessageCount).toBeGreaterThan(10);
+    expect(high.requestedMessageCount).toBe(28);
   });
 
   it("detects aggressive fishing only when vibe + inquiry + leading keywords align", () => {
@@ -228,7 +236,7 @@ describe("cloud generation hardening", () => {
     await provider.generate(payload, defaultConfig);
     const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
     expect(body.max_completion_tokens).toBeGreaterThanOrEqual(220);
-    expect(body.max_completion_tokens).toBeLessThanOrEqual(520);
+    expect(body.max_completion_tokens).toBeLessThanOrEqual(900);
     vi.unstubAllGlobals();
   });
 
@@ -246,5 +254,57 @@ describe("cloud generation hardening", () => {
 
     await expect(provider.generate(payload, defaultConfig)).rejects.toThrow(/Provider returned empty content/);
     vi.unstubAllGlobals();
+  });
+
+  it("aborts in-flight cloud request when abortSignal is triggered", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "test-key";
+    const provider = new HybridInferenceProvider("openai");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url, init) => {
+        const signal = init?.signal as AbortSignal | undefined;
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+        });
+      })
+    );
+    const payload = buildPromptPayload(defaultConfig, {
+      transcript: "yo",
+      tone: { volumeRms: 0.2, paceWpm: 110 },
+      visionTags: [],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    });
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 20);
+    await expect(provider.generate(payload, defaultConfig, undefined, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("vision appearance reliability prompting", () => {
+  it("asks model to avoid certainty when appearance questions lack appearance tags", () => {
+    const payload = buildPromptPayload(defaultConfig, {
+      transcript: "what color is my shirt and how does my hair look",
+      tone: { volumeRms: 0.2, paceWpm: 110 },
+      visionTags: ["half smirk", "headset on head", "dim lighting"],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    });
+    const prompt = systemPromptForPayload(payload);
+    expect(prompt).toMatch(/appearance-specific visual question/i);
+    expect(prompt).toMatch(/camera detail is unclear right now/i);
+  });
+
+  it("allows visual follow-up when appearance tags are available", () => {
+    const payload = buildPromptPayload(defaultConfig, {
+      transcript: "what color is my shirt and how does my hair look",
+      tone: { volumeRms: 0.2, paceWpm: 110 },
+      visionTags: ["blue hoodie", "curly dark hair", "smiling"],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    });
+    const prompt = systemPromptForPayload(payload);
+    expect(prompt).toMatch(/appearance details are sufficiently represented/i);
   });
 });

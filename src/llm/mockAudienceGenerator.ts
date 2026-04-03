@@ -170,10 +170,11 @@ function realisticDonation(
 }
 
 export function generateAudienceBatch(config: SimulationConfig, tone: ToneSnapshot, context?: StreamContext, providerConditioning?: ProviderConditioning): ChatMessage[] {
-  const count = Math.max(2, Math.min(8, Math.floor(Math.sqrt(config.viewerCount) / 15) + 1));
+  const count = Math.max(2, Math.min(28, Math.floor(Math.sqrt(config.viewerCount) / 8) + 3));
   const pool = personaPool(config.persona);
   const personaCalibration = resolvePersonaCalibration(config.persona);
   const conditioning = providerConditioning ?? providerConditioningForMode(config.inferenceMode);
+  const seenTexts = new Set<string>();
 
   return Array.from({ length: count }, (_, idx) => {
     const energetic = tone.volumeRms > 0.45 || tone.paceWpm > 160;
@@ -181,10 +182,29 @@ export function generateAudienceBatch(config: SimulationConfig, tone: ToneSnapsh
 
     const safeContext = context ?? { transcript: "", tone, visionTags: [], recentChatHistory: [], timestamp: new Date().toISOString() };
     const features = realismModel.extract(safeContext, config.persona);
+    let candidateText = withBias(text, config.bias === "split" && features.personaBiasScore < 0.45 ? "disagree" : config.bias, conditioning, personaCalibration.contrarianism);
+    const transcriptHint = safeContext.transcript
+      .toLowerCase()
+      .replace(/[^a-z0-9\s']/g, " ")
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 4)
+      .slice(-3)
+      .join(" ");
+    if (transcriptHint && Math.random() < 0.35) {
+      candidateText = `${candidateText} ${transcriptHint}`.trim();
+    }
+    const normalized = candidateText.toLowerCase().replace(/\s+/g, " ").trim();
+    if (seenTexts.has(normalized)) {
+      const variants = ["wait what", "nahhh", "deadass", "clip that", "queue it again", "run it back"];
+      candidateText = `${candidateText} ${pick(variants)}`.trim();
+    }
+    seenTexts.add(candidateText.toLowerCase().replace(/\s+/g, " ").trim());
+
     const message: ChatMessage = {
       id: `${Date.now()}-${idx}-${Math.random().toString(16).slice(2)}`,
       username: mockIdentityManager.getIdentity(),
-      text: withBias(text, config.bias === "split" && features.personaBiasScore < 0.45 ? "disagree" : config.bias, conditioning, personaCalibration.contrarianism),
+      text: candidateText,
       emotes: Math.random() > 0.45 ? [pick(emotePool)] : [],
       donationCents: null,
       ttsText: null,

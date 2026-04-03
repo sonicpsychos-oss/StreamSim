@@ -10,7 +10,12 @@ export class MockInferenceProvider implements InferenceProvider {
     return { ok: true, details: "mock ok" };
   }
 
-  public async generate(payload: PromptPayload, config: SimulationConfig, _onRetryProgress?: RetryProgressHook): Promise<string> {
+  public async generate(
+    payload: PromptPayload,
+    config: SimulationConfig,
+    _onRetryProgress?: RetryProgressHook,
+    _abortSignal?: AbortSignal
+  ): Promise<string> {
     const messages = generateAudienceBatch(config, payload.context.tone, payload.context, payload.providerConditioning).slice(0, payload.requestedMessageCount);
 
     const serialized = JSON.stringify({ messages });
