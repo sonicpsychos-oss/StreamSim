@@ -103,14 +103,11 @@ class OpenAiWhisperBackend implements SttBackend {
     form.append("response_format", "json");
 
     let response = await this.requestTranscription(form, primaryApiKey);
-    const cloudApiKey = this.secretStore.getCloudApiKey();
-    const canRetryWithCloudKey =
-      response.status === 401 &&
-      Boolean(this.apiKeyOverride) &&
-      Boolean(cloudApiKey) &&
-      cloudApiKey !== this.apiKeyOverride;
-    if (canRetryWithCloudKey) {
-      response = await this.requestTranscription(form, cloudApiKey);
+    if (response.status === 401 && this.apiKeyOverride) {
+      const cloudApiKey = this.secretStore.getCloudApiKey();
+      if (cloudApiKey && cloudApiKey !== this.apiKeyOverride) {
+        response = await this.requestTranscription(form, cloudApiKey);
+      }
     }
 
     if (!response.ok) {
