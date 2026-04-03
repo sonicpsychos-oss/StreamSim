@@ -69,11 +69,18 @@ const DEAD_VISION_TAGS = new Set([
 ]);
 
 function uniqueTagList(tags: string[]): string[] {
-  return tags
+  const normalized = tags
     .map((tag) => tag.trim().toLowerCase())
     .filter(Boolean)
-    .filter((tag, index, arr) => arr.indexOf(tag) === index)
-    .slice(0, 8);
+    .filter((tag, index, arr) => arr.indexOf(tag) === index);
+  const specificitySignals = /\b(black|white|red|blue|green|yellow|pink|purple|orange|brown|blonde|brunette|hair|shirt|hoodie|jacket|hat|beanie|glasses|eyes|makeup|beard|mustache|braid|ponytail|curly|straight|wavy)\b/i;
+  return normalized
+    .sort((a, b) => {
+      const aScore = (specificitySignals.test(a) ? 2 : 0) + Math.min(3, Math.floor(a.length / 10));
+      const bScore = (specificitySignals.test(b) ? 2 : 0) + Math.min(3, Math.floor(b.length / 10));
+      return bScore - aScore;
+    })
+    .slice(0, 12);
 }
 
 function filterDeadVisionTags(tags: string[]): string[] {
@@ -428,14 +435,14 @@ export class VisionPollingService {
             {
               role: "system",
               content:
-                "You are a stream-vision tagger. Prioritize accuracy first, then detail. Prefer concrete observations over hype. Include neutral descriptors when appropriate (examples: neutral expression, reading chat, still posture). Use raw, unfiltered, slang-aware descriptors only when clearly visible, and describe intent without euphemisms. Tag hand gestures explicitly and preserve valence/context (examples: middle finger, flipping off chat, heart hands, finger heart, thumbs up). If a provocative/aggressive hand gesture appears, tag it directly (examples: middle finger, aggressive gesture). Translate the scene into context-rich tags across four buckets when visible: facial expressions (focused/frustrated/smiling), posture/body language (leaning in, slumped, waving), activity (reading chat, adjusting headset, drinking water), and environment (dim lighting, rgb glow). Avoid static object lists unless they directly explain action/mood. Exclude generic dead tags such as person, man, woman, game, room, camera, monitor, stream, and video."
+                "You are a stream-vision tagger. Prioritize accuracy first, then detail. Prefer concrete observations over hype. Include neutral descriptors when appropriate (examples: neutral expression, reading chat, still posture). Use raw, unfiltered, slang-aware descriptors only when clearly visible, and describe intent without euphemisms. Tag hand gestures explicitly and preserve valence/context (examples: middle finger, flipping off chat, heart hands, finger heart, thumbs up). If a provocative/aggressive hand gesture appears, tag it directly (examples: middle finger, aggressive gesture). Translate the scene into context-rich tags across these buckets when visible: facial expressions, posture/body language, activity, environment, and APPEARANCE DETAILS (hair color/style, facial hair, top/clothing type and color, notable accessories). Appearance details are high priority when visible. Avoid static object lists unless they directly explain action/mood. Exclude generic dead tags such as person, man, woman, game, room, camera, monitor, stream, and video."
             },
             {
               role: "user",
               content: [
                 {
                   type: "text",
-                  text: 'Return strict JSON: {"tags":["tag1","tag2","tag3"]}. Use short phrase-style tags focused on actions/expressions/energy (not generic object labels).'
+                  text: 'Return strict JSON: {"tags":["tag1","tag2","tag3"]}. Produce 6-10 diverse tags spanning expression, posture, activity, environment, and visible appearance details (hair/clothing/accessories). Include subtle but observable nuance (examples: skeptical smirk, leaning toward monitor, adjusting hoodie collar) when visible. Include color/style only when clearly visible. If a detail is not clearly visible, do not guess.'
                 },
                 {
                   type: "image_url",

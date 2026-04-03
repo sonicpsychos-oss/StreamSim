@@ -15,6 +15,9 @@ async function withRetry<T>(attempts: number, fn: () => Promise<T>, onRetryProgr
     try {
       return await fn();
     } catch (error) {
+      if ((error as Error).name === "AbortError") {
+        throw error;
+      }
       lastError = error;
       if (i < attempts) {
         onRetryProgress?.(i + 1, (error as Error).message);
@@ -23,6 +26,18 @@ async function withRetry<T>(attempts: number, fn: () => Promise<T>, onRetryProgr
     }
   }
   throw lastError;
+}
+
+function composeAbortSignal(timeoutMs: number, externalSignal?: AbortSignal): AbortSignal {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new DOMException("request timeout", "AbortError")), timeoutMs);
+  const abortFromExternal = () => controller.abort(new DOMException("aborted by orchestrator", "AbortError"));
+  if (externalSignal) {
+    if (externalSignal.aborted) abortFromExternal();
+    else externalSignal.addEventListener("abort", abortFromExternal, { once: true });
+  }
+  controller.signal.addEventListener("abort", () => clearTimeout(timeout), { once: true });
+  return controller.signal;
 }
 
 function effectiveRetryCount(maxRetries: number, requestTimeoutMs: number): number {
@@ -177,6 +192,13 @@ export function systemPromptForPayload(payload: PromptPayload): string {
   const visionFreshnessDirective = visualQuestionDetected && staleVision
     ? "Visual question detected but the latest vision sample is stale or missing. Do not guess. At least one message should ask to wait for a fresh cam update."
     : "Vision freshness looks usable for current tick.";
+  const appearanceQuestionDetected = /\b(shirt|hair|hat|hoodie|jacket|outfit|color|wearing)\b/i.test(transcript);
+  const appearanceSignalsPresent = payload.context.visionTags.some((tag) =>
+    /\b(shirt|hair|hat|hoodie|jacket|outfit|wearing|beard|mustache|braid|ponytail|curly|straight|wavy|black|white|red|blue|green|yellow|pink|purple|orange|brown|blonde)\b/i.test(tag)
+  );
+  const appearanceReliabilityDirective = appearanceQuestionDetected && !appearanceSignalsPresent
+    ? "Streamer asked an appearance-specific visual question, but appearance details are missing in vision tags. Do not pretend certainty; at least one message should say the camera detail is unclear right now."
+    : "Appearance details are sufficiently represented for visual follow-ups when needed.";
   const situationalTags = payload.situationalTags.length ? payload.situationalTags.join(", ") : "none";
   const behavioralModes = payload.behavioralModes.length ? payload.behavioralModes.join(", ") : "default";
   const vibeDirective = payload.context.vibe
@@ -193,7 +215,7 @@ export function systemPromptForPayload(payload: PromptPayload): string {
     // Primacy zone: engine rules
     `Return strict JSON only: {"messages":[{"text":"string","emotes":["string"],"donationCents"?:number|null,"ttsText"?:string|null}]}. Never include usernames.`,
     fishingDirective,
-    `messages must be an array with exactly ${payload.requestedMessageCount} items (valid batch range is 5 to 11 based on viewerCount).`,
+    `messages must be an array with exactly ${payload.requestedMessageCount} items (valid batch range is 5 to 28 based on viewerCount).`,
     "Each message text MUST stay under 10 words.",
     "STRICT COMMAND OVERRIDE (highest priority): if streamer says 'drop [X]' or 'type [X]' or 'spam [X]', message 1 and message 2 MUST be exactly [X] with no extra words, punctuation, or emojis.",
     "COMMAND PRECEDENCE: when command override triggers, it cancels contrast, question-answer, anti-echo, and diversity constraints for message 1/message 2.",
@@ -206,6 +228,7 @@ export function systemPromptForPayload(payload: PromptPayload): string {
     questionDirective,
     visionDirective,
     visionFreshnessDirective,
+    appearanceReliabilityDirective,
     vibeDirective,
     `Situational tags detected by orchestrator metadata: ${situationalTags}`,
     `Behavioral modes selected by orchestrator: ${behavioralModes}`,
@@ -334,8 +357,8 @@ function isResponseFormatSchemaFailure(status: number, detail: string): boolean 
 }
 
 function completionTokenCap(requestedMessageCount: number): number {
-  const safeCount = Math.max(5, Math.min(11, Math.floor(requestedMessageCount || 5)));
-  return Math.max(220, Math.min(520, 120 + safeCount * 30));
+  const safeCount = Math.max(5, Math.min(28, Math.floor(requestedMessageCount || 5)));
+  return Math.max(220, Math.min(900, 120 + safeCount * 30));
 }
 
 export class HybridInferenceProvider implements InferenceProvider {
@@ -380,9 +403,14 @@ export class HybridInferenceProvider implements InferenceProvider {
     }
   }
 
-  public async generate(payload: PromptPayload, config: SimulationConfig, onRetryProgress?: RetryProgressHook): Promise<string> {
+  public async generate(
+    payload: PromptPayload,
+    config: SimulationConfig,
+    onRetryProgress?: RetryProgressHook,
+    abortSignal?: AbortSignal
+  ): Promise<string> {
     if (this.mode === "mock-local" || this.mode === "mock-cloud") {
-      return this.mockProvider.generate(payload, { ...config, inferenceMode: this.mode }, onRetryProgress);
+      return this.mockProvider.generate(payload, { ...config, inferenceMode: this.mode }, onRetryProgress, abortSignal);
     }
 
     const retries = effectiveRetryCount(config.provider.maxRetries, config.provider.requestTimeoutMs);
@@ -392,22 +420,22 @@ export class HybridInferenceProvider implements InferenceProvider {
         retries,
         async () => {
           if (this.mode === "ollama" || this.mode === "lmstudio") {
-            return this.generateLocal(payload, config);
+            return this.generateLocal(payload, config, abortSignal);
           }
-          return this.generateCloud(payload, config);
+          return this.generateCloud(payload, config, abortSignal);
         },
         onRetryProgress
       );
     } catch (primaryError) {
       if (this.mode === "ollama" || this.mode === "lmstudio") {
         onRetryProgress?.(retries + 1, `Local failure: ${(primaryError as Error).message}; falling back to cloud.`);
-        return withRetry(retries, async () => this.generateCloud(payload, config), onRetryProgress);
+        return withRetry(retries, async () => this.generateCloud(payload, config, abortSignal), onRetryProgress);
       }
       throw primaryError;
     }
   }
 
-  private async generateLocal(payload: PromptPayload, config: SimulationConfig): Promise<string> {
+  private async generateLocal(payload: PromptPayload, config: SimulationConfig, abortSignal?: AbortSignal): Promise<string> {
     const isLmStudio = this.mode === "lmstudio";
     const endpoint = isLmStudio ? `${config.provider.localEndpoint}/v1/chat/completions` : `${config.provider.localEndpoint}/api/generate`;
     const body = isLmStudio
@@ -428,7 +456,7 @@ export class HybridInferenceProvider implements InferenceProvider {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(config.provider.requestTimeoutMs),
+      signal: composeAbortSignal(config.provider.requestTimeoutMs, abortSignal),
       body: JSON.stringify(body)
     });
 
@@ -440,7 +468,7 @@ export class HybridInferenceProvider implements InferenceProvider {
     return extractProviderTextOrThrow(data, `${this.mode}:${config.provider.localModel}`);
   }
 
-  private async generateCloud(payload: PromptPayload, config: SimulationConfig): Promise<string> {
+  private async generateCloud(payload: PromptPayload, config: SimulationConfig, abortSignal?: AbortSignal): Promise<string> {
     const apiKey = this.secretStore.getCloudApiKey();
     if (!apiKey) {
       throw new Error("Missing cloud API key in keychain for cloud provider.");
@@ -488,11 +516,14 @@ export class HybridInferenceProvider implements InferenceProvider {
               "Content-Type": "application/json",
               ...this.cloudHeaders(apiKey)
             },
-            signal: AbortSignal.timeout(config.provider.requestTimeoutMs),
+            signal: composeAbortSignal(config.provider.requestTimeoutMs, abortSignal),
             body: JSON.stringify(body)
           });
         } catch (error) {
           const message = (error as Error).message || "request failed";
+          if ((error as Error).name === "AbortError") {
+            throw error;
+          }
           lastError = new Error(`Cloud provider timeout/network failure for model ${model}: ${message}`);
           if (model === config.provider.cloudModel && isRetryableCloudFailure(lastError.message)) break;
           throw lastError;

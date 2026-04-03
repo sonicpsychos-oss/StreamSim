@@ -223,12 +223,25 @@ export class ModSimController {
 
     const deduped = withStarterDiversity.map((message) => ({ ...message }));
     const seen = new Set<string>();
-    const fallbackReplies = ["new take pls", "same line again??", "switch it up bro", "different angle pls"];
+    const fallbackReplies = [
+      "new angle pls",
+      "different take",
+      "say it another way",
+      "run a fresh line",
+      "switch cadence",
+      "not this again",
+      "change the wording",
+      "new flavor pls",
+      "mix it up chat",
+      "ok pivot now",
+      "same beat again",
+      "throw a curveball"
+    ];
     deduped.forEach((message, index) => {
       const key = this.normalizedDiversityKey(message.text);
       if (!key) return;
       if (seen.has(key)) {
-        message.text = fallbackReplies[index % fallbackReplies.length];
+        message.text = fallbackReplies[(index + Math.floor(Math.random() * fallbackReplies.length)) % fallbackReplies.length];
         return;
       }
       seen.add(key);
@@ -302,23 +315,82 @@ export class ModSimController {
 
   public isReadingChat(transcript: string, recentChatHistory: string[]): boolean {
     if (!transcript.trim() || recentChatHistory.length === 0) return false;
+    const normalizedTranscript = transcript
+      .toLowerCase()
+      .replace(/[^a-z0-9\s']/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const transcriptWords = normalizedTranscript.split(" ").filter(Boolean);
+    if (transcriptWords.length >= 3 && transcriptWords.length <= 6) {
+      const exactQuoted = recentChatHistory.some((line) => {
+        const normalizedLine = line
+          .toLowerCase()
+          .replace(/[^a-z0-9\s']/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        return normalizedLine.includes(normalizedTranscript) || normalizedTranscript.includes(normalizedLine);
+      });
+      if (exactQuoted) return true;
+    }
     const transcriptTokens = this.tokenizeForOverlap(transcript);
     const historyTokens = this.tokenizeForOverlap(recentChatHistory.join(" "));
     if (!transcriptTokens.size || !historyTokens.size) return false;
     const overlap = Array.from(transcriptTokens).filter((token) => historyTokens.has(token)).length;
-    return overlap / transcriptTokens.size >= 0.45;
+    if (transcriptTokens.size < 5) return false;
+    if (overlap < 2) return false;
+    return overlap / transcriptTokens.size >= 0.6;
   }
 
   public rewriteForReadingChat(messages: ChatMessage[]): ChatMessage[] {
-    const reactions = [
-      "l chatter",
-      "ratio that chatter",
-      "he reading us again 💀",
-      "chat got him pressed",
-      "stop quoting us bro",
-      "read your script not ours"
+    const laughAlong = [
+      "LMAOOO true tho",
+      "nah thats facts 😭",
+      "exactlyyyy",
+      "im crying bro 😂",
+      "you got him ngl",
+      "thats what i said fr",
+      "chat catching strays 💀",
+      "nah you cooked him",
+      "yep thats the one",
+      "he asked for that",
+      "W read",
+      "frfr he walked into that"
     ];
-    return messages.map((message, index) => ({ ...message, text: reactions[index % reactions.length] }));
+    const agreeAndPileOn = [
+      "deadass i agree",
+      "same i peeped that",
+      "you right on that",
+      "facts no printer",
+      "nah chat saw it too",
+      "we all thinking it",
+      "thats exactly it",
+      "co-sign",
+      "real talk",
+      "big facts",
+      "not wrong at all",
+      "valid take"
+    ];
+    const gentlePushback = [
+      "aight now move on 😂",
+      "ok ok next topic",
+      "you made your point",
+      "we heard it gang",
+      "run the next thing",
+      "dont loop it too long",
+      "say less keep rolling",
+      "next question maybe"
+    ];
+    const emojiCaps = ["💀", "😭", "😂", "🫡", "🤨", "👀", "🔥", "😮‍💨"];
+
+    const reactions = [...laughAlong, ...agreeAndPileOn, ...gentlePushback];
+    const pool = reactions
+      .map((text) => {
+        const withEmoji = Math.random() < 0.35 ? `${text} ${emojiCaps[Math.floor(Math.random() * emojiCaps.length)]}` : text;
+        return { text: withEmoji, rank: Math.random() };
+      })
+      .sort((a, b) => a.rank - b.rank)
+      .map((entry) => entry.text);
+    return messages.map((message, index) => ({ ...message, text: pool[index % pool.length] }));
   }
 
   private stripBannedStarters(messages: ChatMessage[], transcript: string): ChatMessage[] {
