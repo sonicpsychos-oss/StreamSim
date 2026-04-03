@@ -93,8 +93,8 @@ class OpenAiWhisperBackend implements SttBackend {
   constructor(private readonly endpoint: string, private readonly model: string, private readonly apiKeyOverride?: string) {}
 
   public async transcribe(frame: Buffer): Promise<string> {
-    const apiKey = this.apiKeyOverride ?? this.secretStore.getCloudApiKey();
-    if (!apiKey) throw new Error("Cloud API key missing. Save Cloud API key in Secrets + Maintenance.");
+    const primaryApiKey = this.apiKeyOverride ?? this.secretStore.getCloudApiKey();
+    if (!primaryApiKey) throw new Error("Cloud API key missing. Save Cloud API key in Secrets + Maintenance.");
 
     const form = new FormData();
     const audioBlob = new Blob([new Uint8Array(frame)], { type: "audio/wav" });
@@ -102,16 +102,12 @@ class OpenAiWhisperBackend implements SttBackend {
     form.append("model", this.model);
     form.append("response_format", "json");
 
-    let response: Response;
-    try {
-      response = await fetch(this.endpoint, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: form,
-        signal: AbortSignal.timeout(10000)
-      });
-    } catch (error) {
-      throw new Error(`OpenAI STT request failed for ${this.endpoint}: ${(error as Error).message}`);
+    let response = await this.requestTranscription(form, primaryApiKey);
+    if (response.status === 401 && this.apiKeyOverride) {
+      const cloudApiKey = this.secretStore.getCloudApiKey();
+      if (cloudApiKey && cloudApiKey !== this.apiKeyOverride) {
+        response = await this.requestTranscription(form, cloudApiKey);
+      }
     }
 
     if (!response.ok) {
@@ -124,6 +120,19 @@ class OpenAiWhisperBackend implements SttBackend {
     }
     const json = (await response.json()) as { text?: string };
     return json.text?.trim() ?? "";
+  }
+
+  private async requestTranscription(form: FormData, apiKey: string): Promise<Response> {
+    try {
+      return await fetch(this.endpoint, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: form,
+        signal: AbortSignal.timeout(10000)
+      });
+    } catch (error) {
+      throw new Error(`OpenAI STT request failed for ${this.endpoint}: ${(error as Error).message}`);
+    }
   }
 }
 
