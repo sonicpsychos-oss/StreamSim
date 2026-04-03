@@ -28,6 +28,7 @@ describe("ModSimController reading-chat detection", () => {
   it("requires stronger overlap before triggering reading-chat rewrites", () => {
     const modSim = new ModSimController();
     expect(modSim.isReadingChat("chat chat chat", ["chat said this already"])).toBe(false);
+    expect(modSim.isReadingChat("bro that take is wild", ["bro that take is wild"])).toBe(true);
     expect(
       modSim.isReadingChat(
         "you said same strategy and same angle again today",

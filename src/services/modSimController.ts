@@ -315,6 +315,23 @@ export class ModSimController {
 
   public isReadingChat(transcript: string, recentChatHistory: string[]): boolean {
     if (!transcript.trim() || recentChatHistory.length === 0) return false;
+    const normalizedTranscript = transcript
+      .toLowerCase()
+      .replace(/[^a-z0-9\s']/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const transcriptWords = normalizedTranscript.split(" ").filter(Boolean);
+    if (transcriptWords.length >= 3 && transcriptWords.length <= 6) {
+      const exactQuoted = recentChatHistory.some((line) => {
+        const normalizedLine = line
+          .toLowerCase()
+          .replace(/[^a-z0-9\s']/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        return normalizedLine.includes(normalizedTranscript) || normalizedTranscript.includes(normalizedLine);
+      });
+      if (exactQuoted) return true;
+    }
     const transcriptTokens = this.tokenizeForOverlap(transcript);
     const historyTokens = this.tokenizeForOverlap(recentChatHistory.join(" "));
     if (!transcriptTokens.size || !historyTokens.size) return false;

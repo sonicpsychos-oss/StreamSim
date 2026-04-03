@@ -4,7 +4,7 @@ import { mergeConfig, sanitizeConfig } from "../src/config/runtimeConfig.js";
 import { classifyMalformedOutput, parseInferenceOutput, repairInferenceOutput } from "../src/pipeline/outputParser.js";
 import { buildPromptPayload, checkFishingState } from "../src/pipeline/promptBuilder.js";
 import { explainInferenceFailure } from "../src/services/simulationOrchestrator.js";
-import { HybridInferenceProvider } from "../src/llm/realInferenceProvider.js";
+import { HybridInferenceProvider, systemPromptForPayload } from "../src/llm/realInferenceProvider.js";
 
 describe("runtime config", () => {
   it("clamps invalid values and supports nested sections", () => {
@@ -254,5 +254,57 @@ describe("cloud generation hardening", () => {
 
     await expect(provider.generate(payload, defaultConfig)).rejects.toThrow(/Provider returned empty content/);
     vi.unstubAllGlobals();
+  });
+
+  it("aborts in-flight cloud request when abortSignal is triggered", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "test-key";
+    const provider = new HybridInferenceProvider("openai");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url, init) => {
+        const signal = init?.signal as AbortSignal | undefined;
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+        });
+      })
+    );
+    const payload = buildPromptPayload(defaultConfig, {
+      transcript: "yo",
+      tone: { volumeRms: 0.2, paceWpm: 110 },
+      visionTags: [],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    });
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 20);
+    await expect(provider.generate(payload, defaultConfig, undefined, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("vision appearance reliability prompting", () => {
+  it("asks model to avoid certainty when appearance questions lack appearance tags", () => {
+    const payload = buildPromptPayload(defaultConfig, {
+      transcript: "what color is my shirt and how does my hair look",
+      tone: { volumeRms: 0.2, paceWpm: 110 },
+      visionTags: ["half smirk", "headset on head", "dim lighting"],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    });
+    const prompt = systemPromptForPayload(payload);
+    expect(prompt).toMatch(/appearance-specific visual question/i);
+    expect(prompt).toMatch(/camera detail is unclear right now/i);
+  });
+
+  it("allows visual follow-up when appearance tags are available", () => {
+    const payload = buildPromptPayload(defaultConfig, {
+      transcript: "what color is my shirt and how does my hair look",
+      tone: { volumeRms: 0.2, paceWpm: 110 },
+      visionTags: ["blue hoodie", "curly dark hair", "smiling"],
+      recentChatHistory: [],
+      timestamp: new Date().toISOString()
+    });
+    const prompt = systemPromptForPayload(payload);
+    expect(prompt).toMatch(/appearance details are sufficiently represented/i);
   });
 });

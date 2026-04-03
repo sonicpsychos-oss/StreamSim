@@ -292,12 +292,18 @@ export class SimulationOrchestrator {
     onRetryProgress?: (attempt: number, reason: string) => void
   ): Promise<string> {
     const boundedTimeoutMs = Math.max(2500, Math.min(config.provider.requestTimeoutMs, INFERENCE_STALL_BUDGET_MS));
-    return Promise.race([
-      provider.generate(payload, config, onRetryProgress),
-      new Promise<string>((_, reject) => {
-        setTimeout(() => reject(new Error(`Primary inference exceeded ${boundedTimeoutMs}ms stall budget.`)), boundedTimeoutMs);
-      })
-    ]);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), boundedTimeoutMs);
+    try {
+      return await provider.generate(payload, config, onRetryProgress, controller.signal);
+    } catch (error) {
+      if ((error as Error).name === "AbortError") {
+        throw new Error(`Primary inference exceeded ${boundedTimeoutMs}ms stall budget.`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async loop(): Promise<void> {
