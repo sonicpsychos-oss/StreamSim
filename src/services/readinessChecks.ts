@@ -26,7 +26,7 @@ async function checkNetwork(config: SimulationConfig): Promise<ReadinessCheck> {
   }
 }
 
-function checkDevice(config: SimulationConfig, credentials: { hasCloudKey: boolean; hasDeepgramKey: boolean }): ReadinessCheck {
+function checkDevice(config: SimulationConfig, credentials: { hasCloudKey: boolean; hasDeepgramKey: boolean; hasOpenAiSttKey: boolean }): ReadinessCheck {
   const errors: string[] = [];
   try {
     new URL(config.capture.sttEndpoint);
@@ -46,9 +46,9 @@ function checkDevice(config: SimulationConfig, credentials: { hasCloudKey: boole
   if (
     config.capture.useRealCapture &&
     (config.capture.sttProvider === "openai-whisper" || config.capture.sttProvider === "gpt-4o-mini-transcribe") &&
-    !credentials.hasCloudKey
+    !credentials.hasOpenAiSttKey
   ) {
-    errors.push("Cloud OpenAI STT selected but no cloud API key is stored.");
+    errors.push("Cloud OpenAI STT selected but no OpenAI STT API key is stored.");
   }
 
   if (config.capture.useRealCapture && (config.capture.sttProvider === "whispercpp" || config.capture.sttProvider === "local-whisper") && !config.capture.sttEndpoint.startsWith("http")) {
@@ -74,7 +74,7 @@ function checkDevice(config: SimulationConfig, credentials: { hasCloudKey: boole
   };
 }
 
-function checkCredentials(config: SimulationConfig, credentials: { hasCloudKey: boolean; hasDeepgramKey: boolean }): ReadinessCheck {
+function checkCredentials(config: SimulationConfig, credentials: { hasCloudKey: boolean; hasDeepgramKey: boolean; hasOpenAiSttKey: boolean }): ReadinessCheck {
   const cloudInference = config.inferenceMode === "openai" || config.inferenceMode === "groq" || config.inferenceMode === "mock-cloud";
   const cloudTts = config.ttsEnabled && config.ttsMode === "cloud" && config.ttsProvider === "openai";
   const deepgramTts = config.ttsEnabled && config.ttsMode === "cloud" && config.ttsProvider === "deepgram_aura";
@@ -124,7 +124,7 @@ async function checkSidecar(config: SimulationConfig, sidecar: SidecarManager): 
 export async function runReadinessChecks(
   config: SimulationConfig,
   sidecar = new SidecarManager(),
-  credentials = { hasCloudKey: false, hasDeepgramKey: false }
+  credentials = { hasCloudKey: false, hasDeepgramKey: false, hasOpenAiSttKey: false }
 ): Promise<{ checks: ReadinessCheck[]; ready: boolean }> {
   const checks = [checkDevice(config, credentials), checkCredentials(config, credentials), await checkNetwork(config), await checkSidecar(config, sidecar)];
   const ready = checks.filter((check) => check.severity === "blocking").every((check) => check.ok);

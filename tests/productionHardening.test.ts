@@ -47,6 +47,7 @@ describe("real audio capture + stt pause/resume", () => {
     delete process.env.STREAMSIM_OPENAI_STT_MODEL;
     delete process.env.STREAMSIM_OPENAI_WHISPER_MODEL;
     delete process.env.STREAMSIM_OPENAI_GPT4O_TRANSCRIBE_MODEL;
+    delete process.env.STREAMSIM_OPENAI_STT_API_KEY;
     delete process.env.STREAMSIM_OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
     process.env.STREAMSIM_CLOUD_API_KEY = "test-cloud-key";
@@ -110,7 +111,7 @@ describe("real audio capture + stt pause/resume", () => {
   });
 
   it("uses provider-specific default model wiring for OpenAI cloud STT providers", async () => {
-    process.env.STREAMSIM_CLOUD_API_KEY = "test-cloud-key";
+    process.env.STREAMSIM_OPENAI_STT_API_KEY = "test-openai-stt-key";
     const inspectModelCalls: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -133,7 +134,7 @@ describe("real audio capture + stt pause/resume", () => {
   });
 
   it("supports explicit provider-specific model overrides for OpenAI cloud STT", async () => {
-    process.env.STREAMSIM_CLOUD_API_KEY = "test-cloud-key";
+    process.env.STREAMSIM_OPENAI_STT_API_KEY = "test-openai-stt-key";
     process.env.STREAMSIM_OPENAI_WHISPER_MODEL = "whisper-1-large-v3";
     process.env.STREAMSIM_OPENAI_GPT4O_TRANSCRIBE_MODEL = "gpt-4o-transcribe";
 
@@ -158,8 +159,9 @@ describe("real audio capture + stt pause/resume", () => {
     expect(inspectModelCalls[1]).toBe("gpt-4o-transcribe");
   });
 
-  it("uses cloud API key for STT authorization even when OpenAI-specific env keys are set", async () => {
-    process.env.STREAMSIM_CLOUD_API_KEY = "cloud-key-that-might-be-non-openai";
+  it("uses dedicated OpenAI STT API key for STT authorization when present", async () => {
+    process.env.STREAMSIM_CLOUD_API_KEY = "cloud-key-for-chat-inference";
+    process.env.STREAMSIM_OPENAI_STT_API_KEY = "dedicated-openai-stt-key";
     process.env.STREAMSIM_OPENAI_API_KEY = "openai-stt-key";
     process.env.OPENAI_API_KEY = "openai-global-key";
     const authHeaders: string[] = [];
@@ -176,16 +178,18 @@ describe("real audio capture + stt pause/resume", () => {
 
     const stt = new DeviceSttEngine("mock");
     await stt.transcribeFrameWith("openai-whisper", undefined, Buffer.from("audio"));
-    expect(authHeaders[0]).toBe("Bearer cloud-key-that-might-be-non-openai");
+    expect(authHeaders[0]).toBe("Bearer dedicated-openai-stt-key");
   });
 
-  it("fails STT auth when cloud key is unavailable, even if OpenAI-specific env keys exist", async () => {
+  it("falls back to OpenAI env keys when dedicated OpenAI STT key is unavailable", async () => {
     delete process.env.STREAMSIM_CLOUD_API_KEY;
+    delete process.env.STREAMSIM_OPENAI_STT_API_KEY;
     process.env.STREAMSIM_OPENAI_API_KEY = "openai-specific-key";
-    process.env.OPENAI_API_KEY = "openai-global-key";
+    const authHeaders: string[] = [];
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => {
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        authHeaders.push(String((init?.headers as Record<string, string>).Authorization));
         return {
           ok: true,
           json: async () => ({ text: "ok" })
@@ -194,26 +198,18 @@ describe("real audio capture + stt pause/resume", () => {
     );
 
     const stt = new DeviceSttEngine("mock");
-    await expect(stt.transcribeFrameWith("gpt-4o-mini-transcribe", undefined, Buffer.from("audio"))).rejects.toThrow(
-      "Cloud API key missing. Save Cloud API key in Secrets + Maintenance."
-    );
+    await stt.transcribeFrameWith("gpt-4o-mini-transcribe", undefined, Buffer.from("audio"));
+    expect(authHeaders[0]).toBe("Bearer openai-specific-key");
   });
 
-  it("retries STT auth with OpenAI-specific env key if cloud key is rejected", async () => {
-    process.env.STREAMSIM_CLOUD_API_KEY = "cloud-key-that-401s";
-    process.env.STREAMSIM_OPENAI_API_KEY = "fallback-openai-key";
-    const authHeaders: string[] = [];
+  it("fails STT auth when no OpenAI STT key material is available", async () => {
+    delete process.env.STREAMSIM_CLOUD_API_KEY;
+    delete process.env.STREAMSIM_OPENAI_STT_API_KEY;
+    delete process.env.STREAMSIM_OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (_url: string, init?: RequestInit) => {
-        authHeaders.push(String((init?.headers as Record<string, string>).Authorization));
-        if (authHeaders.length === 1) {
-          return {
-            ok: false,
-            status: 401,
-            json: async () => ({ error: "unauthorized" })
-          } as Response;
-        }
+      vi.fn(async () => {
         return {
           ok: true,
           status: 200,
@@ -223,8 +219,9 @@ describe("real audio capture + stt pause/resume", () => {
     );
 
     const stt = new DeviceSttEngine("mock");
-    await stt.transcribeFrameWith("openai-whisper", undefined, Buffer.from("audio"));
-    expect(authHeaders).toEqual(["Bearer cloud-key-that-401s", "Bearer fallback-openai-key"]);
+    await expect(stt.transcribeFrameWith("openai-whisper", undefined, Buffer.from("audio"))).rejects.toThrow(
+      "OpenAI STT API key missing. Save OpenAI STT API key in Secrets + Maintenance."
+    );
   });
 });
 

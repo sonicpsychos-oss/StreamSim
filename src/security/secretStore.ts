@@ -6,14 +6,16 @@ import os from "node:os";
 const SERVICE_NAME = "streamsim";
 const CLOUD_ACCOUNT_NAME = "cloud-api-key";
 const DEEPGRAM_ACCOUNT_NAME = "deepgram-api-key";
+const OPENAI_STT_ACCOUNT_NAME = "openai-stt-api-key";
 const SECRET_FILE_PATH = path.join(os.homedir(), ".streamsim", "secrets.json");
 
-type SecretKeyName = "STREAMSIM_CLOUD_API_KEY" | "DEEPGRAM_API_KEY";
+type SecretKeyName = "STREAMSIM_CLOUD_API_KEY" | "DEEPGRAM_API_KEY" | "STREAMSIM_OPENAI_STT_API_KEY";
 
 export interface SecretStoreDiagnostics {
   keychainBacked: boolean;
   hasCloudKey: boolean;
   hasDeepgramKey: boolean;
+  hasOpenAiSttKey: boolean;
   provider: string;
   available: boolean;
   warning?: string;
@@ -172,8 +174,21 @@ export class SecretStore {
     return this.setSecretValue("DEEPGRAM_API_KEY", DEEPGRAM_ACCOUNT_NAME, "StreamSim Deepgram API Key", value);
   }
 
+  public getOpenAiSttApiKey(): string {
+    return this.getSecretValue("STREAMSIM_OPENAI_STT_API_KEY", OPENAI_STT_ACCOUNT_NAME, [
+      "STREAMSIM_OPENAI_STT_API_KEY",
+      "STREAMSIM_OPENAI_API_KEY",
+      "OPENAI_API_KEY"
+    ]);
+  }
+
+  public setOpenAiSttApiKey(value: string): boolean {
+    return this.setSecretValue("STREAMSIM_OPENAI_STT_API_KEY", OPENAI_STT_ACCOUNT_NAME, "StreamSim OpenAI STT API Key", value);
+  }
+
   public hasKey(name: SecretKeyName): boolean {
     if (name === "DEEPGRAM_API_KEY") return Boolean(this.getDeepgramApiKey());
+    if (name === "STREAMSIM_OPENAI_STT_API_KEY") return Boolean(this.getOpenAiSttApiKey());
     return Boolean(this.getCloudApiKey());
   }
 
@@ -181,13 +196,21 @@ export class SecretStore {
     const availability = this.provider.isAvailable();
     const cloudKeychainValue = this.getKeyFromKeychain(CLOUD_ACCOUNT_NAME);
     const deepgramKeychainValue = this.getKeyFromKeychain(DEEPGRAM_ACCOUNT_NAME);
+    const openAiSttKeychainValue = this.getKeyFromKeychain(OPENAI_STT_ACCOUNT_NAME);
     const fromFile = readFileSecrets();
     return {
-      keychainBacked: Boolean(cloudKeychainValue || deepgramKeychainValue),
+      keychainBacked: Boolean(cloudKeychainValue || deepgramKeychainValue || openAiSttKeychainValue),
       hasCloudKey: Boolean(cloudKeychainValue || fromFile.STREAMSIM_CLOUD_API_KEY || process.env.STREAMSIM_CLOUD_API_KEY),
       hasDeepgramKey: Boolean(deepgramKeychainValue || fromFile.DEEPGRAM_API_KEY || process.env.DEEPGRAM_API_KEY || process.env.STREAMSIM_DEEPGRAM_API_KEY),
+      hasOpenAiSttKey: Boolean(
+        openAiSttKeychainValue ||
+          fromFile.STREAMSIM_OPENAI_STT_API_KEY ||
+          process.env.STREAMSIM_OPENAI_STT_API_KEY ||
+          process.env.STREAMSIM_OPENAI_API_KEY ||
+          process.env.OPENAI_API_KEY
+      ),
       provider: availability.ok ? this.provider.name : `${this.provider.name}+file-fallback`,
-      available: availability.ok || Boolean(fromFile.STREAMSIM_CLOUD_API_KEY || fromFile.DEEPGRAM_API_KEY),
+      available: availability.ok || Boolean(fromFile.STREAMSIM_CLOUD_API_KEY || fromFile.DEEPGRAM_API_KEY || fromFile.STREAMSIM_OPENAI_STT_API_KEY),
       warning: availability.warning
     };
   }
