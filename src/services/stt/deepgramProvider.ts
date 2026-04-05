@@ -22,12 +22,11 @@ export class DeepgramNova3Provider {
       language: this.options.language ?? "en-US",
       punctuate: "true",
       interim_results: "true",
-      utterance_end_ms: String(this.options.utteranceEndMs ?? 3000),
+      utterance_end_ms: String(this.options.utteranceEndMs ?? 1800),
       smart_format: String(this.options.smartFormat ?? true),
-      sentiment: String(this.options.sentiment ?? true),
-      intents: String(this.options.intents ?? true),
-      topics: String(this.options.topics ?? true),
-      keywords: "up stream:3,what's up stream:2.5,stream sim:2,chat:1.5"
+      sentiment: String(this.options.sentiment ?? false),
+      intents: String(this.options.intents ?? false),
+      topics: String(this.options.topics ?? false)
     } as any);
   }
 }

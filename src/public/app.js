@@ -67,9 +67,9 @@ let latestDeviceVerification = {
   cameraFailureReason: null
 };
 
-const MIC_CHECK_PROBE_SECONDS = 3.5;
+const MIC_CHECK_PROBE_SECONDS = 1.6;
 const MIC_CHECK_BUFFER_SECONDS = 8;
-const MIC_CHECK_MIN_SAMPLES = 12000;
+const MIC_CHECK_MIN_SAMPLES = 4096;
 const CAMERA_FRAME_CONFIRM_TIMEOUT_MS = 3000;
 const DEFAULT_LIVE_MONITOR_VISION_SAMPLE_MS = 7000;
 const STATUS_AUTO_REFRESH_MS = 5000;
@@ -77,7 +77,7 @@ const CONFIG_EDIT_GRACE_MS = 15000;
 const STT_DEFAULT_ENDPOINTS = {
   "local-whisper": "http://127.0.0.1:7778/stt",
   whispercpp: "http://127.0.0.1:7778/stt",
-  deepgram: "https://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&filler_words=true&punctuate=true&sentiment=true&topics=true&intents=true&utterance_end_ms=3000",
+  deepgram: "https://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&punctuate=true&utterance_end_ms=1800",
   "openai-whisper": "https://api.openai.com/v1/audio/transcriptions",
   "gpt-4o-mini-transcribe": "https://api.openai.com/v1/audio/transcriptions",
   mock: "http://127.0.0.1:7778/stt"
@@ -98,6 +98,7 @@ const controls = {
   maxRetries: document.getElementById("maxRetries"),
   dropPolicy: document.getElementById("dropPolicy"),
   cloudApiKey: document.getElementById("cloudApiKey"),
+  openAiSttApiKey: document.getElementById("openAiSttApiKey"),
   deepgramApiKey: document.getElementById("deepgramApiKey"),
   slowMode: document.getElementById("slowMode"),
   emoteOnly: document.getElementById("emoteOnly"),
@@ -422,7 +423,7 @@ async function startMicVerificationCheck() {
 
   micCheckDataInterval = setInterval(() => {
     void probeSttFromMicChunk();
-  }, 3200);
+  }, 1400);
 
   setCaptionStatus("Mic stream active. Speak naturally for a few seconds to verify sentence-level STT.", "ok");
   setCaptionPreview(latestCaptionText || "Listening for speech...");
@@ -788,9 +789,9 @@ function summarizeSttHealth(payload) {
   } else if (provider === "deepgram" && !sttRuntime.deepgramKeyPresent) {
     ready = false;
     detail = "Deepgram selected but STREAMSIM_DEEPGRAM_API_KEY is missing";
-  } else if ((provider === "openai-whisper" || provider === "gpt-4o-mini-transcribe") && !sttRuntime.cloudKeyPresent) {
+  } else if ((provider === "openai-whisper" || provider === "gpt-4o-mini-transcribe") && !sttRuntime.openAiSttKeyPresent) {
     ready = false;
-    detail = "Cloud OpenAI STT selected but no cloud API key is stored";
+    detail = "Cloud OpenAI STT selected but no OpenAI STT API key is stored";
   } else if ((provider === "whispercpp" || provider === "local-whisper") && !endpoint.startsWith("http")) {
     ready = false;
     detail = "Whisper endpoint must be a valid URL";
@@ -871,6 +872,7 @@ function summarizeApiKeyHealth(payload) {
 
   const hasCloudKey = Boolean(secrets.hasCloudKey);
   const hasDeepgramKey = Boolean(secrets.hasDeepgramKey);
+  const hasOpenAiSttKey = Boolean(secrets.hasOpenAiSttKey);
   const ttsEnabled = Boolean(config.ttsEnabled) && (config.ttsMode ?? "local") !== "off";
   const ttsProvider = config.ttsProvider ?? "local";
   const sttProvider = capture.sttProvider ?? "mock";
@@ -889,7 +891,7 @@ function summarizeApiKeyHealth(payload) {
     ? "not required"
     : sttProvider === "deepgram"
       ? hasDeepgramKey ? "present (Deepgram)" : "missing (Deepgram)"
-      : hasCloudKey ? "present (cloud)" : "missing (cloud)";
+      : hasOpenAiSttKey ? "present (OpenAI STT)" : "missing (OpenAI STT)";
 
   const audioIntelligenceKeyRequired = audioIntelligenceEnabled && useRealCapture && sttProvider === "deepgram";
   const audioIntelligenceKeyStatus = !audioIntelligenceKeyRequired
@@ -901,6 +903,7 @@ function summarizeApiKeyHealth(payload) {
     `STT API key: ${sttKeyStatus}`,
     `Audio intelligence API key: ${audioIntelligenceKeyStatus}`,
     `Cloud key detected: ${hasCloudKey ? "yes" : "no"}`,
+    `OpenAI STT key detected: ${hasOpenAiSttKey ? "yes" : "no"}`,
     `Deepgram key detected: ${hasDeepgramKey ? "yes" : "no"}`
   ].join("\n");
 }
@@ -923,7 +926,7 @@ function renderStatusCards(payload) {
     { label: "Microphone", summary: latestDeviceVerification.micPermission ? "ready" : "not verified", detail: latestCaptionText ? `Latest: ${latestCaptionText}` : "Run Verify Microphone" },
     { label: "Camera", summary: latestDeviceVerification.cameraPermission ? "ready" : "not verified", detail: latestDeviceVerification.cameraFailureReason ?? "Run Verify Camera" },
     { label: "Network", summary: diagnosticsSummary?.textContent?.includes("pending") ? "pending" : diagnosticsSummary.textContent.split("\n")[1] ?? "pending", detail: "Boot diagnostics probe" },
-    { label: "Credentials", summary: (apiKeyHealthSummary?.textContent || "").includes("missing") ? "partial" : "ready", detail: "Cloud + Deepgram key checks" }
+    { label: "Credentials", summary: (apiKeyHealthSummary?.textContent || "").includes("missing") ? "partial" : "ready", detail: "Cloud + OpenAI STT + Deepgram key checks" }
   ];
 
   statusCards.innerHTML = "";
@@ -1092,6 +1095,7 @@ const sidecarCancelBtn = document.getElementById("sidecarCancel");
 const sidecarResumeBtn = document.getElementById("sidecarResume");
 const runReadinessBtn = document.getElementById("runReadiness");
 const saveCloudKeyBtn = document.getElementById("saveCloudKey");
+const saveOpenAiSttKeyBtn = document.getElementById("saveOpenAiSttKey");
 const saveDeepgramKeyBtn = document.getElementById("saveDeepgramKey");
 const refreshStatusBtn = document.getElementById("refreshStatus");
 const verifyMicBtn = document.getElementById("verifyMic");
@@ -1137,14 +1141,15 @@ startBtn.addEventListener("click", async () => {
         controls.useRealCapture.checked &&
         (controls.sttProvider.value === "openai-whisper" || controls.sttProvider.value === "gpt-4o-mini-transcribe");
       const hasCloudKey = Boolean(latestStatusPayload?.secrets?.hasCloudKey);
+      const hasOpenAiSttKey = Boolean(latestStatusPayload?.secrets?.hasOpenAiSttKey || latestStatusPayload?.stt?.openAiSttKeyPresent);
       if (cloudMode && !hasCloudKey) {
         throw new Error("Cloud inference selected but no API key is stored. Save a Cloud API key before starting.");
       }
       if (controls.ttsEnabled.checked && controls.ttsMode.value === "cloud" && controls.ttsProvider.value === "openai" && !hasCloudKey) {
         throw new Error("OpenAI TTS selected but no Cloud API key is stored. Save a Cloud API key or switch TTS provider.");
       }
-      if (cloudStt && !hasCloudKey) {
-        throw new Error("Cloud OpenAI STT selected but no API key is stored. Save a Cloud API key or switch STT provider.");
+      if (cloudStt && !hasOpenAiSttKey) {
+        throw new Error("Cloud OpenAI STT selected but no OpenAI STT API key is stored. Save OpenAI STT API key or switch STT provider.");
       }
       const hasDeepgramKey = Boolean(latestStatusPayload?.secrets?.hasDeepgramKey || latestStatusPayload?.stt?.deepgramKeyPresent);
       if (controls.sttProvider.value === "deepgram" && !hasDeepgramKey) {
@@ -1221,6 +1226,18 @@ saveCloudKeyBtn.addEventListener("click", async () => {
   });
   if (!saved) return;
   controls.cloudApiKey.value = "";
+  await refreshStatus({ preserveUnsavedConfig: true });
+});
+
+saveOpenAiSttKeyBtn.addEventListener("click", async () => {
+  const saved = await runAction({
+    button: saveOpenAiSttKeyBtn,
+    pendingText: "Saving OpenAI STT API key...",
+    successText: "OpenAI STT API key saved to keychain.",
+    onRun: () => post("/api/secrets/openai-stt-key", { key: controls.openAiSttApiKey.value })
+  });
+  if (!saved) return;
+  controls.openAiSttApiKey.value = "";
   await refreshStatus({ preserveUnsavedConfig: true });
 });
 

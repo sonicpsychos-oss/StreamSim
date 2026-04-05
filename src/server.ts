@@ -51,7 +51,8 @@ async function refreshBootAndReadiness(): Promise<void> {
   const credentials = secretStore.diagnostics();
   readinessState = await runReadinessChecks(config, undefined, {
     hasCloudKey: credentials.hasCloudKey,
-    hasDeepgramKey: credentials.hasDeepgramKey
+    hasDeepgramKey: credentials.hasDeepgramKey,
+    hasOpenAiSttKey: credentials.hasOpenAiSttKey
   });
 }
 
@@ -138,12 +139,21 @@ app.post("/api/start", (_req, res) => {
   const credentials = secretStore.diagnostics();
   const hasCloudKey = credentials.hasCloudKey;
   const hasDeepgramKey = credentials.hasDeepgramKey;
+  const hasOpenAiSttKey = credentials.hasOpenAiSttKey;
 
-  if ((cloudInference || cloudTts || cloudStt) && !hasCloudKey) {
+  if ((cloudInference || cloudTts) && !hasCloudKey) {
     res.status(400).json({
       ok: false,
       error: "Cloud mode selected without API key. Save Cloud API key or switch inference/TTS/STT to local.",
-      missing: { cloudInference, cloudTts, cloudStt }
+      missing: { cloudInference, cloudTts }
+    });
+    return;
+  }
+  if (cloudStt && !hasOpenAiSttKey) {
+    res.status(400).json({
+      ok: false,
+      error: "OpenAI STT selected without API key. Save OpenAI STT API key or switch STT provider.",
+      missing: { cloudStt }
     });
     return;
   }
@@ -194,7 +204,8 @@ app.post("/api/onboarding/complete", async (_req, res) => {
   const credentials = secretStore.diagnostics();
   const readiness = await runReadinessChecks(config, undefined, {
     hasCloudKey: credentials.hasCloudKey,
-    hasDeepgramKey: credentials.hasDeepgramKey
+    hasDeepgramKey: credentials.hasDeepgramKey,
+    hasOpenAiSttKey: credentials.hasOpenAiSttKey
   });
   readinessState = readiness;
   if (!readiness.ready) {
@@ -210,7 +221,8 @@ app.get("/api/onboarding/readiness", async (_req, res) => {
   const credentials = secretStore.diagnostics();
   readinessState = await runReadinessChecks(config, undefined, {
     hasCloudKey: credentials.hasCloudKey,
-    hasDeepgramKey: credentials.hasDeepgramKey
+    hasDeepgramKey: credentials.hasDeepgramKey,
+    hasOpenAiSttKey: credentials.hasOpenAiSttKey
   });
   res.json({ ok: true, readiness: readinessState });
 });
@@ -241,6 +253,22 @@ app.post("/api/secrets/deepgram-key", (req, res) => {
   const stored = secretStore.setDeepgramApiKey(key);
   if (!stored) {
     res.status(500).json({ ok: false, error: "Failed to store Deepgram key in OS keychain. Check provider dependencies in diagnostics." });
+    return;
+  }
+
+  res.json({ ok: true });
+});
+
+app.post("/api/secrets/openai-stt-key", (req, res) => {
+  const key = typeof req.body?.key === "string" ? req.body.key.trim() : "";
+  if (!key) {
+    res.status(400).json({ ok: false, error: "Missing key." });
+    return;
+  }
+
+  const stored = secretStore.setOpenAiSttApiKey(key);
+  if (!stored) {
+    res.status(500).json({ ok: false, error: "Failed to store OpenAI STT key in OS keychain. Check provider dependencies in diagnostics." });
     return;
   }
 
@@ -299,7 +327,7 @@ app.get("/api/status", (_req, res) => {
       configuredProvider: config.capture.sttProvider,
       engineProvider: sharedSttEngine.state().provider,
       deepgramKeyPresent: secretStore.diagnostics().hasDeepgramKey,
-      cloudKeyPresent: secretStore.diagnostics().hasCloudKey,
+      openAiSttKeyPresent: secretStore.diagnostics().hasOpenAiSttKey,
       endpoint: config.capture.sttEndpoint,
       localConfigured: config.capture.sttProvider === "local-whisper",
       openAiWhisperConfigured: config.capture.sttProvider === "openai-whisper",
