@@ -243,6 +243,30 @@ describe("real audio capture + stt pause/resume", () => {
       "OpenAI STT API key missing. Save OpenAI STT API key (or Cloud API key fallback) in Secrets + Maintenance."
     );
   });
+
+  it("falls back to OpenAI STT endpoint when provider/endpoint mismatch points to Deepgram", async () => {
+    process.env.STREAMSIM_OPENAI_STT_API_KEY = "test-openai-stt-key";
+    const calledUrls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) => {
+        calledUrls.push(String(url));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ text: "ok" })
+        } as Response;
+      })
+    );
+
+    const stt = new DeviceSttEngine("mock");
+    await stt.transcribeFrameWith(
+      "gpt-4o-mini-transcribe",
+      "https://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true&filler_words=true&punctuate=true",
+      Buffer.from("audio")
+    );
+    expect(calledUrls[0]).toBe("https://api.openai.com/v1/audio/transcriptions");
+  });
 });
 
 describe("overlay/privacy/compliance", () => {

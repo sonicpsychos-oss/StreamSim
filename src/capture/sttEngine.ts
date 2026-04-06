@@ -253,7 +253,31 @@ export class DeviceSttEngine implements SttEngine {
     if ((provider === "openai-whisper" || provider === "gpt-4o-mini-transcribe") && normalized === DEFAULT_LOCAL_STT_ENDPOINT) {
       return fallback;
     }
+    if ((provider === "openai-whisper" || provider === "gpt-4o-mini-transcribe") && this.looksLikeDeepgramEndpoint(normalized)) {
+      return fallback;
+    }
+    if (provider === "deepgram" && this.looksLikeOpenAiTranscriptionEndpoint(normalized)) {
+      return fallback;
+    }
     return normalized;
+  }
+
+  private looksLikeDeepgramEndpoint(endpoint: string): boolean {
+    try {
+      const parsed = new URL(endpoint);
+      return parsed.hostname.includes("deepgram.com") || parsed.pathname.includes("/v1/listen");
+    } catch {
+      return false;
+    }
+  }
+
+  private looksLikeOpenAiTranscriptionEndpoint(endpoint: string): boolean {
+    try {
+      const parsed = new URL(endpoint);
+      return parsed.hostname.includes("openai.com") && parsed.pathname.includes("/audio/transcriptions");
+    } catch {
+      return false;
+    }
   }
 
   private resolveOpenAiSttModel(provider: "openai-whisper" | "gpt-4o-mini-transcribe"): string {
