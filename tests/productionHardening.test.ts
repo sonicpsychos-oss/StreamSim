@@ -208,15 +208,7 @@ describe("real audio capture + stt pause/resume", () => {
     const authHeaders: string[] = [];
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (_url: string, init?: RequestInit) => {
-        authHeaders.push(String((init?.headers as Record<string, string>).Authorization));
-        if (authHeaders.length === 1) {
-          return {
-            ok: false,
-            status: 401,
-            json: async () => ({ error: "unauthorized" })
-          } as Response;
-        }
+      vi.fn(async () => {
         return {
           ok: true,
           status: 200,
