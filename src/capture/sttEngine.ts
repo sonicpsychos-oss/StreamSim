@@ -86,18 +86,14 @@ class OpenAiWhisperBackend implements SttBackend {
       throw new Error("OpenAI STT API key missing. Save OpenAI STT API key (or Cloud API key fallback) in Secrets + Maintenance.");
     }
 
-    const form = new FormData();
-    const audioBlob = new Blob([new Uint8Array(frame)], { type: "audio/wav" });
-    form.append("file", audioBlob, "mic-probe.wav");
-    form.append("model", this.model);
-    form.append("response_format", "json");
-
-    const primaryKey = apiKey || cloudFallbackKey;
-    let response = await this.requestTranscription(form, String(primaryKey));
-
-    if (!response.ok && response.status === 401 && cloudFallbackKey && cloudFallbackKey !== primaryKey) {
-      response = await this.requestTranscription(form, cloudFallbackKey);
+    const candidateKeys = Array.from(new Set([apiKey, cloudFallbackKey].filter((key): key is string => Boolean(key))));
+    let response: Response | null = null;
+    for (const candidate of candidateKeys) {
+      response = await this.requestTranscription(this.createTranscriptionForm(frame), candidate);
+      if (response.ok || response.status !== 401) break;
     }
+
+    if (!response) throw new Error("OpenAI STT request failed before dispatch.");
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -109,6 +105,15 @@ class OpenAiWhisperBackend implements SttBackend {
     }
     const json = (await response.json()) as { text?: string };
     return json.text?.trim() ?? "";
+  }
+
+  private createTranscriptionForm(frame: Buffer): FormData {
+    const form = new FormData();
+    const audioBlob = new Blob([new Uint8Array(frame)], { type: "audio/wav" });
+    form.append("file", audioBlob, "mic-probe.wav");
+    form.append("model", this.model);
+    form.append("response_format", "json");
+    return form;
   }
 
   private async requestTranscription(form: FormData, apiKey: string): Promise<Response> {
