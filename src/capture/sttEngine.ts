@@ -81,7 +81,10 @@ class OpenAiWhisperBackend implements SttBackend {
 
   public async transcribe(frame: Buffer): Promise<string> {
     const apiKey = this.secretStore.getOpenAiSttApiKey();
-    if (!apiKey) throw new Error("OpenAI STT API key missing. Save OpenAI STT API key in Secrets + Maintenance.");
+    const cloudFallbackKey = this.secretStore.getCloudApiKey();
+    if (!apiKey && !cloudFallbackKey) {
+      throw new Error("OpenAI STT API key missing. Save OpenAI STT API key (or Cloud API key fallback) in Secrets + Maintenance.");
+    }
 
     const form = new FormData();
     const audioBlob = new Blob([new Uint8Array(frame)], { type: "audio/wav" });
@@ -89,12 +92,17 @@ class OpenAiWhisperBackend implements SttBackend {
     form.append("model", this.model);
     form.append("response_format", "json");
 
-    const response = await this.requestTranscription(form, apiKey);
+    const primaryKey = apiKey || cloudFallbackKey;
+    let response = await this.requestTranscription(form, String(primaryKey));
+
+    if (!response.ok && response.status === 401 && cloudFallbackKey && cloudFallbackKey !== primaryKey) {
+      response = await this.requestTranscription(form, cloudFallbackKey);
+    }
 
     if (!response.ok) {
       if (response.status === 401) {
         throw new Error(
-          "OpenAI STT failed (401 Unauthorized). Verify STREAMSIM_OPENAI_STT_API_KEY (or STREAMSIM_OPENAI_API_KEY / OPENAI_API_KEY fallback)."
+          "OpenAI STT failed (401 Unauthorized). Verify OpenAI STT key and Cloud key fallback credentials."
         );
       }
       throw new Error(`OpenAI STT failed (${response.status}).`);

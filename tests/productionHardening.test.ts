@@ -202,6 +202,26 @@ describe("real audio capture + stt pause/resume", () => {
     expect(authHeaders[0]).toBe("Bearer openai-specific-key");
   });
 
+  it("retries STT auth with cloud key fallback if dedicated OpenAI STT key is rejected", async () => {
+    process.env.STREAMSIM_OPENAI_STT_API_KEY = "bad-openai-stt-key";
+    process.env.STREAMSIM_CLOUD_API_KEY = "working-cloud-fallback-key";
+    const authHeaders: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ text: "ok" })
+        } as Response;
+      })
+    );
+
+    const stt = new DeviceSttEngine("mock");
+    await stt.transcribeFrameWith("openai-whisper", undefined, Buffer.from("audio"));
+    expect(authHeaders).toEqual(["Bearer bad-openai-stt-key", "Bearer working-cloud-fallback-key"]);
+  });
+
   it("fails STT auth when no OpenAI STT key material is available", async () => {
     delete process.env.STREAMSIM_CLOUD_API_KEY;
     delete process.env.STREAMSIM_OPENAI_STT_API_KEY;
@@ -220,7 +240,7 @@ describe("real audio capture + stt pause/resume", () => {
 
     const stt = new DeviceSttEngine("mock");
     await expect(stt.transcribeFrameWith("openai-whisper", undefined, Buffer.from("audio"))).rejects.toThrow(
-      "OpenAI STT API key missing. Save OpenAI STT API key in Secrets + Maintenance."
+      "OpenAI STT API key missing. Save OpenAI STT API key (or Cloud API key fallback) in Secrets + Maintenance."
     );
   });
 });

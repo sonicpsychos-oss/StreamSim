@@ -789,9 +789,9 @@ function summarizeSttHealth(payload) {
   } else if (provider === "deepgram" && !sttRuntime.deepgramKeyPresent) {
     ready = false;
     detail = "Deepgram selected but STREAMSIM_DEEPGRAM_API_KEY is missing";
-  } else if ((provider === "openai-whisper" || provider === "gpt-4o-mini-transcribe") && !sttRuntime.openAiSttKeyPresent) {
+  } else if ((provider === "openai-whisper" || provider === "gpt-4o-mini-transcribe") && !sttRuntime.openAiSttKeyPresent && !sttRuntime.cloudKeyPresent) {
     ready = false;
-    detail = "Cloud OpenAI STT selected but no OpenAI STT API key is stored";
+    detail = "Cloud OpenAI STT selected but no OpenAI STT API key (or Cloud fallback key) is stored";
   } else if ((provider === "whispercpp" || provider === "local-whisper") && !endpoint.startsWith("http")) {
     ready = false;
     detail = "Whisper endpoint must be a valid URL";
@@ -891,7 +891,11 @@ function summarizeApiKeyHealth(payload) {
     ? "not required"
     : sttProvider === "deepgram"
       ? hasDeepgramKey ? "present (Deepgram)" : "missing (Deepgram)"
-      : hasOpenAiSttKey ? "present (OpenAI STT)" : "missing (OpenAI STT)";
+      : hasOpenAiSttKey
+        ? "present (OpenAI STT)"
+        : hasCloudKey
+          ? "present (cloud fallback)"
+          : "missing (OpenAI STT)";
 
   const audioIntelligenceKeyRequired = audioIntelligenceEnabled && useRealCapture && sttProvider === "deepgram";
   const audioIntelligenceKeyStatus = !audioIntelligenceKeyRequired
@@ -1142,14 +1146,15 @@ startBtn.addEventListener("click", async () => {
         (controls.sttProvider.value === "openai-whisper" || controls.sttProvider.value === "gpt-4o-mini-transcribe");
       const hasCloudKey = Boolean(latestStatusPayload?.secrets?.hasCloudKey);
       const hasOpenAiSttKey = Boolean(latestStatusPayload?.secrets?.hasOpenAiSttKey || latestStatusPayload?.stt?.openAiSttKeyPresent);
+      const hasOpenAiSttOrCloudFallback = hasOpenAiSttKey || hasCloudKey;
       if (cloudMode && !hasCloudKey) {
         throw new Error("Cloud inference selected but no API key is stored. Save a Cloud API key before starting.");
       }
       if (controls.ttsEnabled.checked && controls.ttsMode.value === "cloud" && controls.ttsProvider.value === "openai" && !hasCloudKey) {
         throw new Error("OpenAI TTS selected but no Cloud API key is stored. Save a Cloud API key or switch TTS provider.");
       }
-      if (cloudStt && !hasOpenAiSttKey) {
-        throw new Error("Cloud OpenAI STT selected but no OpenAI STT API key is stored. Save OpenAI STT API key or switch STT provider.");
+      if (cloudStt && !hasOpenAiSttOrCloudFallback) {
+        throw new Error("Cloud OpenAI STT selected but no OpenAI STT API key is stored. Save OpenAI STT API key (or Cloud fallback key) or switch STT provider.");
       }
       const hasDeepgramKey = Boolean(latestStatusPayload?.secrets?.hasDeepgramKey || latestStatusPayload?.stt?.deepgramKeyPresent);
       if (controls.sttProvider.value === "deepgram" && !hasDeepgramKey) {

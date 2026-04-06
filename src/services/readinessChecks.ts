@@ -46,9 +46,10 @@ function checkDevice(config: SimulationConfig, credentials: { hasCloudKey: boole
   if (
     config.capture.useRealCapture &&
     (config.capture.sttProvider === "openai-whisper" || config.capture.sttProvider === "gpt-4o-mini-transcribe") &&
-    !credentials.hasOpenAiSttKey
+    !credentials.hasOpenAiSttKey &&
+    !credentials.hasCloudKey
   ) {
-    errors.push("Cloud OpenAI STT selected but no OpenAI STT API key is stored.");
+    errors.push("Cloud OpenAI STT selected but no OpenAI STT API key (or Cloud key fallback) is stored.");
   }
 
   if (config.capture.useRealCapture && (config.capture.sttProvider === "whispercpp" || config.capture.sttProvider === "local-whisper") && !config.capture.sttEndpoint.startsWith("http")) {

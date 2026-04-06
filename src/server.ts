@@ -140,6 +140,7 @@ app.post("/api/start", (_req, res) => {
   const hasCloudKey = credentials.hasCloudKey;
   const hasDeepgramKey = credentials.hasDeepgramKey;
   const hasOpenAiSttKey = credentials.hasOpenAiSttKey;
+  const hasOpenAiSttOrCloudFallback = hasOpenAiSttKey || hasCloudKey;
 
   if ((cloudInference || cloudTts) && !hasCloudKey) {
     res.status(400).json({
@@ -149,10 +150,10 @@ app.post("/api/start", (_req, res) => {
     });
     return;
   }
-  if (cloudStt && !hasOpenAiSttKey) {
+  if (cloudStt && !hasOpenAiSttOrCloudFallback) {
     res.status(400).json({
       ok: false,
-      error: "OpenAI STT selected without API key. Save OpenAI STT API key or switch STT provider.",
+      error: "OpenAI STT selected without API key. Save OpenAI STT API key (or Cloud API key fallback) or switch STT provider.",
       missing: { cloudStt }
     });
     return;
@@ -328,6 +329,7 @@ app.get("/api/status", (_req, res) => {
       engineProvider: sharedSttEngine.state().provider,
       deepgramKeyPresent: secretStore.diagnostics().hasDeepgramKey,
       openAiSttKeyPresent: secretStore.diagnostics().hasOpenAiSttKey,
+      cloudKeyPresent: secretStore.diagnostics().hasCloudKey,
       endpoint: config.capture.sttEndpoint,
       localConfigured: config.capture.sttProvider === "local-whisper",
       openAiWhisperConfigured: config.capture.sttProvider === "openai-whisper",
