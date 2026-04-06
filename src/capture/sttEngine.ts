@@ -10,16 +10,8 @@ interface SttBackend {
 }
 
 const DEFAULT_LOCAL_STT_ENDPOINT = "http://127.0.0.1:7778/stt";
-const DEFAULT_DEEPGRAM_ENDPOINT = "https://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&filler_words=true&punctuate=true&sentiment=true&intents=true&topics=true&utterance_end_ms=3000";
+const DEFAULT_DEEPGRAM_ENDPOINT = "https://api.deepgram.com/v1/listen?model=nova-3&language=en-US&smart_format=true&punctuate=true&utterance_end_ms=1800";
 const DEFAULT_OPENAI_STT_ENDPOINT = "https://api.openai.com/v1/audio/transcriptions";
-const DEEPGRAM_STREAMER_BIAS_KEYWORDS = [
-  "up stream:3",
-  "stream sim:2",
-  "what's up stream:2.5",
-  "what is up stream:2.5",
-  "chat:1.5",
-  "gg:1.5"
-];
 
 class MockSttBackend implements SttBackend {
   public async transcribe(frame: Buffer): Promise<string> {
@@ -69,12 +61,7 @@ class DeepgramBackend implements SttBackend {
         model,
         language,
         smart_format: true,
-        filler_words: true,
-        punctuate: true,
-        sentiment: true,
-        intents: true,
-        topics: true,
-        keywords: DEEPGRAM_STREAMER_BIAS_KEYWORDS
+        punctuate: true
       } as any);
       const payload = response as unknown as {
         results?: { channels?: Array<{ alternatives?: Array<{ transcript?: string }> }> };
@@ -93,27 +80,40 @@ class OpenAiWhisperBackend implements SttBackend {
   constructor(private readonly endpoint: string, private readonly model: string) {}
 
   public async transcribe(frame: Buffer): Promise<string> {
-    const apiKey = this.secretStore.getCloudApiKey();
-    if (!apiKey) throw new Error("Cloud API key missing. Save Cloud API key in Secrets + Maintenance.");
+    const apiKey = this.secretStore.getOpenAiSttApiKey();
+    const cloudFallbackKey = this.secretStore.getCloudApiKey();
+    if (!apiKey && !cloudFallbackKey) {
+      throw new Error("OpenAI STT API key missing. Save OpenAI STT API key (or Cloud API key fallback) in Secrets + Maintenance.");
+    }
 
-    const form = new FormData();
-    const audioBlob = new Blob([new Uint8Array(frame)], { type: "audio/wav" });
-    form.append("file", audioBlob, "mic-probe.wav");
-    form.append("model", this.model);
-    form.append("response_format", "json");
+    const candidateKeys = Array.from(new Set([apiKey, cloudFallbackKey].filter((key): key is string => Boolean(key))));
+    let response: Response | null = null;
+    for (const candidate of candidateKeys) {
+      response = await this.requestTranscription(this.createTranscriptionForm(frame), candidate);
+      if (response.ok || response.status !== 401) break;
+    }
 
-    const response = await this.requestTranscription(form, apiKey);
+    if (!response) throw new Error("OpenAI STT request failed before dispatch.");
 
     if (!response.ok) {
       if (response.status === 401) {
         throw new Error(
-          "OpenAI STT failed (401 Unauthorized). Verify OpenAI credentials (STREAMSIM_OPENAI_API_KEY / OPENAI_API_KEY) or Cloud API key."
+          "OpenAI STT failed (401 Unauthorized). Verify OpenAI STT key and Cloud key fallback credentials."
         );
       }
       throw new Error(`OpenAI STT failed (${response.status}).`);
     }
     const json = (await response.json()) as { text?: string };
     return json.text?.trim() ?? "";
+  }
+
+  private createTranscriptionForm(frame: Buffer): FormData {
+    const form = new FormData();
+    const audioBlob = new Blob([new Uint8Array(frame)], { type: "audio/wav" });
+    form.append("file", audioBlob, "mic-probe.wav");
+    form.append("model", this.model);
+    form.append("response_format", "json");
+    return form;
   }
 
   private async requestTranscription(form: FormData, apiKey: string): Promise<Response> {
@@ -144,6 +144,8 @@ export class DeviceSttEngine implements SttEngine {
   private paused = false;
   private provider: SttProviderKind;
   private backend: SttBackend;
+  private transcriptionInFlight = false;
+  private pendingFrame: Buffer | null = null;
 
   constructor(provider: SttProviderKind = "mock", customBackend?: SttBackend) {
     this.provider = provider;
@@ -157,6 +159,7 @@ export class DeviceSttEngine implements SttEngine {
 
   public pause(): void {
     this.paused = true;
+    this.pendingFrame = null;
     sharedDeviceCapturePipeline.setMicPaused(true);
   }
 
@@ -182,12 +185,11 @@ export class DeviceSttEngine implements SttEngine {
 
   public async ingestAudioFrame(frame: Buffer): Promise<void> {
     if (this.paused || frame.length === 0) return;
-    const transcriptChunk = await this.transcribeFrame(frame);
-    if (!transcriptChunk) return;
-
-    const paceWpm = Math.max(70, Math.min(220, Math.round((transcriptChunk.split(/\s+/).length / 2) * 60)));
-    const rms = Math.min(1, Math.max(0.05, frame.reduce((sum, b) => sum + b, 0) / frame.length / 255));
-    sharedDeviceCapturePipeline.ingestMicFrame({ transcriptChunk, wordsPerMinute: paceWpm, rms });
+    if (this.transcriptionInFlight) {
+      this.pendingFrame = frame;
+      return;
+    }
+    await this.processAudioFrame(frame);
   }
 
   public bindAudioStream(stream: Readable): void {
@@ -195,6 +197,27 @@ export class DeviceSttEngine implements SttEngine {
       const frame = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       void this.ingestAudioFrame(frame);
     });
+  }
+
+  private async processAudioFrame(initialFrame: Buffer): Promise<void> {
+    let frame: Buffer | null = initialFrame;
+    this.transcriptionInFlight = true;
+
+    try {
+      while (frame && !this.paused) {
+        const transcriptChunk = await this.transcribeFrame(frame);
+        if (transcriptChunk) {
+          const paceWpm = Math.max(70, Math.min(220, Math.round((transcriptChunk.split(/\s+/).length / 2) * 60)));
+          const rms = Math.min(1, Math.max(0.05, frame.reduce((sum, b) => sum + b, 0) / frame.length / 255));
+          sharedDeviceCapturePipeline.ingestMicFrame({ transcriptChunk, wordsPerMinute: paceWpm, rms });
+        }
+
+        frame = this.pendingFrame;
+        this.pendingFrame = null;
+      }
+    } finally {
+      this.transcriptionInFlight = false;
+    }
   }
 
   private createBackend(provider: SttProviderKind, endpoint?: string): SttBackend {
