@@ -313,7 +313,11 @@ async function probeSttFromMicChunk() {
     setCaptionStatus(`Mic stream active · STT(${result.provider}) ${transcript ? "captured transcript" : "reachable; waiting for speech"}.`, "ok");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    setCaptionStatus(`Mic stream active but STT probe failed: ${message}`, "error");
+    if (message.toLowerCase().includes("aborted due to timeout")) {
+      setCaptionStatus("Mic stream active but STT probe timed out. STT provider is reachable but responding slowly; retrying automatically.", "warn");
+    } else {
+      setCaptionStatus(`Mic stream active but STT probe failed: ${message}`, "error");
+    }
   } finally {
     micCheckProbeInFlight = false;
   }

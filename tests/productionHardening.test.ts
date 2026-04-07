@@ -267,6 +267,25 @@ describe("real audio capture + stt pause/resume", () => {
     );
     expect(calledUrls[0]).toBe("https://api.openai.com/v1/audio/transcriptions");
   });
+
+  it("falls back to localhost whisper endpoint when local-whisper is misconfigured to cloud endpoint", async () => {
+    const calledUrls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) => {
+        calledUrls.push(String(url));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ text: "ok" })
+        } as Response;
+      })
+    );
+
+    const stt = new DeviceSttEngine("mock");
+    await stt.transcribeFrameWith("local-whisper", "https://api.openai.com/v1/audio/transcriptions", Buffer.from("audio"));
+    expect(calledUrls[0]).toBe("http://127.0.0.1:7778/stt");
+  });
 });
 
 describe("overlay/privacy/compliance", () => {

@@ -122,7 +122,7 @@ class OpenAiWhisperBackend implements SttBackend {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}` },
         body: form,
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(25000)
       });
     } catch (error) {
       throw new Error(`OpenAI STT request failed for ${this.endpoint}: ${(error as Error).message}`);
@@ -223,7 +223,7 @@ export class DeviceSttEngine implements SttEngine {
   private createBackend(provider: SttProviderKind, endpoint?: string): SttBackend {
     switch (provider) {
       case "local-whisper":
-        return new WhisperCppBackend(endpoint ?? process.env.STREAMSIM_LOCAL_STT_ENDPOINT ?? DEFAULT_LOCAL_STT_ENDPOINT);
+        return new WhisperCppBackend(this.resolveLocalWhisperEndpoint(endpoint, process.env.STREAMSIM_LOCAL_STT_ENDPOINT ?? DEFAULT_LOCAL_STT_ENDPOINT));
       case "whispercpp":
         return new WhisperCppBackend(endpoint ?? process.env.STREAMSIM_WHISPER_ENDPOINT ?? DEFAULT_LOCAL_STT_ENDPOINT);
       case "deepgram":
@@ -257,6 +257,22 @@ export class DeviceSttEngine implements SttEngine {
       return fallback;
     }
     if (provider === "deepgram" && this.looksLikeOpenAiTranscriptionEndpoint(normalized)) {
+      return fallback;
+    }
+    return normalized;
+  }
+
+  private resolveLocalWhisperEndpoint(requestedEndpoint: string | undefined, fallback: string): string {
+    if (!requestedEndpoint) return fallback;
+    const normalized = requestedEndpoint.trim();
+    if (!normalized) return fallback;
+    if (this.looksLikeDeepgramEndpoint(normalized) || this.looksLikeOpenAiTranscriptionEndpoint(normalized)) {
+      return fallback;
+    }
+    try {
+      const parsed = new URL(normalized);
+      if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") return fallback;
+    } catch {
       return fallback;
     }
     return normalized;
